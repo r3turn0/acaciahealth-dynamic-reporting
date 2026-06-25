@@ -3,22 +3,23 @@
 import { useState } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { KpiCards } from "@/components/dashboard/KpiCards";
-import { ReportRunner } from "@/components/dashboard/ReportRunner";
 import { SchemaViewer } from "@/components/dashboard/SchemaViewer";
 import { KpiExplorer } from "@/components/dashboard/KpiExplorer";
 import { HealthStatus } from "@/components/dashboard/HealthStatus";
+import { ReportStudio } from "@/components/studio/ReportStudio";
+import { SavedReports } from "@/components/studio/SavedReports";
 import { Menu, Bell, Calendar } from "lucide-react";
 
-type View = "dashboard" | "run" | "kpi" | "schema" | "audit" | "settings";
+type View = "dashboard" | "studio" | "kpi" | "schema" | "saved" | "audit" | "settings";
 
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   dashboard: {
     title: "Dashboard",
     subtitle: "HCHB Dynamic Reporting Engine — overview",
   },
-  run: {
-    title: "Run Report",
-    subtitle: "Generate a report from a natural language prompt",
+  studio: {
+    title: "Report Studio",
+    subtitle: "Ask AI, edit SQL, run queries, view results, save reports",
   },
   kpi: {
     title: "KPI Explorer",
@@ -26,7 +27,11 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   },
   schema: {
     title: "Schema Intelligence",
-    subtitle: "Database schema, join paths, and bucket mappings",
+    subtitle: "Live database schema, join paths, and semantic layer",
+  },
+  saved: {
+    title: "Saved Reports",
+    subtitle: "Your saved report library — load, re-run, or delete",
   },
   audit: {
     title: "Audit Log",
@@ -125,9 +130,21 @@ export default function Home() {
               <QuickStart onNavigate={(id) => setView(id as View)} />
             </div>
           )}
-          {view === "run" && (
-            <div className="max-w-3xl">
-              <ReportRunner />
+          {view === "studio" && (
+            <div className="max-w-5xl">
+              <ReportStudio />
+            </div>
+          )}
+          {view === "saved" && (
+            <div className="max-w-4xl">
+              <div className="bg-card border border-border rounded-lg p-5">
+                <SavedReports
+                  onLoad={(report) => {
+                    setView("studio");
+                    // The studio will handle the load via URL state in a future iteration
+                  }}
+                />
+              </div>
             </div>
           )}
           {view === "kpi" && (
@@ -195,9 +212,9 @@ function RecentReports() {
 function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {
   const actions = [
     {
-      id: "run",
-      label: "Run a New Report",
-      desc: "Natural language → parameterized SQL → results",
+      id: "studio",
+      label: "Open Report Studio",
+      desc: "Ask AI, write SQL, run queries, save reports",
     },
     {
       id: "kpi",
@@ -206,8 +223,8 @@ function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {
     },
     {
       id: "schema",
-      label: "View Schema",
-      desc: "Tables, join paths, bucket map",
+      label: "Schema Intelligence",
+      desc: "Tables, join paths, semantic layer, column types",
     },
   ];
 
@@ -296,6 +313,38 @@ function SettingsPanel() {
   return (
     <div className="flex flex-col gap-5">
       <div className="bg-card border border-border rounded-lg p-5">
+        <h2 className="text-sm font-semibold text-foreground mb-4">AI Configuration</h2>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs text-muted-foreground font-medium">AI_GATEWAY_API_KEY</label>
+            <input
+              type="password"
+              disabled
+              placeholder="Set via Vars → AI_GATEWAY_API_KEY"
+              className="bg-muted border border-border rounded-md px-3 py-2 text-xs text-muted-foreground cursor-not-allowed"
+            />
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Powers the AI Query Planner Agent (GPT-4o-mini via Vercel AI Gateway). Without this key the engine falls back to rule-based query generation.
+            </p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs text-muted-foreground font-medium">
+              AZURE_OPENAI_API_KEY <span className="opacity-50">(optional — override)</span>
+            </label>
+            <input
+              type="password"
+              disabled
+              placeholder="Set via Vars → AZURE_OPENAI_API_KEY"
+              className="bg-muted border border-border rounded-md px-3 py-2 text-xs text-muted-foreground cursor-not-allowed"
+            />
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Use your own Azure OpenAI deployment instead of the gateway. Set AZURE_OPENAI_DEPLOYMENT to your deployment name.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-card border border-border rounded-lg p-5">
         <h2 className="text-sm font-semibold text-foreground mb-4">Database Connection</h2>
         <div className="flex flex-col gap-1.5">
           <label className="text-xs text-muted-foreground font-medium">
@@ -318,17 +367,23 @@ function SettingsPanel() {
         <h2 className="text-sm font-semibold text-foreground mb-4">Architecture Reference</h2>
         <div className="flex flex-col gap-0.5">
           {[
-            ["POST /api/report/run", "Generate and execute a parameterized report"],
+            ["POST /api/generate-query", "AI Query Planner Agent — NL → structured QueryPlan"],
+            ["POST /api/generate-query/validate", "Inline SQL validator for the SQL editor"],
+            ["POST /api/run-sql", "SQL Execution Agent — runs validated SQL, caps at 10k rows"],
+            ["GET  /api/schema", "Schema Intelligence Agent — live INFORMATION_SCHEMA or static"],
+            ["GET  /api/reports", "List all saved reports (Report Registry)"],
+            ["POST /api/reports", "Save a new report to the registry"],
+            ["PATCH/DELETE /api/reports/[id]", "Update or delete a saved report"],
+            ["POST /api/report/run", "Legacy pipeline — NL → generate → validate → execute"],
             ["GET /api/health", "Service and database health check"],
-            ["GET /api/kpi/[kpi]", "KPI definition and example request"],
-            ["lib/services/queryGenerator.ts", "NL → SQL generation engine"],
-            ["lib/services/queryGuard.ts", "SQL validation and security layer"],
-            ["lib/services/db.ts", "MSSQL connection pool and execution"],
-            ["lib/services/formatter.ts", "Result formatting and aggregation"],
-            ["lib/services/cache.ts", "In-memory SHA-256 keyed cache (10 min TTL)"],
+            ["lib/agents/queryPlanner.ts", "AI Query Planner — Azure OpenAI / AI Gateway"],
+            ["lib/agents/schemaAgent.ts", "Schema Intelligence — INFORMATION_SCHEMA + cache"],
+            ["lib/agents/reportRegistry.ts", "Report Registry — DynamicReports in-memory store"],
+            ["lib/services/queryGuard.ts", "Security layer — blocks DDL, injection, SELECT *"],
+            ["lib/services/db.ts", "MSSQL connection pool with read-only intent"],
+            ["lib/config/semanticLayer.json", "Business term → physical column mapping"],
             ["lib/config/schemaConfig.json", "Table aliases, keys, join conditions"],
             ["lib/config/kpiConfig.json", "KPI → table/column/aggregation mapping"],
-            ["lib/config/bucketMap.json", "Branch code → bucket name mapping"],
           ].map(([path, desc]) => (
             <div
               key={path}

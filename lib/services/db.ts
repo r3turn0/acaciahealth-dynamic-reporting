@@ -50,6 +50,19 @@ export async function executeQuery(
   return result.recordset;
 }
 
+/**
+ * Executes a raw SQL string with no user parameters (schema introspection only).
+ * NEVER call this with user-supplied input.
+ */
+export async function executeRawQuery(
+  query: string
+): Promise<Record<string, unknown>[]> {
+  const connectionPool = await getPool();
+  const request = connectionPool.request();
+  const result = await request.query(query);
+  return result.recordset;
+}
+
 export async function checkConnection(): Promise<boolean> {
   try {
     const connectionPool = await getPool();
