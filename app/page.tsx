@@ -8,9 +8,10 @@ import { KpiExplorer } from "@/components/dashboard/KpiExplorer";
 import { HealthStatus } from "@/components/dashboard/HealthStatus";
 import { ReportStudio } from "@/components/studio/ReportStudio";
 import { SavedReports } from "@/components/studio/SavedReports";
+import { DataExplorer } from "@/components/data/DataExplorer";
 import { Menu, Bell, Calendar } from "lucide-react";
 
-type View = "dashboard" | "studio" | "kpi" | "schema" | "saved" | "audit" | "settings";
+type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "saved" | "audit" | "settings";
 
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   dashboard: {
@@ -20,6 +21,10 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   studio: {
     title: "Report Studio",
     subtitle: "Ask AI, edit SQL, run queries, view results, save reports",
+  },
+  data: {
+    title: "Data",
+    subtitle: "Browse, filter, sort, and export raw table data",
   },
   kpi: {
     title: "KPI Explorer",
@@ -135,6 +140,11 @@ export default function Home() {
               <ReportStudio />
             </div>
           )}
+          {view === "data" && (
+            <div className="max-w-6xl">
+              <DataExplorer />
+            </div>
+          )}
           {view === "saved" && (
             <div className="max-w-4xl">
               <div className="bg-card border border-border rounded-lg p-5">
@@ -220,6 +230,11 @@ function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {
       id: "kpi",
       label: "Explore KPIs",
       desc: "Browse admissions, revenue, census, discharges",
+    },
+    {
+      id: "data",
+      label: "Browse Table Data",
+      desc: "Filter, sort, and export raw rows from any table",
     },
     {
       id: "schema",
