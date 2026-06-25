@@ -33,7 +33,7 @@ function buildSystemPrompt(): string {
   const kpiJSON = JSON.stringify(kpiConfig, null, 2);
   const semanticJSON = JSON.stringify(semanticLayer, null, 2);
 
-  return `You are an expert healthcare data analyst and T-SQL query planner for HCHB (Homecare Homebase).
+  return `You are an expert healthcare data analyst and T-SQL query planner for AcaciaHealth.
 Your job is to convert natural language questions into safe, optimized T-SQL SELECT queries.
 
 ## Strict Rules (NEVER violate these)
@@ -45,7 +45,7 @@ Your job is to convert natural language questions into safe, optimized T-SQL SEL
 - Never expose sensitive columns (SSN, DateOfBirth) unless specifically asked — and even then use masking expressions from the semantic layer.
 - All string comparisons on branch codes must use RTRIM() on both sides.
 
-## HCHB Schema
+## AcaciaHealth Schema
 \`\`\`json
 ${schemaJSON}
 \`\`\`

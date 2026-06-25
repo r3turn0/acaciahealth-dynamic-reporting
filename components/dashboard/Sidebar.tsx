@@ -37,7 +37,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
           <Heart className="w-4 h-4 text-primary" />
         </div>
         <div>
-          <p className="text-xs font-semibold text-foreground leading-none">HCHB Reporting</p>
+          <p className="text-xs font-semibold text-foreground leading-none">AcaciaHealth Reporting</p>
           <p className="text-[10px] text-muted-foreground mt-0.5">Dynamic Engine v1.0</p>
         </div>
       </div>

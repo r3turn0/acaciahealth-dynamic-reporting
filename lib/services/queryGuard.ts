@@ -60,7 +60,7 @@ export function validateQuery(sql: string): ValidationResult {
     sql.toUpperCase().includes(t.toUpperCase())
   );
   if (!referencesAllowedTable) {
-    errors.push("Query must reference at least one allowed HCHB table");
+    errors.push("Query must reference at least one allowed AcaciaHealth table");
   }
 
   return {

@@ -21,7 +21,7 @@ export function SchemaViewer() {
         <div className="flex items-center gap-2 mb-4">
           <Database className="w-4 h-4 text-primary" />
           <h2 className="text-sm font-semibold text-foreground">
-            HCHB_AcaciaHealth Schema (Read-Only)
+            AcaciaHealth Schema (Read-Only)
           </h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

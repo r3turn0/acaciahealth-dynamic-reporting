@@ -15,7 +15,7 @@ type View = "dashboard" | "studio" | "kpi" | "schema" | "saved" | "audit" | "set
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   dashboard: {
     title: "Dashboard",
-    subtitle: "HCHB Dynamic Reporting Engine — overview",
+    subtitle: "AcaciaHealth Dynamic Reporting Engine — overview",
   },
   studio: {
     title: "Report Studio",

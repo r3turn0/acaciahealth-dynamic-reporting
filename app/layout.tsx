@@ -9,9 +9,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HCHB Dynamic Reporting Engine",
+  title: "AcaciaHealth Dynamic Reporting Engine",
   description:
-    "AI-powered healthcare analytics reporting for HCHB — natural language to SQL on a read-only Azure SQL database.",
+    "AI-powered healthcare analytics reporting for AcaciaHealth — natural language to SQL on a read-only Azure SQL database.",
   generator: "v0.app",
 };
 
