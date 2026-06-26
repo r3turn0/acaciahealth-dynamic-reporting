@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { KpiCards } from "@/components/dashboard/KpiCards";
 import { SchemaViewer } from "@/components/dashboard/SchemaViewer";
@@ -51,6 +51,17 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
 export default function Home() {
   const [view, setView] = useState<View>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [todayLabel, setTodayLabel] = useState<string>("");
+
+  useEffect(() => {
+    setTodayLabel(
+      new Date().toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    );
+  }, []);
 
   const { title, subtitle } = VIEW_TITLES[view];
 
@@ -100,11 +111,7 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <div className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground border border-border rounded-md px-3 py-1.5">
               <Calendar className="w-3.5 h-3.5" />
-              {new Date().toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
+              {todayLabel}
             </div>
             <button
               className="p-1.5 rounded-md hover:bg-muted transition-colors relative"
