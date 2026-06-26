@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { KpiCards } from "@/components/dashboard/KpiCards";
 import { SchemaViewer } from "@/components/dashboard/SchemaViewer";
@@ -8,9 +8,10 @@ import { KpiExplorer } from "@/components/dashboard/KpiExplorer";
 import { HealthStatus } from "@/components/dashboard/HealthStatus";
 import { ReportStudio } from "@/components/studio/ReportStudio";
 import { SavedReports } from "@/components/studio/SavedReports";
+import { DataExplorer } from "@/components/data/DataExplorer";
 import { Menu, Bell, Calendar } from "lucide-react";
 
-type View = "dashboard" | "studio" | "kpi" | "schema" | "saved" | "audit" | "settings";
+type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "saved" | "audit" | "settings";
 
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   dashboard: {
@@ -20,6 +21,10 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   studio: {
     title: "Report Studio",
     subtitle: "Ask AI, edit SQL, run queries, view results, save reports",
+  },
+  data: {
+    title: "Data",
+    subtitle: "Browse, filter, sort, and export raw table data",
   },
   kpi: {
     title: "KPI Explorer",
@@ -46,6 +51,17 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
 export default function Home() {
   const [view, setView] = useState<View>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [todayLabel, setTodayLabel] = useState<string>("");
+
+  useEffect(() => {
+    setTodayLabel(
+      new Date().toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    );
+  }, []);
 
   const { title, subtitle } = VIEW_TITLES[view];
 
@@ -95,11 +111,7 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <div className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground border border-border rounded-md px-3 py-1.5">
               <Calendar className="w-3.5 h-3.5" />
-              {new Date().toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
+              {todayLabel}
             </div>
             <button
               className="p-1.5 rounded-md hover:bg-muted transition-colors relative"
@@ -133,6 +145,11 @@ export default function Home() {
           {view === "studio" && (
             <div className="max-w-5xl">
               <ReportStudio />
+            </div>
+          )}
+          {view === "data" && (
+            <div className="max-w-6xl">
+              <DataExplorer />
             </div>
           )}
           {view === "saved" && (
@@ -220,6 +237,11 @@ function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {
       id: "kpi",
       label: "Explore KPIs",
       desc: "Browse admissions, revenue, census, discharges",
+    },
+    {
+      id: "data",
+      label: "Browse Table Data",
+      desc: "Filter, sort, and export raw rows from any table",
     },
     {
       id: "schema",

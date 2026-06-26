@@ -120,7 +120,7 @@ Return a structured QueryPlan object.
     model,
     system: buildSystemPrompt(),
     prompt: userMessage,
-    output: Output.object({ schema: QueryPlanSchema }),
+    experimental_output: Output.object({ schema: QueryPlanSchema }),
     temperature: 0.1,
   });
 

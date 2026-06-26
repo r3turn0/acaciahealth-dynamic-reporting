@@ -10,17 +10,19 @@ import {
   ShieldCheck,
   Sparkles,
   Bookmark,
+  Table2,
   Zap,
 } from "lucide-react";
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", id: "dashboard", group: "main" },
-  { icon: Sparkles, label: "Report Studio", id: "studio", group: "main" },
-  { icon: BarChart3, label: "KPI Explorer", id: "kpi", group: "main" },
-  { icon: Database, label: "Schema Intelligence", id: "schema", group: "main" },
-  { icon: Bookmark, label: "Saved Reports", id: "saved", group: "reports" },
-  { icon: ShieldCheck, label: "Audit Log", id: "audit", group: "reports" },
-  { icon: Settings, label: "Settings", id: "settings", group: "config" },
+  { icon: LayoutDashboard, label: "Dashboard",          id: "dashboard", group: "main" },
+  { icon: Sparkles,        label: "Report Studio",      id: "studio",    group: "main" },
+  { icon: Table2,          label: "Data",               id: "data",      group: "main" },
+  { icon: BarChart3,       label: "KPI Explorer",       id: "kpi",       group: "main" },
+  { icon: Database,        label: "Schema Intelligence",id: "schema",    group: "main" },
+  { icon: Bookmark,        label: "Saved Reports",      id: "saved",     group: "reports" },
+  { icon: ShieldCheck,     label: "Audit Log",          id: "audit",     group: "reports" },
+  { icon: Settings,        label: "Settings",           id: "settings",  group: "config" },
 ];
 
 interface SidebarProps {
