@@ -1,0 +1,10 @@
+[
+  { "sl_id": 1, "branch_code": "HH", "bucket_name": "Home Health" },
+  { "sl_id": 2, "branch_code": "OC", "bucket_name": "Hospice OC" },
+  { "sl_id": 3, "branch_code": "HC", "bucket_name": "Hospice Continuous" },
+  { "sl_id": 4, "branch_code": "GI", "bucket_name": "Hospice GI" },
+  { "sl_id": 5, "branch_code": "IR", "bucket_name": "Hospice IRC" },
+  { "sl_id": 6, "branch_code": "PD", "bucket_name": "Pediatrics" },
+  { "sl_id": 7, "branch_code": "PC", "bucket_name": "Palliative Care" },
+  { "sl_id": 8, "branch_code": "PT", "bucket_name": "Private Duty" }
+]

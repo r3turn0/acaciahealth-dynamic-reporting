@@ -1,0 +1,38 @@
+{
+  "admissions": {
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_SocDate",
+    "aggregation": "COUNT(*)",
+    "label": "Admissions",
+    "description": "Count of new patient episode start-of-care events",
+    "grouping_options": ["branch", "week", "region", "care_type"]
+  },
+  "discharges": {
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_DischargeDate",
+    "aggregation": "COUNT(*)",
+    "label": "Discharges",
+    "description": "Count of patient discharge events",
+    "grouping_options": ["branch", "week", "region"]
+  },
+  "revenue": {
+    "fact_table": "Billing.LINE_ITEMS",
+    "alias": "li",
+    "date_column": "li_service_date",
+    "aggregation": "SUM(li.li_amount)",
+    "label": "Revenue",
+    "description": "Total billed revenue from line items",
+    "grouping_options": ["branch", "week", "region", "service_line"]
+  },
+  "census": {
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_SocDate",
+    "aggregation": "COUNT(DISTINCT epi.epi_id)",
+    "label": "Census",
+    "description": "Active patient census count",
+    "grouping_options": ["branch", "region", "care_type"]
+  }
+}

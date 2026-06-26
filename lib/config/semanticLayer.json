@@ -1,0 +1,77 @@
+{
+  "tables": {
+    "patients": {
+      "physical_name": "tbl_Patient",
+      "alias": "pat",
+      "synonyms": ["clients", "members", "beneficiaries"],
+      "description": "Master patient demographic and enrollment record",
+      "columns": {
+        "id": { "physical": "PatientID", "type": "int", "description": "Unique patient identifier" },
+        "name": { "physical": "RTRIM(pat.LastName) + ', ' + RTRIM(pat.FirstName)", "type": "string", "description": "Full patient name" },
+        "dob": { "physical": "pat.DateOfBirth", "type": "date", "description": "Date of birth" },
+        "mrn": { "physical": "pat.MRN", "type": "string", "description": "Medical record number" },
+        "branch_code": { "physical": "RTRIM(pat.BranchCode)", "type": "string", "description": "Assigned branch code" }
+      }
+    },
+    "visits": {
+      "physical_name": "tbl_Visit",
+      "alias": "vis",
+      "synonyms": ["appointments", "encounters", "services"],
+      "description": "Clinical visit events tied to patient episodes",
+      "columns": {
+        "id": { "physical": "VisitID", "type": "int", "description": "Unique visit identifier" },
+        "date": { "physical": "vis.VisitDate", "type": "date", "description": "Date the visit occurred" },
+        "patient_id": { "physical": "vis.PatientID", "type": "int", "description": "FK to tbl_Patient" },
+        "discipline": { "physical": "RTRIM(vis.Discipline)", "type": "string", "description": "Clinical discipline (SN, PT, OT, etc.)" },
+        "status": { "physical": "RTRIM(vis.VisitStatus)", "type": "string", "description": "Visit status (Completed, Missed, etc.)" },
+        "duration_minutes": { "physical": "vis.DurationMinutes", "type": "int", "description": "Duration of visit in minutes" }
+      }
+    },
+    "episodes": {
+      "physical_name": "CLIENT_EPISODES_ALL",
+      "alias": "epi",
+      "synonyms": ["admissions", "enrollments", "certifications"],
+      "description": "Patient care episode lifecycle — SOC through discharge",
+      "columns": {
+        "id": { "physical": "epi.epi_id", "type": "int", "description": "Episode identifier" },
+        "soc_date": { "physical": "epi.epi_SocDate", "type": "date", "description": "Start of care date" },
+        "discharge_date": { "physical": "epi.epi_DischargeDate", "type": "date", "description": "Discharge date" },
+        "branch_code": { "physical": "RTRIM(epi.epi_branchcode)", "type": "string", "description": "Branch code for the episode" }
+      }
+    },
+    "branches": {
+      "physical_name": "BRANCHES",
+      "alias": "b",
+      "synonyms": ["locations", "offices", "agencies"],
+      "description": "Branch/location master reference",
+      "columns": {
+        "code": { "physical": "RTRIM(b.branch_code)", "type": "string", "description": "Branch code (primary key)" },
+        "name": { "physical": "RTRIM(b.branch_name)", "type": "string", "description": "Branch display name" }
+      }
+    }
+  },
+  "relationships": {
+    "visits_to_patients": "vis.PatientID = pat.PatientID",
+    "episodes_to_branches": "RTRIM(epi.epi_branchcode) = RTRIM(b.branch_code)",
+    "visits_to_episodes": "vis.EpisodeID = epi.epi_id"
+  },
+  "metrics": {
+    "visit_count": { "expression": "COUNT(vis.VisitID)", "description": "Total number of visits" },
+    "patients_count": { "expression": "COUNT(DISTINCT pat.PatientID)", "description": "Distinct patient count" },
+    "avg_visits_per_patient": { "expression": "CAST(COUNT(vis.VisitID) AS FLOAT) / NULLIF(COUNT(DISTINCT vis.PatientID), 0)", "description": "Average visits per patient" },
+    "admission_count": { "expression": "COUNT(epi.epi_id)", "description": "Episode/admission count" },
+    "avg_visit_duration": { "expression": "AVG(vis.DurationMinutes)", "description": "Average visit duration in minutes" }
+  },
+  "time_intelligence": {
+    "by_day": "CAST({{date_col}} AS DATE)",
+    "by_week": "DATEPART(WEEK, {{date_col}})",
+    "by_month": "DATEPART(MONTH, {{date_col}})",
+    "by_year": "DATEPART(YEAR, {{date_col}})",
+    "by_month_name": "DATENAME(MONTH, {{date_col}})"
+  },
+  "sensitive_columns": ["PatientID", "MRN", "DateOfBirth", "LastName", "FirstName", "SSN", "DateOfBirth"],
+  "masked_columns": {
+    "MRN": "LEFT(pat.MRN, 3) + '****'",
+    "SSN": "'***-**-' + RIGHT(RTRIM(pat.SSN), 4)"
+  }
+}

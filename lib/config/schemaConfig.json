@@ -1,0 +1,40 @@
+{
+  "CLIENT_EPISODES_ALL": {
+    "alias": "epi",
+    "keys": ["epi_id"],
+    "joins": {
+      "BRANCHES": "RTRIM(epi.epi_branchcode) = RTRIM(b.branch_code)",
+      "SERVICE_LINES": "epi.epi_sl_id = sl.sl_id",
+      "CARE_TYPES": "epi.epi_care_type_id = ct.ct_id"
+    }
+  },
+  "BRANCHES": {
+    "alias": "b",
+    "keys": ["branch_code"],
+    "joins": {}
+  },
+  "SERVICE_LINES": {
+    "alias": "sl",
+    "keys": ["sl_id"],
+    "joins": {}
+  },
+  "CARE_TYPES": {
+    "alias": "ct",
+    "keys": ["ct_id"],
+    "joins": {}
+  },
+  "Billing.LINE_ITEMS": {
+    "alias": "li",
+    "keys": ["li_id"],
+    "joins": {
+      "CLIENT_EPISODES_ALL": "li.li_epi_id = epi.epi_id"
+    }
+  },
+  "PDGM.PDGM_PERIOD": {
+    "alias": "pp",
+    "keys": ["pp_id"],
+    "joins": {
+      "CLIENT_EPISODES_ALL": "pp.pp_epi_id = epi.epi_id"
+    }
+  }
+}
