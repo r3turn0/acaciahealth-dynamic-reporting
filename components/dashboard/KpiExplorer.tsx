@@ -1,17 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { BarChart3, ExternalLink, Loader2, Sparkles } from "lucide-react";
+import { BarChart3, Brain, ExternalLink, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import kpiConfig from "@/lib/config/kpiConfig.json";
 import { KpiInterpreter } from "./KpiInterpreter";
+import { KpiIntelligence } from "./KpiIntelligence";
 
 type KpiKey = keyof typeof kpiConfig;
-type Tab = "definitions" | "interpreter";
+type Tab = "definitions" | "interpreter" | "intelligence";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: "definitions", label: "KPI Definitions", icon: BarChart3 },
-  { id: "interpreter", label: "KPI Interpreter", icon: Sparkles },
+  { id: "definitions",  label: "KPI Definitions", icon: BarChart3 },
+  { id: "intelligence", label: "KPI Intelligence", icon: Brain },
+  { id: "interpreter",  label: "KPI Interpreter",  icon: Sparkles },
 ];
 
 export function KpiExplorer() {
@@ -108,6 +110,9 @@ export function KpiExplorer() {
           )}
         </div>
       )}
+
+      {/* Intelligence tab */}
+      {tab === "intelligence" && <KpiIntelligence />}
 
       {/* Interpreter tab */}
       {tab === "interpreter" && <KpiInterpreter />}
