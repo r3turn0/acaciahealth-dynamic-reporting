@@ -162,9 +162,16 @@ export function KpiInterpreter() {
   const [reports, setReports] = useState<SavedReport[] | null>(null);
   const [loadingReports, setLoadingReports] = useState(false);
   const [selectedReport, setSelectedReport] = useState<SavedReport | null>(null);
-  const [dateRange, setDateRange] = useState({
-    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-    end: new Date().toISOString().split("T")[0],
+  const [dateRange, setDateRange] = useState(() => {
+    // Lazy initializer — only runs on the client, never during SSR,
+    // so the server and client always start with the same empty strings.
+    if (typeof window === "undefined") return { start: "", end: "" };
+    const end = new Date();
+    const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+    return {
+      start: start.toISOString().split("T")[0],
+      end: end.toISOString().split("T")[0],
+    };
   });
   const [interpreting, setInterpreting] = useState(false);
   const [insights, setInsights] = useState<BusinessInsights | null>(null);
@@ -384,13 +391,15 @@ export function KpiInterpreter() {
               <div className="flex-1">
                 <p className="text-sm text-foreground/85 leading-relaxed">{insights.summary}</p>
               </div>
-              <div className="shrink-0 sm:w-52">
-                <div className="bg-primary/8 border border-primary/25 rounded-lg p-4 text-center">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">{insights.headline_metric.label}</p>
-                  <p className="text-3xl font-bold text-primary mt-1">{insights.headline_metric.value}</p>
-                  <p className="text-[11px] text-muted-foreground mt-1 leading-snug">{insights.headline_metric.context}</p>
+              {insights.headline_metric && (
+                <div className="shrink-0 sm:w-52">
+                  <div className="bg-primary/8 border border-primary/25 rounded-lg p-4 text-center">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">{insights.headline_metric.label}</p>
+                    <p className="text-3xl font-bold text-primary mt-1">{insights.headline_metric.value}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1 leading-snug">{insights.headline_metric.context}</p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </InsightSection>
 
