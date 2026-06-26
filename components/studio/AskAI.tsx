@@ -11,6 +11,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FileUploadButton } from "@/components/ui/FileUpload";
+import type { UploadedFile } from "@/components/ui/FileUpload";
 
 export interface QueryPlan {
   sql: string;
@@ -52,6 +54,7 @@ export function AskAI({
   onEndDateChange,
 }: AskAIProps) {
   const [prompt, setPrompt] = useState("");
+  const [attachedFile, setAttachedFile] = useState<UploadedFile | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastPlan, setLastPlan] = useState<QueryPlan | null>(null);
@@ -71,11 +74,16 @@ export function AskAI({
     setError(null);
     setLastPlan(null);
 
+    // Append attached file content to the prompt context
+    const fullPrompt = attachedFile
+      ? `${prompt}\n\n${attachedFile.content}`
+      : prompt;
+
     try {
       const res = await fetch("/api/generate-query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, start_date: startDate, end_date: endDate }),
+        body: JSON.stringify({ prompt: fullPrompt, start_date: startDate, end_date: endDate }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -112,32 +120,43 @@ export function AskAI({
       </div>
 
       {/* Prompt input */}
-      <div className="relative">
-        <textarea
-          ref={textareaRef}
-          rows={2}
-          placeholder='Describe the data you want, e.g. "Show me patient visits by month for 2026"'
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={handleKeyDown}
-          className="w-full bg-muted border border-border rounded-lg px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none leading-relaxed pr-24"
-        />
-        <Button
-          onClick={generate}
-          disabled={loading || !prompt.trim()}
-          size="sm"
-          className="absolute bottom-3 right-3 bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 h-7 px-3 text-xs"
-        >
-          {loading ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          ) : (
-            <Sparkles className="w-3 h-3" />
+      <div className="flex flex-col gap-2">
+        <div className="relative">
+          <textarea
+            ref={textareaRef}
+            rows={2}
+            placeholder='Describe the data you want, e.g. "Show me patient visits by month for 2026"'
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="w-full bg-muted border border-border rounded-lg px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none leading-relaxed pr-24"
+          />
+          <Button
+            onClick={generate}
+            disabled={loading || !prompt.trim()}
+            size="sm"
+            className="absolute bottom-3 right-3 bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 h-7 px-3 text-xs"
+          >
+            {loading ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Sparkles className="w-3 h-3" />
+            )}
+            {loading ? "Thinking..." : "Generate"}
+          </Button>
+        </div>
+        {/* File attach row */}
+        <div className="flex items-center gap-2">
+          <FileUploadButton
+            file={attachedFile}
+            onFile={setAttachedFile}
+          />
+          {!attachedFile && (
+            <span className="text-[10px] text-muted-foreground/50 select-none">
+              Attach a .csv, .json, or .txt file to include in your query context · Ctrl+Enter to run
+            </span>
           )}
-          {loading ? "Thinking..." : "Generate"}
-        </Button>
-        <p className="absolute bottom-3 left-4 text-[10px] text-muted-foreground/50 pointer-events-none select-none">
-          {!prompt && "Ctrl+Enter to run"}
-        </p>
+        </div>
       </div>
 
       {/* Date range */}

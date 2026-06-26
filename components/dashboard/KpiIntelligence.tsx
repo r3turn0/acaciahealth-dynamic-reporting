@@ -28,6 +28,8 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FileUploadButton } from "@/components/ui/FileUpload";
+import type { UploadedFile } from "@/components/ui/FileUpload";
 import type {
   KpiIntelligenceResponse,
   KpiCard,
@@ -510,6 +512,7 @@ function AskAiBox({
   onClear: () => void;
 }) {
   const [input, setInput] = useState("");
+  const [attachedFile, setAttachedFile] = useState<UploadedFile | null>(null);
   const [response, setResponse] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -517,11 +520,14 @@ function AskAiBox({
     if (!question.trim()) return;
     setLoading(true);
     setResponse(null);
+    const fullQuestion = attachedFile
+      ? `${question}\n\n${attachedFile.content}`
+      : question;
     try {
       const res = await fetch("/api/generate-query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: question, context }),
+        body: JSON.stringify({ prompt: fullQuestion, context }),
       });
       const json = await res.json();
       const plan = json.plan;
@@ -560,21 +566,27 @@ function AskAiBox({
             </button>
           </div>
         )}
-        <div className="flex gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(activePrompt ? `${activePrompt.prompt} for ${activePrompt.kpi}` : input); } }}
-            placeholder={activePrompt ? "Press Enter to run this prompt, or type a custom question..." : "E.g. Why did revenue per visit drop in June?"}
-            className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary transition-colors"
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(activePrompt ? `${activePrompt.prompt} for ${activePrompt.kpi}` : input); } }}
+              placeholder={activePrompt ? "Press Enter to run this prompt, or type a custom question..." : "E.g. Why did revenue per visit drop in June?"}
+              className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary transition-colors"
+            />
+            <button
+              onClick={() => ask(activePrompt ? `${activePrompt.prompt} for ${activePrompt.kpi}` : input)}
+              disabled={loading || (!input.trim() && !activePrompt)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </button>
+          </div>
+          <FileUploadButton
+            file={attachedFile}
+            onFile={setAttachedFile}
           />
-          <button
-            onClick={() => ask(activePrompt ? `${activePrompt.prompt} for ${activePrompt.kpi}` : input)}
-            disabled={loading || (!input.trim() && !activePrompt)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          </button>
         </div>
 
         {response && (
