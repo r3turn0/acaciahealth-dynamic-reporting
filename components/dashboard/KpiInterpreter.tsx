@@ -406,7 +406,7 @@ export function KpiInterpreter() {
           {/* Trends */}
           <InsightSection title="Key Trends" icon={TrendingUp}>
             <div className="flex flex-col gap-3">
-              {insights.trends.map((t, i) => (
+              {(insights.trends ?? []).map((t, i) => (
                 <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-border/50">
                   <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
                     <TrendIcon direction={t.direction} />
@@ -428,7 +428,7 @@ export function KpiInterpreter() {
           {/* Top segments */}
           <InsightSection title="Top Segments" icon={ArrowUpRight}>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {insights.top_segments.map((s, i) => (
+              {(insights.top_segments ?? []).map((s, i) => (
                 <div key={i} className="flex flex-col gap-1.5 p-3 rounded-lg border border-border bg-muted/20">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-semibold text-foreground truncate">{s.segment}</p>
@@ -444,10 +444,10 @@ export function KpiInterpreter() {
           </InsightSection>
 
           {/* Alerts */}
-          {insights.alerts.length > 0 && (
+          {(insights.alerts ?? []).length > 0 && (
             <InsightSection title="Alerts & Anomalies" icon={AlertTriangle}>
               <div className="flex flex-col gap-2">
-                {insights.alerts.map((a, i) => <AlertCard key={i} alert={a} />)}
+                {(insights.alerts ?? []).map((a, i) => <AlertCard key={i} alert={a} />)}
               </div>
             </InsightSection>
           )}
@@ -455,7 +455,7 @@ export function KpiInterpreter() {
           {/* Opportunities */}
           <InsightSection title="Opportunities" icon={Lightbulb}>
             <ol className="flex flex-col gap-2.5">
-              {insights.opportunities.map((o, i) => (
+              {(insights.opportunities ?? []).map((o, i) => (
                 <li key={i} className="flex items-start gap-3">
                   <span className="shrink-0 w-5 h-5 rounded-full bg-primary/15 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
                     {i + 1}

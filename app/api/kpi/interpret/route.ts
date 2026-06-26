@@ -104,7 +104,7 @@ Return a complete BusinessInsights JSON object.`;
       model,
       system: systemPrompt,
       prompt: userMessage,
-      output: Output.object({ schema: BusinessInsightsSchema }),
+      experimental_output: Output.object({ schema: BusinessInsightsSchema }),
       temperature: 0.2,
     });
 
@@ -123,7 +123,7 @@ Return a complete BusinessInsights JSON object.`;
     console.error("[v0] /api/kpi/interpret error:", err);
 
     // Graceful fallback — return static demo insights when AI is not configured
-    const fallback: BusinessInsights = buildDemoInsights(req);
+    const fallback: BusinessInsights = await buildDemoInsights(req);
     return NextResponse.json({
       insights: fallback,
       meta: {
