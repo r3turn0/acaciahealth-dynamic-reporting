@@ -8,6 +8,7 @@ import { KpiExplorer } from "@/components/dashboard/KpiExplorer";
 import { HealthStatus } from "@/components/dashboard/HealthStatus";
 import { ReportStudio } from "@/components/studio/ReportStudio";
 import { SavedReports } from "@/components/studio/SavedReports";
+import type { LoadedReport } from "@/components/studio/ReportStudio";
 import { DataExplorer } from "@/components/data/DataExplorer";
 import { Menu, Bell, Calendar } from "lucide-react";
 
@@ -52,6 +53,7 @@ export default function Home() {
   const [view, setView] = useState<View>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [todayLabel, setTodayLabel] = useState<string>("");
+  const [loadedReport, setLoadedReport] = useState<LoadedReport | null>(null);
 
   useEffect(() => {
     setTodayLabel(
@@ -144,7 +146,7 @@ export default function Home() {
           )}
           {view === "studio" && (
             <div className="max-w-5xl">
-              <ReportStudio />
+              <ReportStudio initialReport={loadedReport} />
             </div>
           )}
           {view === "data" && (
@@ -157,8 +159,13 @@ export default function Home() {
               <div className="bg-card border border-border rounded-lg p-5">
                 <SavedReports
                   onLoad={(report) => {
+                    setLoadedReport({
+                      sql: report.sql,
+                      prompt: report.prompt,
+                      kpi: report.kpi,
+                      name: report.name,
+                    });
                     setView("studio");
-                    // The studio will handle the load via URL state in a future iteration
                   }}
                 />
               </div>
@@ -253,7 +260,7 @@ function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {
   return (
     <div className="bg-card border border-border rounded-lg p-5">
       <h2 className="text-sm font-semibold text-foreground mb-4">Quick Actions</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {actions.map((a) => (
           <button
             key={a.id}

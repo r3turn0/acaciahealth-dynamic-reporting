@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import {
   BarChart3,
@@ -24,6 +25,65 @@ const navItems = [
   { icon: ShieldCheck,     label: "Audit Log",          id: "audit",     group: "reports" },
   { icon: Settings,        label: "Settings",           id: "settings",  group: "config" },
 ];
+
+// ── Live status rows (fetched client-side to avoid SSR env var leaks) ─────────
+
+function AiStatusRow() {
+  const [status, setStatus] = useState<"checking" | "live" | "demo">("checking");
+
+  useEffect(() => {
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((d) => {
+        const aiReady = d?.services?.ai?.configured ?? false;
+        setStatus(aiReady ? "live" : "demo");
+      })
+      .catch(() => setStatus("demo"));
+  }, []);
+
+  return (
+    <div className="flex items-center gap-2">
+      <Sparkles className="w-3.5 h-3.5 text-primary shrink-0" />
+      <span className="text-xs text-muted-foreground">
+        AI:{" "}
+        {status === "checking" ? (
+          <span className="text-muted-foreground font-medium">...</span>
+        ) : status === "live" ? (
+          <span className="text-primary font-medium">GPT-4o-mini</span>
+        ) : (
+          <span className="text-chart-5 font-medium">Demo mode</span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function DbStatusRow() {
+  const [mode, setMode] = useState<"checking" | "live_db" | "demo">("checking");
+
+  useEffect(() => {
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((d) => setMode(d?.services?.database?.mode ?? "demo"))
+      .catch(() => setMode("demo"));
+  }, []);
+
+  return (
+    <div className="flex items-center gap-2">
+      <Zap className="w-3.5 h-3.5 text-chart-5 shrink-0" />
+      <span className="text-xs text-muted-foreground">
+        DB:{" "}
+        {mode === "checking" ? (
+          <span className="text-muted-foreground font-medium">...</span>
+        ) : mode === "live_db" ? (
+          <span className="text-chart-3 font-medium">Live</span>
+        ) : (
+          <span className="text-chart-5 font-medium">Demo Mode</span>
+        )}
+      </span>
+    </div>
+  );
+}
 
 interface SidebarProps {
   activeView: string;
@@ -112,23 +172,8 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
 
       {/* Status badge */}
       <div className="px-4 py-4 border-t border-border flex flex-col gap-1.5">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-3.5 h-3.5 text-primary" />
-          <span className="text-xs text-muted-foreground">
-            AI:{" "}
-            <span className="text-primary font-medium">GPT-4o-mini</span>
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Zap className="w-3.5 h-3.5 text-chart-5" />
-          <span className="text-xs text-muted-foreground">
-            DB:{" "}
-            <span className="text-chart-5 font-medium">Demo Mode</span>
-          </span>
-        </div>
-        <p className="text-[10px] text-muted-foreground">
-          Add AI_GATEWAY_API_KEY + SQL_CONNECTION_STRING to go live
-        </p>
+        <AiStatusRow />
+        <DbStatusRow />
       </div>
     </aside>
   );

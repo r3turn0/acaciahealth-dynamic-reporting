@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Bookmark } from "lucide-react";
 import { AskAI } from "./AskAI";
 import { SQLEditor } from "./SQLEditor";
@@ -12,16 +12,47 @@ import type { ReportResult } from "./ResultsTable";
 
 type StudioTab = "ask" | "saved";
 
-export function ReportStudio() {
-  const [tab, setTab] = useState<StudioTab>("ask");
-  const [startDate, setStartDate] = useState(
-    new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
-  );
-  const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
+export interface LoadedReport {
+  sql: string;
+  prompt: string;
+  kpi: string;
+  name: string;
+}
 
-  // SQL Editor state
-  const [sql, setSql] = useState("");
-  const [currentPlan, setCurrentPlan] = useState<QueryPlan | null>(null);
+interface ReportStudioProps {
+  initialReport?: LoadedReport | null;
+}
+
+export function ReportStudio({ initialReport }: ReportStudioProps) {
+  const [tab, setTab] = useState<StudioTab>("ask");
+  // Dates initialized empty to avoid SSR/client mismatch; populated in useEffect
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  useEffect(() => {
+    const end = new Date();
+    const start = new Date(end.getTime() - 28 * 24 * 60 * 60 * 1000);
+    setStartDate(start.toISOString().split("T")[0]);
+    setEndDate(end.toISOString().split("T")[0]);
+  }, []);
+
+  // SQL Editor state — pre-populate from initialReport if provided
+  const [sql, setSql] = useState(initialReport?.sql ?? "");
+  const [currentPlan, setCurrentPlan] = useState<QueryPlan | null>(
+    initialReport
+      ? {
+          sql: initialReport.sql,
+          explanation: `Loaded: "${initialReport.name}". Prompt: "${initialReport.prompt}"`,
+          tables_used: [],
+          filters_applied: [],
+          kpi_detected: initialReport.kpi,
+          strategy: "sql",
+          api_fallback_reason: null,
+          cost_warning: null,
+          optimized_suggestion: null,
+        }
+      : null
+  );
   const [executing, setExecuting] = useState(false);
   const [result, setResult] = useState<ReportResult | null>(null);
   const [execError, setExecError] = useState<string | null>(null);
@@ -33,6 +64,26 @@ export function ReportStudio() {
     prompt: string;
     kpi: string;
   } | null>(null);
+
+  // Sync when an external saved report is pushed in after initial render
+  useEffect(() => {
+    if (!initialReport) return;
+    setSql(initialReport.sql);
+    setCurrentPlan({
+      sql: initialReport.sql,
+      explanation: `Loaded: "${initialReport.name}". Prompt: "${initialReport.prompt}"`,
+      tables_used: [],
+      filters_applied: [],
+      kpi_detected: initialReport.kpi,
+      strategy: "sql",
+      api_fallback_reason: null,
+      cost_warning: null,
+      optimized_suggestion: null,
+    });
+    setResult(null);
+    setExecError(null);
+    setTab("ask");
+  }, [initialReport]);
 
   function handlePlanReady(plan: QueryPlan, sd: string, ed: string) {
     setCurrentPlan(plan);
