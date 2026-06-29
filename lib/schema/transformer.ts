@@ -4,7 +4,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type {
-  Column,
   EntityHints,
   Graph,
   GraphEdge,
@@ -24,28 +23,30 @@ function buildGraph(tables: Table[]): Graph {
   for (const table of tables) {
     for (const fk of table.foreignKeys) {
       const to = fk.references.table;
-      // Only add edge if target table is in our model
       if (!tableIds.has(to)) continue;
 
-      const key = `${table.id}>${to}:${fk.column}`;
-      const reverseKey = `${to}>${table.id}:${fk.column}`;
-      if (edgeKeys.has(key) || edgeKeys.has(reverseKey)) continue;
+      const forwardKey = `${table.id}>${to}:${fk.column}`;
+      if (edgeKeys.has(forwardKey)) continue;
+      edgeKeys.add(forwardKey);
 
-      edgeKeys.add(key);
       edges.push({
         from: table.id,
         to,
-        via: fk.column,
+        via: fk.name,
+        fromColumn: fk.column,
+        toColumn: fk.references.column,
         type: "many-to-one",
       });
-      // Add reverse edge
-      const revKey = `${to}>${table.id}:${fk.column}`;
-      if (!edgeKeys.has(revKey)) {
-        edgeKeys.add(revKey);
+
+      const reverseKey = `${to}>${table.id}:${fk.column}`;
+      if (!edgeKeys.has(reverseKey)) {
+        edgeKeys.add(reverseKey);
         edges.push({
           from: to,
           to: table.id,
-          via: fk.column,
+          via: fk.name,
+          fromColumn: fk.references.column,
+          toColumn: fk.column,
           type: "one-to-many",
         });
       }
@@ -57,9 +58,7 @@ function buildGraph(tables: Table[]): Graph {
 
 // ── BFS join path computation ─────────────────────────────────────────────────
 
-function bfsJoinPaths(
-  graph: Graph
-): Record<string, Record<string, string[]>> {
+function bfsJoinPaths(graph: Graph): Record<string, Record<string, string[]>> {
   const adjacency = new Map<string, string[]>();
 
   for (const edge of graph.edges) {
@@ -84,7 +83,10 @@ function bfsJoinPaths(
         visited.add(neighbor);
         const newPath = [...path, neighbor];
         joinPaths[source][neighbor] = newPath;
-        queue.push({ node: neighbor, path: newPath });
+        // Cap path length at 4 to keep cross-schema joins manageable
+        if (newPath.length < 5) {
+          queue.push({ node: neighbor, path: newPath });
+        }
       }
     }
   }
@@ -100,7 +102,7 @@ function buildSearchIndex(
 ): Record<string, string[]> {
   const index: Record<string, string[]> = { ...(providedIndex ?? {}) };
 
-  function addKeyword(keyword: string, tableId: string) {
+  function add(keyword: string, tableId: string) {
     const k = keyword.toLowerCase().trim();
     if (!k || k.length < 2) return;
     if (!index[k]) index[k] = [];
@@ -108,33 +110,37 @@ function buildSearchIndex(
   }
 
   for (const table of tables) {
-    // Split table name on underscores and camelCase
-    const words = table.name
+    // Table name words
+    table.name
       .replace(/([a-z])([A-Z])/g, "$1 $2")
       .split(/[_\s]+/)
-      .filter(Boolean);
+      .filter(Boolean)
+      .forEach((w) => add(w, table.id));
 
-    for (const word of words) {
-      addKeyword(word, table.id);
-    }
-    addKeyword(table.name, table.id);
-    addKeyword(table.schema, table.id);
-    addKeyword(table.domain, table.id);
-    addKeyword(table.entityType, table.id);
+    add(table.name, table.id);
+    add(table.schema, table.id);
+    add(table.domain, table.id);
+    add(table.entityType, table.id);
+
     if (table.description) {
-      for (const word of table.description.split(/\s+/)) {
-        addKeyword(word, table.id);
-      }
+      table.description.split(/\s+/).forEach((w) => add(w, table.id));
     }
 
+    // Column names — both raw and display names
     for (const col of table.columns) {
-      const colWords = col.name
-        .replace(/([a-z])([A-Z])/g, "$1 $2")
-        .split(/[_\s]+/)
-        .filter(Boolean);
-      for (const word of colWords) {
-        addKeyword(word, table.id);
-      }
+      col.name.split(/[_\s]+/).filter(Boolean).forEach((w) => add(w, table.id));
+      col.displayName.split(/\s+/).filter(Boolean).forEach((w) => add(w, table.id));
+    }
+
+    // FK target table names (so searching "branches" surfaces tables that join to BRANCHES)
+    for (const fk of table.foreignKeys) {
+      const refTableName = fk.references.table.split(".").pop() ?? "";
+      refTableName.split(/[_\s]+/).filter(Boolean).forEach((w) => add(w, table.id));
+    }
+
+    // Trigger/index names often contain domain keywords
+    for (const trigger of table.meta.triggers) {
+      trigger.split(/[_\s]+/).filter(Boolean).forEach((w) => add(w.toLowerCase(), table.id));
     }
   }
 
@@ -150,10 +156,9 @@ function buildDomains(
   const domains: Record<string, string[]> = { ...(providedDomains ?? {}) };
 
   for (const table of tables) {
-    const domain = table.domain;
-    if (!domains[domain]) domains[domain] = [];
-    if (!domains[domain].includes(table.id)) {
-      domains[domain].push(table.id);
+    if (!domains[table.domain]) domains[table.domain] = [];
+    if (!domains[table.domain].includes(table.id)) {
+      domains[table.domain].push(table.id);
     }
   }
 
@@ -169,12 +174,13 @@ function buildEntityHints(tables: Table[]): Record<string, EntityHints> {
     const measures: string[] = [];
     const dimensions: string[] = [];
     const timeColumns: string[] = [];
+    const auditColumns: string[] = [];
     const commonFilters: string[] = [];
 
     for (const col of table.columns) {
       switch (col.role) {
         case "measure":
-          measures.push(col.name);
+          if (!col.isComputed) measures.push(col.name); // skip computed columns as base measures
           break;
         case "time_dimension":
           timeColumns.push(col.name);
@@ -182,14 +188,19 @@ function buildEntityHints(tables: Table[]): Record<string, EntityHints> {
           break;
         case "dimension":
           dimensions.push(col.name);
-          if (
-            col.name.toLowerCase().includes("status") ||
-            col.name.toLowerCase().includes("type") ||
-            col.name.toLowerCase().includes("code") ||
-            col.name.toLowerCase().includes("branch")
-          ) {
-            commonFilters.push(col.name);
+          {
+            const bare = col.name.toLowerCase();
+            if (
+              bare.includes("status") || bare.includes("type") ||
+              bare.includes("code") || bare.includes("branch") ||
+              bare.includes("source") || bare.includes("desc")
+            ) {
+              commonFilters.push(col.name);
+            }
           }
+          break;
+        case "audit":
+          auditColumns.push(col.name);
           break;
       }
     }
@@ -198,6 +209,7 @@ function buildEntityHints(tables: Table[]): Record<string, EntityHints> {
       measures,
       dimensions,
       timeColumns,
+      auditColumns,
       primaryKey: table.primaryKey,
       commonFilters: [...new Set(commonFilters)],
     };
@@ -206,10 +218,10 @@ function buildEntityHints(tables: Table[]): Record<string, EntityHints> {
   return hints;
 }
 
-// ── Hash for source tracking ──────────────────────────────────────────────────
+// ── SHA-256 hash ──────────────────────────────────────────────────────────────
 
 function hashMetadata(tables: Table[]): string {
-  const str = tables.map((t) => t.id).sort().join(",");
+  const str = tables.map((t) => `${t.id}:${t.columns.length}:${t.foreignKeys.length}`).sort().join("|");
   return createHash("sha256").update(str).digest("hex").slice(0, 16);
 }
 
@@ -239,10 +251,11 @@ export function transformToSchemaModel(
     entityHints,
     generatedAt: new Date().toISOString(),
     sourceHash: hashMetadata(tables),
+    sourceGeneratedAt: rawMeta?.generated_at,
   };
 }
 
-// ── Incremental update ────────────────────────────────────────────────────────
+// ── Incremental merge ─────────────────────────────────────────────────────────
 
 export function mergeSchemaModel(
   existing: SchemaModel,

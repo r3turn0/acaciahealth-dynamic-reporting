@@ -1,5 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Schema-first Metadata Engine — Type Definitions
+// Refined for the actual AcaciaHealth metadata.json format
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type ColumnRole =
@@ -7,43 +8,60 @@ export type ColumnRole =
   | "foreign_key"
   | "dimension"
   | "measure"
-  | "time_dimension";
+  | "time_dimension"
+  | "audit";
 
 export interface Column {
   name: string;
+  displayName: string;       // prefix-stripped, human-readable
   type: string;
   role: ColumnRole;
   aggregation?: "sum" | "avg" | "count" | "min" | "max";
   nullable?: boolean;
+  isIdentity?: boolean;
+  isComputed?: boolean;
+  defaultValue?: string | null;
   description?: string;
 }
 
 export interface ForeignKey {
-  column: string;
+  name: string;              // constraint name e.g. "FK_CASH_DEPOSITS_BRANCHES"
+  column: string;            // local column
   references: {
-    table: string; // fully-qualified "schema.table"
+    table: string;           // fully-qualified "schema.table"
     column: string;
   };
 }
 
+export interface TableMeta {
+  triggers: string[];
+  checkConstraints: string[];
+  indexes: string[];
+}
+
 export interface Table {
-  id: string; // "schema.table"
+  id: string;                // "Schema.TABLE_NAME"
   schema: string;
   name: string;
-  primaryKey: string;
+  primaryKey: string;        // single PK column (first if composite)
+  primaryKeys: string[];     // all PK columns
   columns: Column[];
   foreignKeys: ForeignKey[];
   domain: string;
   entityType: string;
   description?: string;
-  rowEstimate?: number;
+  meta: TableMeta;
+  isMemoryOptimized?: boolean;
+  temporalType?: string;
 }
 
 export interface GraphEdge {
-  from: string; // "schema.table"
+  from: string;              // "schema.table"
   to: string;
-  via: string; // column name on `from`
-  type: "one-to-many" | "many-to-one";
+  via: string;               // FK constraint name
+  fromColumn: string;        // local column involved
+  toColumn: string;          // referenced column
+  type: "many-to-one" | "one-to-many";
 }
 
 export interface Graph {
@@ -55,6 +73,7 @@ export interface EntityHints {
   measures: string[];
   dimensions: string[];
   timeColumns: string[];
+  auditColumns: string[];
   primaryKey: string;
   commonFilters: string[];
 }
@@ -68,6 +87,7 @@ export interface SchemaModel {
   entityHints: Record<string, EntityHints>;
   generatedAt: string;
   sourceHash: string;
+  sourceGeneratedAt?: string;  // from metadata.json `generated_at`
 }
 
 // ── Report Plan ───────────────────────────────────────────────────────────────
@@ -84,8 +104,10 @@ export interface ReportFilter {
 export interface ReportJoin {
   from: string;
   to: string;
-  via: string;
-  condition?: string;
+  via: string;               // constraint name
+  fromColumn: string;
+  toColumn: string;
+  condition: string;         // e.g. "CASH_DEPOSITS.cd_branchcode = BRANCHES.branch_code"
 }
 
 export interface ReportPlan {
@@ -105,44 +127,71 @@ export interface ReportPlan {
   };
 }
 
-// ── Raw metadata.json shapes (before normalization) ───────────────────────────
+// ── Raw metadata.json shapes (actual AcaciaHealth format) ─────────────────────
 
 export interface RawColumn {
   name: string;
+  data_type: string;
+  nullable: boolean;
+  is_identity: boolean;
+  is_computed: boolean;
+  default: string | null;
+  description: string | null;
+  // Legacy/alternate keys (other formats)
   type?: string;
-  data_type?: string;
   role?: string;
   aggregation?: string;
-  nullable?: boolean;
-  description?: string;
+}
+
+export interface RawForeignKeyEndpoint {
+  schema: string;
+  table: string;
+  columns: string[];
 }
 
 export interface RawForeignKey {
-  column: string;
+  name: string;
+  from: RawForeignKeyEndpoint;
+  to: RawForeignKeyEndpoint;
+  is_for_replication: boolean | null;
+  // Legacy/alternate keys
+  column?: string;
   references?: { table: string; column: string };
   ref_table?: string;
   ref_column?: string;
 }
 
+export interface RawDescriptions {
+  table_description: string | null;
+  triggers: string[];
+  check_constraints: string[];
+  indexes: string[];
+}
+
 export interface RawTable {
+  schema: string;
+  table: string;
+  object_id?: number;
+  is_memory_optimized?: boolean;
+  temporal_type?: string;
+  columns: RawColumn[];
+  primary_keys: string[];
+  foreign_keys: RawForeignKey[];
+  descriptions: RawDescriptions;
+  replication?: { is_for_replication: boolean | null };
+  // Legacy/alternate keys
   name?: string;
   table_name?: string;
-  schema?: string;
   table_schema?: string;
   primaryKey?: string;
   primary_key?: string;
-  columns?: RawColumn[];
   foreignKeys?: RawForeignKey[];
-  foreign_keys?: RawForeignKey[];
   domain?: string;
   entityType?: string;
-  entity_type?: string;
-  description?: string;
-  rowEstimate?: number;
-  row_estimate?: number;
 }
 
 export interface RawMetadata {
+  generated_at?: string;
   tables?: RawTable[] | Record<string, RawTable>;
   schemas?: Record<string, { tables: RawTable[] | Record<string, RawTable>; domain?: string }>;
   domains?: Record<string, string[]>;
