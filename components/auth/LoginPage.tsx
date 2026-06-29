@@ -20,8 +20,20 @@ import { cn } from "@/lib/utils";
 type AuthMethod = "sso" | "passwordless" | "totp" | "push" | "fido2";
 type AuthStep = "method" | "mfa" | "complete" | "blocked" | "stepup";
 
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  department: string;
+  mfa_method: string;
+  aal: string;
+  device_compliant: boolean;
+  last_login: string;
+}
+
 interface LoginPageProps {
-  onAuthenticated?: (user: unknown) => void;
+  onAuthenticated?: (user: AuthUser) => void;
   onConditionalAccessBlocked?: (reason: string) => void;
 }
 
@@ -40,7 +52,7 @@ export function LoginPage({ onAuthenticated, onConditionalAccessBlocked }: Login
   const [error, setError] = useState<string | null>(null);
   const [totpCode, setTotpCode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [user, setUser] = useState<Record<string, unknown> | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
 
   async function handleMethodSelect(m: AuthMethod) {
     setMethod(m);
@@ -63,9 +75,10 @@ export function LoginPage({ onAuthenticated, onConditionalAccessBlocked }: Login
             setError(data.message);
           }
         } else {
-          setUser(data.user);
+          const u = data.user as AuthUser;
+          setUser(u);
           setStep("complete");
-          onAuthenticated?.(data.user);
+          onAuthenticated?.(u);
         }
       } catch {
         setError("Connection failed. Please try again.");
@@ -91,9 +104,10 @@ export function LoginPage({ onAuthenticated, onConditionalAccessBlocked }: Login
       if (!res.ok) {
         setError(data.message);
       } else {
-        setUser(data.user);
+        const u = data.user as AuthUser;
+        setUser(u);
         setStep("complete");
-        onAuthenticated?.(data.user);
+        onAuthenticated?.(u);
       }
     } catch {
       setError("Verification failed. Please try again.");
@@ -419,7 +433,7 @@ function MfaChallenge({
   );
 }
 
-// ── Auth success ──────────────────────────────────────────────────────────────
+// ── Auth success ──────────────────���───────────────────────────────────────────
 
 function AuthSuccess({ user }: { user: Record<string, unknown> }) {
   return (

@@ -14,7 +14,6 @@ import {
   Table2,
   Zap,
   FlaskConical,
-  LogIn,
   MonitorSmartphone,
   ShieldAlert,
 } from "lucide-react";
@@ -28,9 +27,8 @@ const navItems = [
   { icon: FlaskConical,    label: "Metadata Engine",    id: "metadata",  group: "main" },
   { icon: Bookmark,        label: "Saved Reports",      id: "saved",     group: "reports" },
   { icon: ShieldCheck,     label: "Audit & Monitoring", id: "audit",     group: "reports" },
-  { icon: LogIn,           label: "Secure Login",       id: "login",     group: "security" },
-  { icon: MonitorSmartphone,label: "Session Manager",   id: "sessions",  group: "security" },
-  { icon: ShieldAlert,     label: "Security Console",   id: "admin",     group: "security" },
+  { icon: MonitorSmartphone, label: "Session Manager",  id: "sessions",  group: "security", adminOnly: false },
+  { icon: ShieldAlert,       label: "Security Console", id: "admin",     group: "security", adminOnly: true },
   { icon: Settings,        label: "Settings",           id: "settings",  group: "config" },
 ];
 
@@ -95,10 +93,12 @@ function DbStatusRow() {
 
 interface SidebarProps {
   activeView: string;
+  userRole?: string;
   onNavigate: (id: string) => void;
 }
 
-export function Sidebar({ activeView, onNavigate }: SidebarProps) {
+export function Sidebar({ activeView, userRole, onNavigate }: SidebarProps) {
+  const isAdmin = userRole === "Admin";
   return (
     <aside className="flex flex-col h-full w-60 bg-sidebar border-r border-border shrink-0">
       {/* Logo */}
@@ -160,7 +160,7 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
           Security
         </p>
         {navItems
-          .filter((n) => n.group === "security")
+          .filter((n) => n.group === "security" && (!n.adminOnly || isAdmin))
           .map(({ icon: Icon, label, id }) => (
             <button
               key={id}

@@ -12,12 +12,13 @@ import type { LoadedReport } from "@/components/studio/ReportStudio";
 import { DataExplorer } from "@/components/data/DataExplorer";
 import { MetadataReportEngine } from "@/components/schema/MetadataReportEngine";
 import { LoginPage } from "@/components/auth/LoginPage";
+import type { AuthUser } from "@/components/auth/LoginPage";
 import { SessionManager } from "@/components/security/SessionManager";
 import { SecurityConsole } from "@/components/admin/SecurityConsole";
 import { AuditDashboard } from "@/components/audit/AuditDashboard";
-import { Menu, Bell, Calendar } from "lucide-react";
+import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
 
-type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "metadata" | "saved" | "audit" | "settings" | "login" | "sessions" | "admin";
+type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "metadata" | "saved" | "audit" | "settings" | "sessions" | "admin";
 
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   dashboard: {
@@ -52,10 +53,6 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
     title: "Audit & Monitoring",
     subtitle: "Immutable authentication, access, and policy event log — HIPAA §164.312 · Azure Sentinel",
   },
-  login: {
-    title: "Secure Login",
-    subtitle: "Azure AD SSO, passwordless, and MFA — NIST 800-63B AAL2/AAL3",
-  },
   sessions: {
     title: "Session Management",
     subtitle: "Active sessions, device compliance, revocation, and inactivity timeout",
@@ -70,11 +67,15 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   },
 };
 
+const SESSION_KEY = "acacia_auth_user";
+
 export default function Home() {
   const [view, setView] = useState<View>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [todayLabel, setTodayLabel] = useState<string>("");
   const [loadedReport, setLoadedReport] = useState<LoadedReport | null>(null);
+  // null = not yet checked, false = unauthenticated, AuthUser = authenticated
+  const [authUser, setAuthUser] = useState<AuthUser | null | false>(null);
 
   useEffect(() => {
     setTodayLabel(
@@ -84,7 +85,34 @@ export default function Home() {
         year: "numeric",
       })
     );
+    // Rehydrate session from sessionStorage
+    try {
+      const stored = sessionStorage.getItem(SESSION_KEY);
+      setAuthUser(stored ? (JSON.parse(stored) as AuthUser) : false);
+    } catch {
+      setAuthUser(false);
+    }
   }, []);
+
+  function handleAuthenticated(u: AuthUser) {
+    setAuthUser(u);
+    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(u)); } catch { /* ignore */ }
+    setView("dashboard");
+  }
+
+  function handleSignOut() {
+    setAuthUser(false);
+    try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+    setView("dashboard");
+  }
+
+  // Null = hydrating, show nothing to avoid flash
+  if (authUser === null) return null;
+
+  // Not authenticated — show full-page login
+  if (authUser === false) {
+    return <LoginPage onAuthenticated={handleAuthenticated} />;
+  }
 
   const { title, subtitle } = VIEW_TITLES[view];
 
@@ -106,6 +134,7 @@ export default function Home() {
       >
         <Sidebar
           activeView={view}
+          userRole={authUser.role}
           onNavigate={(id) => {
             setView(id as View);
             setSidebarOpen(false);
@@ -143,8 +172,23 @@ export default function Home() {
               <Bell className="w-4 h-4 text-muted-foreground" />
               <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-primary" />
             </button>
-            <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary">
-              AD
+            {/* User avatar + sign out */}
+            <div className="flex items-center gap-2">
+              <div className="flex flex-col items-end hidden sm:flex">
+                <span className="text-xs font-medium text-foreground leading-none">{authUser.name}</span>
+                <span className="text-[10px] text-muted-foreground mt-0.5">{authUser.role} · {authUser.aal}</span>
+              </div>
+              <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
+                {authUser.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+              </div>
+              <button
+                onClick={handleSignOut}
+                title="Sign out"
+                className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                aria-label="Sign out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </header>
@@ -212,11 +256,6 @@ export default function Home() {
               <AuditDashboard />
             </div>
           )}
-          {view === "login" && (
-            <div className="max-w-md mx-auto">
-              <LoginPage onAuthenticated={() => setView("dashboard")} />
-            </div>
-          )}
           {view === "sessions" && (
             <div className="max-w-3xl">
               <SessionManager />
@@ -224,7 +263,15 @@ export default function Home() {
           )}
           {view === "admin" && (
             <div className="max-w-5xl">
-              <SecurityConsole />
+              {authUser.role === "Admin" ? (
+                <SecurityConsole />
+              ) : (
+                <AccessDenied
+                  requiredRole="Admin"
+                  currentRole={authUser.role}
+                  onBack={() => setView("dashboard")}
+                />
+              )}
             </div>
           )}
           {view === "settings" && (
@@ -318,6 +365,41 @@ function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {
 }
 
 
+
+function AccessDenied({
+  requiredRole,
+  currentRole,
+  onBack,
+}: {
+  requiredRole: string;
+  currentRole: string;
+  onBack: () => void;
+}) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-10 flex flex-col items-center gap-4 text-center max-w-md mx-auto mt-10">
+      <div className="w-14 h-14 rounded-2xl bg-destructive/10 border border-destructive/30 flex items-center justify-center">
+        <ShieldOff className="w-7 h-7 text-destructive" />
+      </div>
+      <div>
+        <h2 className="text-base font-semibold text-foreground">Access Denied</h2>
+        <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed max-w-xs">
+          This area requires the <span className="text-foreground font-medium">{requiredRole}</span> role.
+          You are signed in as <span className="text-foreground font-medium">{currentRole}</span>.
+          Contact your system administrator to request elevated access.
+        </p>
+      </div>
+      <div className="text-[11px] text-muted-foreground bg-muted border border-border rounded-lg px-4 py-3 w-full">
+        This access attempt has been logged to the immutable audit trail.
+      </div>
+      <button
+        onClick={onBack}
+        className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+      >
+        Return to Dashboard
+      </button>
+    </div>
+  );
+}
 
 function SettingsPanel() {
   return (
