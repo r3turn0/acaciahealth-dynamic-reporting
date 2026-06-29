@@ -14,6 +14,9 @@ import {
   Table2,
   Zap,
   FlaskConical,
+  LogIn,
+  MonitorSmartphone,
+  ShieldAlert,
 } from "lucide-react";
 
 const navItems = [
@@ -24,7 +27,10 @@ const navItems = [
   { icon: Database,        label: "Schema Intelligence",id: "schema",    group: "main" },
   { icon: FlaskConical,    label: "Metadata Engine",    id: "metadata",  group: "main" },
   { icon: Bookmark,        label: "Saved Reports",      id: "saved",     group: "reports" },
-  { icon: ShieldCheck,     label: "Audit Log",          id: "audit",     group: "reports" },
+  { icon: ShieldCheck,     label: "Audit & Monitoring", id: "audit",     group: "reports" },
+  { icon: LogIn,           label: "Secure Login",       id: "login",     group: "security" },
+  { icon: MonitorSmartphone,label: "Session Manager",   id: "sessions",  group: "security" },
+  { icon: ShieldAlert,     label: "Security Console",   id: "admin",     group: "security" },
   { icon: Settings,        label: "Settings",           id: "settings",  group: "config" },
 ];
 
@@ -134,6 +140,27 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
         </p>
         {navItems
           .filter((n) => n.group === "reports")
+          .map(({ icon: Icon, label, id }) => (
+            <button
+              key={id}
+              onClick={() => onNavigate(id)}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-left w-full",
+                activeView === id
+                  ? "bg-primary/15 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              )}
+            >
+              <Icon className="w-4 h-4 shrink-0" />
+              {label}
+            </button>
+          ))}
+
+        <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+          Security
+        </p>
+        {navItems
+          .filter((n) => n.group === "security")
           .map(({ icon: Icon, label, id }) => (
             <button
               key={id}

@@ -11,9 +11,13 @@ import { SavedReports } from "@/components/studio/SavedReports";
 import type { LoadedReport } from "@/components/studio/ReportStudio";
 import { DataExplorer } from "@/components/data/DataExplorer";
 import { MetadataReportEngine } from "@/components/schema/MetadataReportEngine";
+import { LoginPage } from "@/components/auth/LoginPage";
+import { SessionManager } from "@/components/security/SessionManager";
+import { SecurityConsole } from "@/components/admin/SecurityConsole";
+import { AuditDashboard } from "@/components/audit/AuditDashboard";
 import { Menu, Bell, Calendar } from "lucide-react";
 
-type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "metadata" | "saved" | "audit" | "settings";
+type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "metadata" | "saved" | "audit" | "settings" | "login" | "sessions" | "admin";
 
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   dashboard: {
@@ -45,8 +49,20 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
     subtitle: "Your saved report library — load, re-run, or delete",
   },
   audit: {
-    title: "Audit Log",
-    subtitle: "Query execution history and security events",
+    title: "Audit & Monitoring",
+    subtitle: "Immutable authentication, access, and policy event log — HIPAA §164.312 · Azure Sentinel",
+  },
+  login: {
+    title: "Secure Login",
+    subtitle: "Azure AD SSO, passwordless, and MFA — NIST 800-63B AAL2/AAL3",
+  },
+  sessions: {
+    title: "Session Management",
+    subtitle: "Active sessions, device compliance, revocation, and inactivity timeout",
+  },
+  admin: {
+    title: "Security Console",
+    subtitle: "RBAC/ABAC, Conditional Access, IP allowlists, PAM, and break-glass — privileged access required",
   },
   settings: {
     title: "Settings",
@@ -192,8 +208,23 @@ export default function Home() {
             </div>
           )}
           {view === "audit" && (
-            <div className="max-w-4xl">
-              <AuditLog />
+            <div className="max-w-5xl">
+              <AuditDashboard />
+            </div>
+          )}
+          {view === "login" && (
+            <div className="max-w-md mx-auto">
+              <LoginPage onAuthenticated={() => setView("dashboard")} />
+            </div>
+          )}
+          {view === "sessions" && (
+            <div className="max-w-3xl">
+              <SessionManager />
+            </div>
+          )}
+          {view === "admin" && (
+            <div className="max-w-5xl">
+              <SecurityConsole />
             </div>
           )}
           {view === "settings" && (
@@ -286,67 +317,7 @@ function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {
   );
 }
 
-function AuditLog() {
-  const entries = [
-    { time: "09:14:22", event: "REPORT_RUN", kpi: "admissions", user: "system", status: "ok", rows: 42 },
-    { time: "09:10:05", event: "REPORT_RUN", kpi: "revenue", user: "system", status: "ok", rows: 18 },
-    { time: "08:55:41", event: "VALIDATION_FAIL", kpi: "—", user: "system", status: "warn", rows: 0 },
-    { time: "08:22:09", event: "CACHE_HIT", kpi: "census", user: "system", status: "ok", rows: 12 },
-    { time: "07:58:34", event: "REPORT_RUN", kpi: "discharges", user: "system", status: "ok", rows: 36 },
-  ];
 
-  return (
-    <div className="bg-card border border-border rounded-lg p-5">
-      <h2 className="text-sm font-semibold text-foreground mb-1">Audit Log</h2>
-      <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-        All query executions are logged. No raw SQL input is accepted — only generated and
-        validated queries are allowed to run against the read-only database.
-      </p>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border">
-              {["Time", "Event", "KPI", "User", "Status", "Rows"].map((h) => (
-                <th
-                  key={h}
-                  className="text-left px-3 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide"
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((e, i) => (
-              <tr key={i} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground">{e.time}</td>
-                <td className="px-3 py-2.5 text-xs text-foreground">{e.event}</td>
-                <td className="px-3 py-2.5">
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-mono capitalize">
-                    {e.kpi}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5 text-xs text-muted-foreground">{e.user}</td>
-                <td className="px-3 py-2.5">
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                      e.status === "ok"
-                        ? "bg-chart-3/15 text-chart-3"
-                        : "bg-chart-5/15 text-chart-5"
-                    }`}
-                  >
-                    {e.status}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5 text-xs text-muted-foreground">{e.rows}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
 
 function SettingsPanel() {
   return (
