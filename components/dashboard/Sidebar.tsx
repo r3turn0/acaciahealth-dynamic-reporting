@@ -13,6 +13,9 @@ import {
   Bookmark,
   Table2,
   Zap,
+  FlaskConical,
+  MonitorSmartphone,
+  ShieldAlert,
 } from "lucide-react";
 
 const navItems = [
@@ -21,8 +24,11 @@ const navItems = [
   { icon: Table2,          label: "Data",               id: "data",      group: "main" },
   { icon: BarChart3,       label: "KPI Explorer",       id: "kpi",       group: "main" },
   { icon: Database,        label: "Schema Intelligence",id: "schema",    group: "main" },
+  { icon: FlaskConical,    label: "Metadata Engine",    id: "metadata",  group: "main" },
   { icon: Bookmark,        label: "Saved Reports",      id: "saved",     group: "reports" },
-  { icon: ShieldCheck,     label: "Audit Log",          id: "audit",     group: "reports" },
+  { icon: ShieldCheck,     label: "Audit & Monitoring", id: "audit",     group: "reports" },
+  { icon: MonitorSmartphone, label: "Session Manager",  id: "sessions",  group: "security", adminOnly: false },
+  { icon: ShieldAlert,       label: "Security Console", id: "admin",     group: "security", adminOnly: true },
   { icon: Settings,        label: "Settings",           id: "settings",  group: "config" },
 ];
 
@@ -87,10 +93,12 @@ function DbStatusRow() {
 
 interface SidebarProps {
   activeView: string;
+  userRole?: string;
   onNavigate: (id: string) => void;
 }
 
-export function Sidebar({ activeView, onNavigate }: SidebarProps) {
+export function Sidebar({ activeView, userRole, onNavigate }: SidebarProps) {
+  const isAdmin = userRole === "Admin";
   return (
     <aside className="flex flex-col h-full w-60 bg-sidebar border-r border-border shrink-0">
       {/* Logo */}
@@ -132,6 +140,27 @@ export function Sidebar({ activeView, onNavigate }: SidebarProps) {
         </p>
         {navItems
           .filter((n) => n.group === "reports")
+          .map(({ icon: Icon, label, id }) => (
+            <button
+              key={id}
+              onClick={() => onNavigate(id)}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-left w-full",
+                activeView === id
+                  ? "bg-primary/15 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              )}
+            >
+              <Icon className="w-4 h-4 shrink-0" />
+              {label}
+            </button>
+          ))}
+
+        <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+          Security
+        </p>
+        {navItems
+          .filter((n) => n.group === "security" && (!n.adminOnly || isAdmin))
           .map(({ icon: Icon, label, id }) => (
             <button
               key={id}

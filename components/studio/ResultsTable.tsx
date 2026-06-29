@@ -9,7 +9,20 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  BarChart2,
+  TableIcon,
 } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
+import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 
 export interface ReportResult {
   report_name: string;
@@ -77,12 +90,49 @@ interface ResultsTableProps {
   result: ReportResult;
 }
 
+// ── Chart helpers ────────────────────────────────────────────────────────────
+
+function deriveChartData(result: ReportResult): { labelKey: string; valueKey: string; data: Record<string, unknown>[] } | null {
+  const { data, summary } = result;
+  if (!data.length) return null;
+
+  const labelKey = summary.columns.find((c) => typeof data[0]?.[c] === "string");
+  const valueKey = summary.columns.find((c) => typeof data[0]?.[c] === "number");
+  if (!labelKey || !valueKey) return null;
+
+  // Aggregate by label (take top 20 to keep chart readable)
+  const agg: Record<string, number> = {};
+  for (const row of data) {
+    const k = String(row[labelKey] ?? "Other");
+    agg[k] = (agg[k] ?? 0) + (Number(row[valueKey]) || 0);
+  }
+
+  const chartData = Object.entries(agg)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([label, value]) => ({ label, value }));
+
+  return { labelKey, valueKey, data: chartData };
+}
+
+const CHART_COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+];
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 export function ResultsTable({ result }: ResultsTableProps) {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
   const [sort, setSort] = useState<SortConfig | null>(null);
+  const [viewMode, setViewMode] = useState<"table" | "chart">("table");
 
   const insights = useMemo(() => deriveInsights(result), [result]);
+  const chartData = useMemo(() => deriveChartData(result), [result]);
 
   const sorted = useMemo(() => {
     if (!sort) return result.data;
@@ -201,20 +251,41 @@ export function ResultsTable({ result }: ResultsTableProps) {
           </div>
 
           <div className="flex items-center gap-2">
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setPage(0);
-              }}
-              className="text-xs bg-muted border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              {PAGE_SIZES.map((s) => (
-                <option key={s} value={s}>
-                  {s} / page
-                </option>
-              ))}
-            </select>
+            {/* View toggle */}
+            {chartData && (
+              <div className="flex gap-0.5 p-0.5 bg-muted border border-border rounded-md">
+                <button
+                  onClick={() => setViewMode("table")}
+                  title="Table view"
+                  className={`p-1.5 rounded transition-colors ${viewMode === "table" ? "bg-card text-foreground border border-border shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  <TableIcon className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setViewMode("chart")}
+                  title="Chart view"
+                  className={`p-1.5 rounded transition-colors ${viewMode === "chart" ? "bg-card text-foreground border border-border shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  <BarChart2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+            {viewMode === "table" && (
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(0);
+                }}
+                className="text-xs bg-muted border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                {PAGE_SIZES.map((s) => (
+                  <option key={s} value={s}>
+                    {s} / page
+                  </option>
+                ))}
+              </select>
+            )}
             <button
               onClick={exportCsv}
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded border border-border hover:border-primary/40"
@@ -225,7 +296,41 @@ export function ResultsTable({ result }: ResultsTableProps) {
           </div>
         </div>
 
+        {/* Chart view */}
+        {viewMode === "chart" && chartData && (
+          <div className="p-4">
+            <ChartContainer
+              config={{
+                value: { label: chartData.valueKey.replace(/_/g, " "), color: "var(--chart-1)" },
+              }}
+              className="h-64 w-full"
+            >
+              <BarChart data={chartData.data} margin={{ top: 8, right: 16, bottom: 32, left: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border/40" />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
+                  angle={-35}
+                  textAnchor="end"
+                  interval={0}
+                />
+                <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} />
+                <Tooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+                  {chartData.data.map((_, i) => (
+                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ChartContainer>
+            <p className="text-[10px] text-muted-foreground text-center mt-2">
+              Top {chartData.data.length} results by {chartData.valueKey.replace(/_/g, " ")}
+            </p>
+          </div>
+        )}
+
         {/* Table */}
+        {viewMode === "table" && (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -292,8 +397,10 @@ export function ResultsTable({ result }: ResultsTableProps) {
           </table>
         </div>
 
+        )}
+
         {/* Pagination */}
-        {totalPages > 1 && (
+        {viewMode === "table" && totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-border">
             <span className="text-xs text-muted-foreground">
               Page {page + 1} of {totalPages}
