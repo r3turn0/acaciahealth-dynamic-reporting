@@ -8,10 +8,17 @@ import { KpiExplorer } from "@/components/dashboard/KpiExplorer";
 import { HealthStatus } from "@/components/dashboard/HealthStatus";
 import { ReportStudio } from "@/components/studio/ReportStudio";
 import { SavedReports } from "@/components/studio/SavedReports";
+import type { LoadedReport } from "@/components/studio/ReportStudio";
 import { DataExplorer } from "@/components/data/DataExplorer";
-import { Menu, Bell, Calendar } from "lucide-react";
+import { MetadataReportEngine } from "@/components/schema/MetadataReportEngine";
+import { LoginPage } from "@/components/auth/LoginPage";
+import type { AuthUser } from "@/components/auth/LoginPage";
+import { SessionManager } from "@/components/security/SessionManager";
+import { SecurityConsole } from "@/components/admin/SecurityConsole";
+import { AuditDashboard } from "@/components/audit/AuditDashboard";
+import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
 
-type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "saved" | "audit" | "settings";
+type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "metadata" | "saved" | "audit" | "settings" | "sessions" | "admin";
 
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   dashboard: {
@@ -34,13 +41,25 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
     title: "Schema Intelligence",
     subtitle: "Live database schema, join paths, and semantic layer",
   },
+  metadata: {
+    title: "Metadata Engine",
+    subtitle: "Upload metadata.json to build schema model, discover fields, resolve joins, and generate ReportPlans",
+  },
   saved: {
     title: "Saved Reports",
     subtitle: "Your saved report library — load, re-run, or delete",
   },
   audit: {
-    title: "Audit Log",
-    subtitle: "Query execution history and security events",
+    title: "Audit & Monitoring",
+    subtitle: "Immutable authentication, access, and policy event log — HIPAA §164.312 · Azure Sentinel",
+  },
+  sessions: {
+    title: "Session Management",
+    subtitle: "Active sessions, device compliance, revocation, and inactivity timeout",
+  },
+  admin: {
+    title: "Security Console",
+    subtitle: "RBAC/ABAC, Conditional Access, IP allowlists, PAM, and break-glass — privileged access required",
   },
   settings: {
     title: "Settings",
@@ -48,10 +67,15 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   },
 };
 
+const SESSION_KEY = "acacia_auth_user";
+
 export default function Home() {
   const [view, setView] = useState<View>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [todayLabel, setTodayLabel] = useState<string>("");
+  const [loadedReport, setLoadedReport] = useState<LoadedReport | null>(null);
+  // null = not yet checked, false = unauthenticated, AuthUser = authenticated
+  const [authUser, setAuthUser] = useState<AuthUser | null | false>(null);
 
   useEffect(() => {
     setTodayLabel(
@@ -61,7 +85,34 @@ export default function Home() {
         year: "numeric",
       })
     );
+    // Rehydrate session from sessionStorage
+    try {
+      const stored = sessionStorage.getItem(SESSION_KEY);
+      setAuthUser(stored ? (JSON.parse(stored) as AuthUser) : false);
+    } catch {
+      setAuthUser(false);
+    }
   }, []);
+
+  function handleAuthenticated(u: AuthUser) {
+    setAuthUser(u);
+    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(u)); } catch { /* ignore */ }
+    setView("dashboard");
+  }
+
+  function handleSignOut() {
+    setAuthUser(false);
+    try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+    setView("dashboard");
+  }
+
+  // Null = hydrating, show nothing to avoid flash
+  if (authUser === null) return null;
+
+  // Not authenticated — show full-page login
+  if (authUser === false) {
+    return <LoginPage onAuthenticated={handleAuthenticated} />;
+  }
 
   const { title, subtitle } = VIEW_TITLES[view];
 
@@ -83,6 +134,7 @@ export default function Home() {
       >
         <Sidebar
           activeView={view}
+          userRole={authUser.role}
           onNavigate={(id) => {
             setView(id as View);
             setSidebarOpen(false);
@@ -120,8 +172,23 @@ export default function Home() {
               <Bell className="w-4 h-4 text-muted-foreground" />
               <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-primary" />
             </button>
-            <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary">
-              AD
+            {/* User avatar + sign out */}
+            <div className="flex items-center gap-2">
+              <div className="flex flex-col items-end hidden sm:flex">
+                <span className="text-xs font-medium text-foreground leading-none">{authUser.name}</span>
+                <span className="text-[10px] text-muted-foreground mt-0.5">{authUser.role} · {authUser.aal}</span>
+              </div>
+              <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
+                {authUser.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+              </div>
+              <button
+                onClick={handleSignOut}
+                title="Sign out"
+                className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                aria-label="Sign out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </header>
@@ -144,7 +211,7 @@ export default function Home() {
           )}
           {view === "studio" && (
             <div className="max-w-5xl">
-              <ReportStudio />
+              <ReportStudio initialReport={loadedReport} />
             </div>
           )}
           {view === "data" && (
@@ -157,8 +224,13 @@ export default function Home() {
               <div className="bg-card border border-border rounded-lg p-5">
                 <SavedReports
                   onLoad={(report) => {
+                    setLoadedReport({
+                      sql: report.sql,
+                      prompt: report.prompt,
+                      kpi: report.kpi,
+                      name: report.name,
+                    });
                     setView("studio");
-                    // The studio will handle the load via URL state in a future iteration
                   }}
                 />
               </div>
@@ -174,9 +246,32 @@ export default function Home() {
               <SchemaViewer />
             </div>
           )}
+          {view === "metadata" && (
+            <div className="max-w-5xl">
+              <MetadataReportEngine />
+            </div>
+          )}
           {view === "audit" && (
-            <div className="max-w-4xl">
-              <AuditLog />
+            <div className="max-w-5xl">
+              <AuditDashboard />
+            </div>
+          )}
+          {view === "sessions" && (
+            <div className="max-w-3xl">
+              <SessionManager />
+            </div>
+          )}
+          {view === "admin" && (
+            <div className="max-w-5xl">
+              {authUser.role === "Admin" ? (
+                <SecurityConsole />
+              ) : (
+                <AccessDenied
+                  requiredRole="Admin"
+                  currentRole={authUser.role}
+                  onBack={() => setView("dashboard")}
+                />
+              )}
             </div>
           )}
           {view === "settings" && (
@@ -253,7 +348,7 @@ function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {
   return (
     <div className="bg-card border border-border rounded-lg p-5">
       <h2 className="text-sm font-semibold text-foreground mb-4">Quick Actions</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {actions.map((a) => (
           <button
             key={a.id}
@@ -269,64 +364,39 @@ function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {
   );
 }
 
-function AuditLog() {
-  const entries = [
-    { time: "09:14:22", event: "REPORT_RUN", kpi: "admissions", user: "system", status: "ok", rows: 42 },
-    { time: "09:10:05", event: "REPORT_RUN", kpi: "revenue", user: "system", status: "ok", rows: 18 },
-    { time: "08:55:41", event: "VALIDATION_FAIL", kpi: "—", user: "system", status: "warn", rows: 0 },
-    { time: "08:22:09", event: "CACHE_HIT", kpi: "census", user: "system", status: "ok", rows: 12 },
-    { time: "07:58:34", event: "REPORT_RUN", kpi: "discharges", user: "system", status: "ok", rows: 36 },
-  ];
 
+
+function AccessDenied({
+  requiredRole,
+  currentRole,
+  onBack,
+}: {
+  requiredRole: string;
+  currentRole: string;
+  onBack: () => void;
+}) {
   return (
-    <div className="bg-card border border-border rounded-lg p-5">
-      <h2 className="text-sm font-semibold text-foreground mb-1">Audit Log</h2>
-      <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-        All query executions are logged. No raw SQL input is accepted — only generated and
-        validated queries are allowed to run against the read-only database.
-      </p>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border">
-              {["Time", "Event", "KPI", "User", "Status", "Rows"].map((h) => (
-                <th
-                  key={h}
-                  className="text-left px-3 py-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide"
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((e, i) => (
-              <tr key={i} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                <td className="px-3 py-2.5 font-mono text-xs text-muted-foreground">{e.time}</td>
-                <td className="px-3 py-2.5 text-xs text-foreground">{e.event}</td>
-                <td className="px-3 py-2.5">
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-mono capitalize">
-                    {e.kpi}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5 text-xs text-muted-foreground">{e.user}</td>
-                <td className="px-3 py-2.5">
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                      e.status === "ok"
-                        ? "bg-chart-3/15 text-chart-3"
-                        : "bg-chart-5/15 text-chart-5"
-                    }`}
-                  >
-                    {e.status}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5 text-xs text-muted-foreground">{e.rows}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="bg-card border border-border rounded-xl p-10 flex flex-col items-center gap-4 text-center max-w-md mx-auto mt-10">
+      <div className="w-14 h-14 rounded-2xl bg-destructive/10 border border-destructive/30 flex items-center justify-center">
+        <ShieldOff className="w-7 h-7 text-destructive" />
       </div>
+      <div>
+        <h2 className="text-base font-semibold text-foreground">Access Denied</h2>
+        <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed max-w-xs">
+          This area requires the <span className="text-foreground font-medium">{requiredRole}</span> role.
+          You are signed in as <span className="text-foreground font-medium">{currentRole}</span>.
+          Contact your system administrator to request elevated access.
+        </p>
+      </div>
+      <div className="text-[11px] text-muted-foreground bg-muted border border-border rounded-lg px-4 py-3 w-full">
+        This access attempt has been logged to the immutable audit trail.
+      </div>
+      <button
+        onClick={onBack}
+        className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+      >
+        Return to Dashboard
+      </button>
     </div>
   );
 }

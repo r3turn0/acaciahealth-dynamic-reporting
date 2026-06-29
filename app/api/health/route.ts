@@ -17,7 +17,13 @@ export async function GET() {
       database: {
         connected: dbConnected,
         configured: !!process.env.SQL_CONNECTION_STRING,
-        mode: process.env.SQL_CONNECTION_STRING ? "live" : "demo",
+        mode: process.env.SQL_CONNECTION_STRING ? "live_db" : "demo",
+      },
+      ai: {
+        configured: !!(process.env.AI_GATEWAY_API_KEY || process.env.AZURE_OPENAI_API_KEY),
+        model: process.env.AZURE_OPENAI_DEPLOYMENT
+          ? `azure/${process.env.AZURE_OPENAI_DEPLOYMENT}`
+          : "openai/gpt-4o-mini",
       },
       cache: {
         active_entries: cacheStats.size,

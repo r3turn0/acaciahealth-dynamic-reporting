@@ -9,6 +9,7 @@ interface HealthData {
   version: string;
   services: {
     database: { connected: boolean; configured: boolean; mode: string };
+    ai: { configured: boolean; model: string };
     cache: { active_entries: number };
   };
   environment: string;
@@ -65,7 +66,14 @@ export function HealthStatus() {
             ok={health.services.database.connected}
             value={health.services.database.mode}
             warning={!health.services.database.configured}
-            warningText="Not configured"
+            warningText="Not configured — add SQL_CONNECTION_STRING"
+          />
+          <StatusRow
+            label="AI Gateway"
+            ok={health.services.ai?.configured ?? false}
+            value={health.services.ai?.configured ? health.services.ai.model : "Not configured"}
+            warning={!health.services.ai?.configured}
+            warningText="Add AI_GATEWAY_API_KEY to enable AI features"
           />
           <StatusRow
             label="Cache"

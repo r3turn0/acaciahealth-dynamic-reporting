@@ -1,27 +1,59 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Bookmark } from "lucide-react";
 import { AskAI } from "./AskAI";
 import { SQLEditor } from "./SQLEditor";
 import { QueryExplanation } from "./QueryExplanation";
 import { ResultsTable } from "./ResultsTable";
 import { SavedReports } from "./SavedReports";
+import { VisualQueryBuilder } from "./VisualQueryBuilder";
 import type { QueryPlan } from "./AskAI";
 import type { ReportResult } from "./ResultsTable";
 
-type StudioTab = "ask" | "saved";
+type StudioTab = "ask" | "builder" | "saved";
 
-export function ReportStudio() {
+export interface LoadedReport {
+  sql: string;
+  prompt: string;
+  kpi: string;
+  name: string;
+}
+
+interface ReportStudioProps {
+  initialReport?: LoadedReport | null;
+}
+
+export function ReportStudio({ initialReport }: ReportStudioProps) {
   const [tab, setTab] = useState<StudioTab>("ask");
-  const [startDate, setStartDate] = useState(
-    new Date(Date.now() - 28 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
-  );
-  const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
+  // Dates initialized empty to avoid SSR/client mismatch; populated in useEffect
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
-  // SQL Editor state
-  const [sql, setSql] = useState("");
-  const [currentPlan, setCurrentPlan] = useState<QueryPlan | null>(null);
+  useEffect(() => {
+    const end = new Date();
+    const start = new Date(end.getTime() - 28 * 24 * 60 * 60 * 1000);
+    setStartDate(start.toISOString().split("T")[0]);
+    setEndDate(end.toISOString().split("T")[0]);
+  }, []);
+
+  // SQL Editor state — pre-populate from initialReport if provided
+  const [sql, setSql] = useState(initialReport?.sql ?? "");
+  const [currentPlan, setCurrentPlan] = useState<QueryPlan | null>(
+    initialReport
+      ? {
+          sql: initialReport.sql,
+          explanation: `Loaded: "${initialReport.name}". Prompt: "${initialReport.prompt}"`,
+          tables_used: [],
+          filters_applied: [],
+          kpi_detected: initialReport.kpi,
+          strategy: "sql",
+          api_fallback_reason: null,
+          cost_warning: null,
+          optimized_suggestion: null,
+        }
+      : null
+  );
   const [executing, setExecuting] = useState(false);
   const [result, setResult] = useState<ReportResult | null>(null);
   const [execError, setExecError] = useState<string | null>(null);
@@ -33,6 +65,26 @@ export function ReportStudio() {
     prompt: string;
     kpi: string;
   } | null>(null);
+
+  // Sync when an external saved report is pushed in after initial render
+  useEffect(() => {
+    if (!initialReport) return;
+    setSql(initialReport.sql);
+    setCurrentPlan({
+      sql: initialReport.sql,
+      explanation: `Loaded: "${initialReport.name}". Prompt: "${initialReport.prompt}"`,
+      tables_used: [],
+      filters_applied: [],
+      kpi_detected: initialReport.kpi,
+      strategy: "sql",
+      api_fallback_reason: null,
+      cost_warning: null,
+      optimized_suggestion: null,
+    });
+    setResult(null);
+    setExecError(null);
+    setTab("ask");
+  }, [initialReport]);
 
   function handlePlanReady(plan: QueryPlan, sd: string, ed: string) {
     setCurrentPlan(plan);
@@ -110,17 +162,23 @@ export function ReportStudio() {
     <div className="flex flex-col gap-6 max-w-5xl">
       {/* Tab bar */}
       <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit border border-border">
-        {(["ask", "saved"] as StudioTab[]).map((t) => (
+        {(
+          [
+            { id: "ask", label: "Ask AI / SQL" },
+            { id: "builder", label: "Visual Builder" },
+            { id: "saved", label: "Saved Reports" },
+          ] as { id: StudioTab; label: string }[]
+        ).map(({ id, label }) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors capitalize ${
-              tab === t
+            key={id}
+            onClick={() => setTab(id)}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              tab === id
                 ? "bg-card text-foreground shadow-sm border border-border"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {t === "ask" ? "Ask AI / SQL Editor" : "Saved Reports"}
+            {label}
           </button>
         ))}
       </div>
@@ -182,6 +240,22 @@ export function ReportStudio() {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {tab === "builder" && (
+        <div className="bg-card border border-border rounded-lg p-5">
+          <VisualQueryBuilder
+            startDate={startDate}
+            endDate={endDate}
+            onStartDateChange={setStartDate}
+            onEndDateChange={setEndDate}
+            onPlanReady={(plan, sd, ed) => {
+              handlePlanReady(plan, sd, ed);
+              setTab("ask");
+            }}
+            loading={executing}
+          />
         </div>
       )}
 
