@@ -7,10 +7,11 @@ import { SQLEditor } from "./SQLEditor";
 import { QueryExplanation } from "./QueryExplanation";
 import { ResultsTable } from "./ResultsTable";
 import { SavedReports } from "./SavedReports";
+import { VisualQueryBuilder } from "./VisualQueryBuilder";
 import type { QueryPlan } from "./AskAI";
 import type { ReportResult } from "./ResultsTable";
 
-type StudioTab = "ask" | "saved";
+type StudioTab = "ask" | "builder" | "saved";
 
 export interface LoadedReport {
   sql: string;
@@ -161,17 +162,23 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
     <div className="flex flex-col gap-6 max-w-5xl">
       {/* Tab bar */}
       <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit border border-border">
-        {(["ask", "saved"] as StudioTab[]).map((t) => (
+        {(
+          [
+            { id: "ask", label: "Ask AI / SQL" },
+            { id: "builder", label: "Visual Builder" },
+            { id: "saved", label: "Saved Reports" },
+          ] as { id: StudioTab; label: string }[]
+        ).map(({ id, label }) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors capitalize ${
-              tab === t
+            key={id}
+            onClick={() => setTab(id)}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              tab === id
                 ? "bg-card text-foreground shadow-sm border border-border"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {t === "ask" ? "Ask AI / SQL Editor" : "Saved Reports"}
+            {label}
           </button>
         ))}
       </div>
@@ -233,6 +240,22 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {tab === "builder" && (
+        <div className="bg-card border border-border rounded-lg p-5">
+          <VisualQueryBuilder
+            startDate={startDate}
+            endDate={endDate}
+            onStartDateChange={setStartDate}
+            onEndDateChange={setEndDate}
+            onPlanReady={(plan, sd, ed) => {
+              handlePlanReady(plan, sd, ed);
+              setTab("ask");
+            }}
+            loading={executing}
+          />
         </div>
       )}
 
