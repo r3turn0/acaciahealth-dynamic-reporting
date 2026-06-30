@@ -55,7 +55,7 @@ Follow-up question: ${question}`;
       system: systemPrompt,
       prompt: userMessage,
       temperature: 0.3,
-      maxTokens: 512,
+      maxOutputTokens: 512,
     });
 
     return NextResponse.json({

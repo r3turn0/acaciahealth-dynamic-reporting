@@ -176,7 +176,7 @@ export default function Home() {
             </button>
             {/* User avatar + sign out */}
             <div className="flex items-center gap-2">
-              <div className="flex flex-col items-end hidden sm:flex">
+              <div className="hidden sm:flex flex-col items-end">
                 <span className="text-xs font-medium text-foreground leading-none">{authUser.name}</span>
                 <span className="text-[10px] text-muted-foreground mt-0.5">{authUser.role} · {authUser.aal}</span>
               </div>
