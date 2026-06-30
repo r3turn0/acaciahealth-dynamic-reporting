@@ -10,6 +10,7 @@ import { planQuery } from "@/lib/agents/queryPlanner";
 import { generateSQL } from "@/lib/services/queryGenerator";
 import { validateQuery } from "@/lib/services/queryGuard";
 import { buildCacheKey, getCache, setCache } from "@/lib/services/cache";
+import { isAiConfigured, getModelId } from "@/lib/ai/gateway";
 import type { QueryPlan } from "@/lib/agents/queryPlanner";
 
 const PLAN_CACHE_TTL = 5 * 60 * 1000; // 5 min for plans
@@ -44,8 +45,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Determine whether AI is available
-    const aiAvailable =
-      !!process.env.AZURE_OPENAI_API_KEY || !!process.env.AI_GATEWAY_API_KEY;
+    const aiAvailable = isAiConfigured();
 
     let plan: QueryPlan;
 

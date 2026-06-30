@@ -435,7 +435,7 @@ function MfaChallenge({
 
 // ── Auth success ──────────────────���───────────────────────────────────────────
 
-function AuthSuccess({ user }: { user: Record<string, unknown> }) {
+function AuthSuccess({ user }: { user: AuthUser }) {
   return (
     <div className="flex flex-col items-center gap-4 py-6">
       <div className="w-14 h-14 rounded-full bg-chart-3/15 border border-chart-3/40 flex items-center justify-center">

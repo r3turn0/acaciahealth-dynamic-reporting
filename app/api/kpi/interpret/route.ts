@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateText, Output } from "ai";
 import { z } from "zod";
+import { getModel, getModelId } from "@/lib/ai/gateway";
 
 // ── Output schema ─────────────────────────────────────────────────────────────
 
@@ -96,12 +97,10 @@ ${JSON.stringify(sample, null, 2)}
 
 Return a complete BusinessInsights JSON object.`;
 
-    const model = process.env.AZURE_OPENAI_DEPLOYMENT
-      ? `azure/${process.env.AZURE_OPENAI_DEPLOYMENT}`
-      : "openai/gpt-4o-mini";
+    const modelId = getModelId("default");
 
     const result = await generateText({
-      model,
+      model: getModel("default"),
       system: systemPrompt,
       prompt: userMessage,
       experimental_output: Output.object({ schema: BusinessInsightsSchema }),
@@ -113,7 +112,7 @@ Return a complete BusinessInsights JSON object.`;
     return NextResponse.json({
       insights,
       meta: {
-        model,
+        model: modelId,
         row_count: data.length,
         sample_count: sample.length,
         generated_at: new Date().toISOString(),
