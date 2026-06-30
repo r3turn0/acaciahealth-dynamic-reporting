@@ -58,15 +58,6 @@ export function LoginPage({ onAuthenticated, onConditionalAccessBlocked }: Login
   const [user, setUser] = useState<AuthUser | null>(null);
   const [redirecting, setRedirecting] = useState(false);
 
-  // Auto-redirect after success
-  useEffect(() => {
-    if (step === "complete" && user && !redirecting) {
-      setRedirecting(true);
-      const t = setTimeout(() => onAuthenticated?.(user), 1200);
-      return () => clearTimeout(t);
-    }
-  }, [step, user, redirecting, onAuthenticated]);
-
   async function callValidate(payload: Record<string, string>) {
     const res = await fetch("/api/auth/validate", {
       method: "POST",
@@ -94,7 +85,12 @@ export function LoginPage({ onAuthenticated, onConditionalAccessBlocked }: Login
       setLoading(true);
       try {
         const u = await callValidate({ method: m, token: "mock_entra_token" });
-        if (u) { setUser(u); setStep("complete"); }
+        if (u) {
+          setUser(u);
+          setRedirecting(true);
+          setStep("complete");
+          setTimeout(() => onAuthenticated?.(u), 1200);
+        }
       } catch {
         setError("Connection failed. Please try again.");
       } finally {
@@ -149,7 +145,12 @@ export function LoginPage({ onAuthenticated, onConditionalAccessBlocked }: Login
         mfa_code: totpCode || "mock_approved",
         email: email.trim(),
       });
-      if (u) { setUser(u); setStep("complete"); }
+      if (u) {
+        setUser(u);
+        setRedirecting(true);
+        setStep("complete");
+        setTimeout(() => onAuthenticated?.(u), 1200);
+      }
     } catch {
       setError("Verification failed. Please try again.");
     } finally {
