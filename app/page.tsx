@@ -261,13 +261,13 @@ export default function Home() {
           )}
           {view === "sessions" && (
             <div className="max-w-3xl">
-              <SessionManager />
+              <SessionManager currentUser={authUser} />
             </div>
           )}
           {view === "admin" && (
             <div className="max-w-5xl">
               {authUser.role === "Admin" ? (
-                <SecurityConsole />
+                <SecurityConsole currentUser={authUser} />
               ) : (
                 <AccessDenied
                   requiredRole="Admin"

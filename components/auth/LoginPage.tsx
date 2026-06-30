@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Shield,
   Fingerprint,
@@ -14,11 +14,12 @@ import {
   EyeOff,
   CheckCircle2,
   Heart,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type AuthMethod = "sso" | "passwordless" | "totp" | "push" | "fido2";
-type AuthStep = "method" | "mfa" | "complete" | "blocked" | "stepup";
+type AuthStep = "method" | "credentials" | "mfa" | "complete" | "blocked";
 
 export interface AuthUser {
   id: string;
@@ -38,7 +39,7 @@ interface LoginPageProps {
 }
 
 const RISK_CONTEXT = {
-  device: "MacBook Pro 14\" — Chrome 125",
+  device: "MacBook Pro 14\" \u2014 Chrome 125",
   location: "Los Angeles, CA",
   network: "Corporate VPN (10.0.1.0/24)",
   compliance: "Compliant (Intune)",
@@ -51,8 +52,39 @@ export function LoginPage({ onAuthenticated, onConditionalAccessBlocked }: Login
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totpCode, setTotpCode] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
+
+  // Auto-redirect after success
+  useEffect(() => {
+    if (step === "complete" && user && !redirecting) {
+      setRedirecting(true);
+      const t = setTimeout(() => onAuthenticated?.(user), 1200);
+      return () => clearTimeout(t);
+    }
+  }, [step, user, redirecting, onAuthenticated]);
+
+  async function callValidate(payload: Record<string, string>) {
+    const res = await fetch("/api/auth/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (data.error === "DEVICE_NON_COMPLIANT" || data.error === "NETWORK_NOT_ALLOWED") {
+        onConditionalAccessBlocked?.(data.error);
+        setStep("blocked");
+      } else {
+        setError(data.message ?? "Authentication failed.");
+      }
+      return null;
+    }
+    return data.user as AuthUser;
+  }
 
   async function handleMethodSelect(m: AuthMethod) {
     setMethod(m);
@@ -61,32 +93,49 @@ export function LoginPage({ onAuthenticated, onConditionalAccessBlocked }: Login
     if (m === "sso" || m === "passwordless") {
       setLoading(true);
       try {
-        const res = await fetch("/api/auth/validate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ method: m, token: "mock_entra_token" }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          if (data.error === "DEVICE_NON_COMPLIANT" || data.error === "NETWORK_NOT_ALLOWED") {
-            onConditionalAccessBlocked?.(data.error);
-            setStep("blocked");
-          } else {
-            setError(data.message);
-          }
-        } else {
-          const u = data.user as AuthUser;
-          setUser(u);
-          setStep("complete");
-          onAuthenticated?.(u);
-        }
+        const u = await callValidate({ method: m, token: "mock_entra_token" });
+        if (u) { setUser(u); setStep("complete"); }
       } catch {
         setError("Connection failed. Please try again.");
       } finally {
         setLoading(false);
       }
     } else {
+      // email + password → go to credentials step
+      setStep("credentials");
+    }
+  }
+
+  async function handleCredentialsSubmit() {
+    if (!email.trim() || !password.trim()) {
+      setError("Email and password are required.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      // Validate credentials first (returns partial session without MFA)
+      const res = await fetch("/api/auth/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ method: "credentials", email: email.trim(), password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error === "DEVICE_NON_COMPLIANT" || data.error === "NETWORK_NOT_ALLOWED") {
+          onConditionalAccessBlocked?.(data.error);
+          setStep("blocked");
+        } else {
+          setError(data.message ?? "Invalid credentials.");
+        }
+        return;
+      }
+      // Credentials OK — proceed to MFA
       setStep("mfa");
+    } catch {
+      setError("Connection failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -95,20 +144,12 @@ export function LoginPage({ onAuthenticated, onConditionalAccessBlocked }: Login
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/auth/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ method, mfa_code: totpCode || "mock_approved" }),
+      const u = await callValidate({
+        method: method ?? "totp",
+        mfa_code: totpCode || "mock_approved",
+        email: email.trim(),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.message);
-      } else {
-        const u = data.user as AuthUser;
-        setUser(u);
-        setStep("complete");
-        onAuthenticated?.(u);
-      }
+      if (u) { setUser(u); setStep("complete"); }
     } catch {
       setError("Verification failed. Please try again.");
     } finally {
@@ -145,9 +186,22 @@ export function LoginPage({ onAuthenticated, onConditionalAccessBlocked }: Login
             <MethodSelector
               loading={loading}
               error={error}
-              showPassword={showPassword}
-              onTogglePassword={() => setShowPassword((v) => !v)}
               onSelect={handleMethodSelect}
+            />
+          )}
+          {step === "credentials" && method && (
+            <CredentialsForm
+              method={method}
+              email={email}
+              password={password}
+              showPassword={showPassword}
+              loading={loading}
+              error={error}
+              onEmailChange={setEmail}
+              onPasswordChange={setPassword}
+              onTogglePassword={() => setShowPassword((v) => !v)}
+              onSubmit={handleCredentialsSubmit}
+              onBack={() => { setStep("method"); setError(null); setMethod(null); }}
             />
           )}
           {step === "mfa" && method && (
@@ -158,10 +212,10 @@ export function LoginPage({ onAuthenticated, onConditionalAccessBlocked }: Login
               totpCode={totpCode}
               onTotpChange={setTotpCode}
               onSubmit={handleMfaSubmit}
-              onBack={() => { setStep("method"); setError(null); }}
+              onBack={() => { setStep("credentials"); setError(null); setTotpCode(""); }}
             />
           )}
-          {step === "complete" && user && <AuthSuccess user={user} />}
+          {step === "complete" && user && <AuthSuccess user={user} redirecting={redirecting} />}
           {step === "blocked" && (
             <ConditionalAccessBlocked
               reason="DEVICE_NON_COMPLIANT"
@@ -170,8 +224,16 @@ export function LoginPage({ onAuthenticated, onConditionalAccessBlocked }: Login
           )}
         </div>
 
+        {/* Demo hint */}
+        <div className="mt-4 bg-card/60 border border-border rounded-lg px-4 py-3 text-[11px] text-muted-foreground">
+          <p className="font-medium text-foreground mb-1">Demo credentials</p>
+          <p>admin@acaciahealth.org / admin123 &mdash; <span className="text-primary">Admin</span></p>
+          <p>analyst@acaciahealth.org / analyst123 &mdash; <span className="text-muted-foreground">Analyst</span></p>
+          <p className="mt-1 opacity-70">Or use Azure AD SSO / Passwordless above for instant access.</p>
+        </div>
+
         {/* Security badges */}
-        <div className="flex items-center justify-center gap-4 mt-5">
+        <div className="flex items-center justify-center gap-4 mt-4">
           {[
             { icon: Lock, label: "TLS 1.3" },
             { icon: Shield, label: "HIPAA" },
@@ -193,14 +255,10 @@ export function LoginPage({ onAuthenticated, onConditionalAccessBlocked }: Login
 function MethodSelector({
   loading,
   error,
-  showPassword,
-  onTogglePassword,
   onSelect,
 }: {
   loading: boolean;
   error: string | null;
-  showPassword: boolean;
-  onTogglePassword: () => void;
   onSelect: (m: AuthMethod) => void;
 }) {
   const methods = [
@@ -220,31 +278,13 @@ function MethodSelector({
       badge: "AAL3",
       color: "text-chart-3",
     },
-    {
-      id: "totp" as AuthMethod,
-      icon: Smartphone,
-      label: "Authenticator App (TOTP)",
-      desc: "Microsoft / Google Authenticator code",
-      badge: "AAL2",
-      color: "text-chart-2",
-    },
-    {
-      id: "push" as AuthMethod,
-      icon: Smartphone,
-      label: "Push Notification",
-      desc: "Approve sign-in on registered mobile device",
-      badge: "AAL2",
-      color: "text-chart-2",
-    },
   ];
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h2 className="text-sm font-semibold text-foreground">Secure Sign In</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Zero Trust — MFA required on every session.
-        </p>
+        <p className="text-xs text-muted-foreground mt-0.5">Zero Trust &mdash; MFA required on every session.</p>
       </div>
 
       {error && (
@@ -286,37 +326,143 @@ function MethodSelector({
           <div className="w-full border-t border-border" />
         </div>
         <div className="relative flex justify-center text-[11px]">
-          <span className="px-2 bg-card text-muted-foreground">or continue with email</span>
+          <span className="px-2 bg-card text-muted-foreground">or continue with email + MFA</span>
         </div>
       </div>
 
       <div className="flex flex-col gap-2">
-        <input
-          type="email"
-          placeholder="user@acaciahealth.org"
-          className="bg-muted border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-        />
-        <div className="relative">
-          <input
-            type={showPassword ? "text" : "password"}
-            placeholder="Password"
-            className="w-full bg-muted border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-10"
-          />
+        {[
+          { id: "totp" as AuthMethod, icon: Smartphone, label: "Authenticator App (TOTP)", badge: "AAL2" },
+          { id: "push" as AuthMethod, icon: Smartphone, label: "Push Notification", badge: "AAL2" },
+          { id: "fido2" as AuthMethod, icon: Key, label: "Hardware Key (FIDO2)", badge: "AAL3" },
+        ].map(({ id, icon: Icon, label, badge }) => (
           <button
-            type="button"
-            onClick={onTogglePassword}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+            key={id}
+            onClick={() => onSelect(id)}
+            disabled={loading}
+            className="flex items-center gap-3 px-3.5 py-2.5 rounded-lg border border-border hover:border-primary/40 hover:bg-primary/5 transition-all text-left group disabled:opacity-50"
           >
-            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            <div className="w-7 h-7 rounded bg-muted flex items-center justify-center shrink-0 text-muted-foreground">
+              <Icon className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-sm text-foreground flex-1">{label}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border shrink-0">{badge}</span>
+            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground transition-colors shrink-0" />
           </button>
-        </div>
-        <button
-          onClick={() => onSelect("totp")}
-          className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors mt-1"
-        >
-          Continue
-        </button>
+        ))}
       </div>
+    </div>
+  );
+}
+
+// ── Credentials form ───────────────────────────────────────────────────────────
+
+function CredentialsForm({
+  method,
+  email,
+  password,
+  showPassword,
+  loading,
+  error,
+  onEmailChange,
+  onPasswordChange,
+  onTogglePassword,
+  onSubmit,
+  onBack,
+}: {
+  method: AuthMethod;
+  email: string;
+  password: string;
+  showPassword: boolean;
+  loading: boolean;
+  error: string | null;
+  onEmailChange: (v: string) => void;
+  onPasswordChange: (v: string) => void;
+  onTogglePassword: () => void;
+  onSubmit: () => void;
+  onBack: () => void;
+}) {
+  const emailRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { emailRef.current?.focus(); }, []);
+
+  const mfaLabel: Record<AuthMethod, string> = {
+    totp: "Authenticator App (TOTP)",
+    push: "Push Notification",
+    fido2: "Hardware Key (FIDO2)",
+    sso: "Azure AD SSO",
+    passwordless: "Passkey",
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <button onClick={onBack} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors w-fit">
+        <ChevronRight className="w-3.5 h-3.5 rotate-180" />
+        Back
+      </button>
+
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center shrink-0">
+          <User className="w-4 h-4 text-primary" />
+        </div>
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Enter Credentials</h2>
+          <p className="text-[11px] text-muted-foreground">
+            MFA: <span className="text-foreground font-medium">{mfaLabel[method]}</span>
+          </p>
+        </div>
+      </div>
+
+      {error && (
+        <div className="flex items-start gap-2 bg-destructive/10 border border-destructive/30 rounded-lg p-3">
+          <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+          <p className="text-xs text-destructive">{error}</p>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-foreground">Email</label>
+          <input
+            ref={emailRef}
+            type="email"
+            value={email}
+            onChange={(e) => onEmailChange(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) onSubmit(); }}
+            placeholder="user@acaciahealth.org"
+            className="bg-muted border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-foreground">Password</label>
+          <div className="relative">
+            <input
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => onPasswordChange(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) onSubmit(); }}
+              placeholder="Password"
+              className="w-full bg-muted border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-10"
+            />
+            <button
+              type="button"
+              onClick={onTogglePassword}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <button
+        onClick={onSubmit}
+        disabled={loading || !email.trim() || !password.trim()}
+        className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+      >
+        {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+        Continue to MFA
+      </button>
     </div>
   );
 }
@@ -340,7 +486,7 @@ function MfaChallenge({
   onSubmit: () => void;
   onBack: () => void;
 }) {
-  const config = {
+  const config = ({
     totp: {
       icon: Smartphone,
       title: "Enter Authenticator Code",
@@ -352,7 +498,7 @@ function MfaChallenge({
     push: {
       icon: Smartphone,
       title: "Approve Push Notification",
-      desc: "A sign-in request has been sent to your registered mobile device.",
+      desc: "A sign-in request has been sent to your registered mobile device. Tap Approve when prompted.",
       inputLabel: null,
       placeholder: null,
       cta: "I Approved",
@@ -365,7 +511,7 @@ function MfaChallenge({
       placeholder: null,
       cta: "Activate Key",
     },
-  }[method as "totp" | "push" | "fido2"] ?? {
+  } as Record<string, { icon: typeof Smartphone; title: string; desc: string; inputLabel: string | null; placeholder: string | null; cta: string }>)[method] ?? {
     icon: Shield,
     title: "Multi-Factor Authentication",
     desc: "Complete the MFA challenge.",
@@ -405,13 +551,18 @@ function MfaChallenge({
           <label className="text-xs text-muted-foreground font-medium">{config.inputLabel}</label>
           <input
             type="text"
+            inputMode="numeric"
             placeholder={config.placeholder ?? ""}
             value={totpCode}
             onChange={(e) => onTotpChange(e.target.value.replace(/\D/g, "").slice(0, 6))}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) onSubmit(); }}
             className="bg-muted border border-border rounded-lg px-4 py-3 text-xl font-mono text-center tracking-[0.5em] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             maxLength={7}
+            autoFocus
           />
+          <p className="text-[11px] text-muted-foreground text-center">
+            In demo mode, any 6-digit code is accepted.
+          </p>
         </div>
       )}
 
@@ -427,15 +578,15 @@ function MfaChallenge({
       <p className="text-[11px] text-muted-foreground text-center">
         Authentication Assurance Level:{" "}
         <span className="text-primary font-medium">{method === "fido2" ? "AAL3" : "AAL2"}</span>
-        {" · "}Session expires in <span className="text-primary font-medium">60 min</span>
+        {" \u00b7 "}Session expires in <span className="text-primary font-medium">60 min</span>
       </p>
     </div>
   );
 }
 
-// ── Auth success ──────────────────���───────────────────────────────────────────
+// ── Auth success ───────────────────────────────────────────────────────────────
 
-function AuthSuccess({ user }: { user: AuthUser }) {
+function AuthSuccess({ user, redirecting }: { user: AuthUser; redirecting: boolean }) {
   return (
     <div className="flex flex-col items-center gap-4 py-6">
       <div className="w-14 h-14 rounded-full bg-chart-3/15 border border-chart-3/40 flex items-center justify-center">
@@ -444,14 +595,14 @@ function AuthSuccess({ user }: { user: AuthUser }) {
       <div className="text-center">
         <h2 className="text-sm font-semibold text-foreground">Authentication Successful</h2>
         <p className="text-xs text-muted-foreground mt-1">
-          Signed in as <span className="text-foreground font-medium">{String(user.email)}</span>
+          Signed in as <span className="text-foreground font-medium">{user.email}</span>
         </p>
       </div>
       <div className="w-full bg-muted rounded-lg p-3 flex flex-col gap-1.5 text-[11px]">
         {[
-          ["Role", String(user.role)],
-          ["AAL", String(user.aal)],
-          ["MFA Method", String(user.mfa_method)],
+          ["Role", user.role],
+          ["AAL", user.aal],
+          ["MFA Method", user.mfa_method],
           ["Device", "Compliant (Intune)"],
           ["Session", "60 min, CAE enabled"],
         ].map(([k, v]) => (
@@ -461,20 +612,26 @@ function AuthSuccess({ user }: { user: AuthUser }) {
           </div>
         ))}
       </div>
+      {redirecting && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          Redirecting to dashboard...
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Conditional access blocked ────────────────────────────────────────────────
+// ── Conditional access blocked ─────────────────────────────────────────────────
 
 function ConditionalAccessBlocked({ reason, onRetry }: { reason: string; onRetry: () => void }) {
-  const config = {
+  const config = ({
     DEVICE_NON_COMPLIANT: {
       title: "Device Not Compliant",
       desc: "Your device does not meet the Intune compliance policy required to access this system.",
       actions: [
         { label: "Register Device", variant: "primary" },
-        { label: "Learn More", variant: "secondary" },
+        { label: "Retry", variant: "secondary", onClick: onRetry },
       ],
     },
     NETWORK_NOT_ALLOWED: {
@@ -485,7 +642,7 @@ function ConditionalAccessBlocked({ reason, onRetry }: { reason: string; onRetry
         { label: "Retry", variant: "secondary", onClick: onRetry },
       ],
     },
-  }[reason] ?? {
+  } as Record<string, { title: string; desc: string; actions: { label: string; variant: string; onClick?: () => void }[] }>)[reason] ?? {
     title: "Access Blocked",
     desc: "Your access attempt did not meet the required security conditions.",
     actions: [{ label: "Retry", variant: "secondary", onClick: onRetry }],
@@ -507,7 +664,7 @@ function ConditionalAccessBlocked({ reason, onRetry }: { reason: string; onRetry
         {config.actions.map((a) => (
           <button
             key={a.label}
-            onClick={(a as { onClick?: () => void }).onClick ?? onRetry}
+            onClick={a.onClick ?? onRetry}
             className={cn(
               "flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors",
               a.variant === "primary"

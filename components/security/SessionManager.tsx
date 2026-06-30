@@ -17,6 +17,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { AuthUser } from "@/components/auth/LoginPage";
 
 interface Session {
   id: string;
@@ -233,7 +234,7 @@ function SessionCard({
 
 // ── Main SessionManager ───────────────────────────────────────────────────────
 
-export function SessionManager() {
+export function SessionManager({ currentUser }: { currentUser?: AuthUser }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [revoking, setRevoking] = useState<string | null>(null);
@@ -243,7 +244,8 @@ export function SessionManager() {
   const loadSessions = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/sessions");
+      const params = currentUser?.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
+      const res = await fetch(`/api/auth/sessions${params}`);
       const data = await res.json();
       setSessions(data.sessions ?? []);
     } catch {
