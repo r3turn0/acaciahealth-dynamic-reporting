@@ -16,7 +16,6 @@ import {
   FlaskConical,
   MonitorSmartphone,
   ShieldAlert,
-  FileSpreadsheet,
 } from "lucide-react";
 
 const navItems = [
@@ -26,7 +25,7 @@ const navItems = [
   { icon: BarChart3,       label: "KPI Explorer",       id: "kpi",       group: "main" },
   { icon: Database,        label: "Schema Intelligence",id: "schema",    group: "main" },
   { icon: FlaskConical,    label: "Metadata Engine",    id: "metadata",  group: "main" },
-  { icon: FileSpreadsheet, label: "KPI Scorecard",       id: "scorecard", group: "main" },
+
   { icon: Bookmark,        label: "Saved Reports",      id: "saved",     group: "reports" },
   { icon: ShieldCheck,     label: "Audit & Monitoring", id: "audit",     group: "reports" },
   { icon: MonitorSmartphone, label: "Session Manager",  id: "sessions",  group: "security", adminOnly: false },
