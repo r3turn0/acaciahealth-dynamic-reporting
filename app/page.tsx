@@ -11,6 +11,7 @@ import { SavedReports } from "@/components/studio/SavedReports";
 import type { LoadedReport } from "@/components/studio/ReportStudio";
 import { DataExplorer } from "@/components/data/DataExplorer";
 import { MetadataReportEngine } from "@/components/schema/MetadataReportEngine";
+import { KpiScorecardEngine } from "@/components/schema/KpiScorecardEngine";
 import { LoginPage } from "@/components/auth/LoginPage";
 import type { AuthUser } from "@/components/auth/LoginPage";
 import { SessionManager } from "@/components/security/SessionManager";
@@ -18,7 +19,7 @@ import { SecurityConsole } from "@/components/admin/SecurityConsole";
 import { AuditDashboard } from "@/components/audit/AuditDashboard";
 import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
 
-type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "metadata" | "saved" | "audit" | "settings" | "sessions" | "admin";
+type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "metadata" | "scorecard" | "saved" | "audit" | "settings" | "sessions" | "admin";
 
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   dashboard: {
@@ -44,6 +45,10 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   metadata: {
     title: "Metadata Engine",
     subtitle: "Upload metadata.json to build schema model, discover fields, resolve joins, and generate ReportPlans",
+  },
+  scorecard: {
+    title: "KPI Scorecard",
+    subtitle: "KPI reports and schemas generated from KPI Scorecard.xlsx — all service lines and domains",
   },
   saved: {
     title: "Saved Reports",
@@ -249,6 +254,13 @@ export default function Home() {
           {view === "metadata" && (
             <div className="max-w-5xl">
               <MetadataReportEngine />
+            </div>
+          )}
+          {view === "scorecard" && (
+            <div className="max-w-5xl">
+              <div className="bg-card border border-border rounded-lg p-5">
+                <KpiScorecardEngine />
+              </div>
             </div>
           )}
           {view === "audit" && (
