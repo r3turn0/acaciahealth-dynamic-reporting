@@ -18,6 +18,7 @@ import { SessionManager } from "@/components/security/SessionManager";
 import { SecurityConsole } from "@/components/admin/SecurityConsole";
 import { AuditDashboard } from "@/components/audit/AuditDashboard";
 import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
+import { useSession, signOut } from "next-auth/react";
 
 type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "metadata" | "saved" | "audit" | "settings" | "sessions" | "admin";
 
@@ -79,6 +80,8 @@ export default function Home() {
   // null = not yet checked, false = unauthenticated, AuthUser = authenticated
   const [authUser, setAuthUser] = useState<AuthUser | null | false>(null);
 
+  const { data: nextAuthSession, status: nextAuthStatus } = useSession();
+
   useEffect(() => {
     setTodayLabel(
       new Date().toLocaleDateString("en-US", {
@@ -87,7 +90,7 @@ export default function Home() {
         year: "numeric",
       })
     );
-    // Rehydrate session from sessionStorage
+    // Rehydrate demo session from sessionStorage
     try {
       const stored = sessionStorage.getItem(SESSION_KEY);
       setAuthUser(stored ? (JSON.parse(stored) as AuthUser) : false);
@@ -95,6 +98,25 @@ export default function Home() {
       setAuthUser(false);
     }
   }, []);
+
+  // If a real Azure AD session exists, synthesise an AuthUser from it
+  useEffect(() => {
+    if (nextAuthStatus === "authenticated" && nextAuthSession?.user && authUser === false) {
+      const u: AuthUser = {
+        id: (nextAuthSession.user as { id?: string }).id ?? nextAuthSession.user.email ?? "azure-ad",
+        name: nextAuthSession.user.name ?? nextAuthSession.user.email ?? "User",
+        email: nextAuthSession.user.email ?? "",
+        role: ((nextAuthSession as { roles?: string[] }).roles ?? []).includes("Admin") ? "Admin" : "Analyst",
+        department: "Azure AD",
+        mfa_method: "azure_ad",
+        aal: "AAL2",
+        device_compliant: true,
+        last_login: new Date().toISOString(),
+      };
+      setAuthUser(u);
+      try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(u)); } catch { /* ignore */ }
+    }
+  }, [nextAuthStatus, nextAuthSession, authUser]);
 
   function handleAuthenticated(u: AuthUser) {
     setAuthUser(u);
@@ -105,16 +127,24 @@ export default function Home() {
   function handleSignOut() {
     setAuthUser(false);
     try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+    // Sign out of NextAuth session too if one exists
+    if (nextAuthSession) {
+      signOut({ callbackUrl: "/login" });
+      return;
+    }
     setView("dashboard");
   }
 
-  // Null = hydrating, show nothing to avoid flash
-  if (authUser === null) return null;
+  // Null = hydrating; wait for both storage and NextAuth status to resolve
+  if (authUser === null || nextAuthStatus === "loading") return null;
 
   // Not authenticated — show full-page login
-  if (authUser === false) {
+  if (authUser === false && nextAuthStatus !== "authenticated") {
     return <LoginPage onAuthenticated={handleAuthenticated} />;
   }
+
+  // After this point authUser is always a real AuthUser (narrowed for TypeScript)
+  const user = authUser as AuthUser;
 
   const { title, subtitle } = VIEW_TITLES[view];
 
@@ -136,7 +166,7 @@ export default function Home() {
       >
         <Sidebar
           activeView={view}
-          userRole={authUser.role}
+          userRole={user.role}
           onNavigate={(id) => {
             setView(id as View);
             setSidebarOpen(false);
@@ -177,11 +207,11 @@ export default function Home() {
             {/* User avatar + sign out */}
             <div className="flex items-center gap-2">
               <div className="hidden sm:flex flex-col items-end">
-                <span className="text-xs font-medium text-foreground leading-none">{authUser.name}</span>
-                <span className="text-[10px] text-muted-foreground mt-0.5">{authUser.role} · {authUser.aal}</span>
+                <span className="text-xs font-medium text-foreground leading-none">{user.name}</span>
+                <span className="text-[10px] text-muted-foreground mt-0.5">{user.role} · {user.aal}</span>
               </div>
               <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
-                {authUser.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                {user.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}
               </div>
               <button
                 onClick={handleSignOut}
@@ -261,17 +291,17 @@ export default function Home() {
           )}
           {view === "sessions" && (
             <div className="max-w-3xl">
-              <SessionManager currentUser={authUser} />
+              <SessionManager currentUser={user} />
             </div>
           )}
           {view === "admin" && (
             <div className="max-w-5xl">
-              {authUser.role === "Admin" ? (
-                <SecurityConsole currentUser={authUser} />
+              {user.role === "Admin" ? (
+                <SecurityConsole currentUser={user} />
               ) : (
                 <AccessDenied
                   requiredRole="Admin"
-                  currentRole={authUser.role}
+                  currentRole={user.role}
                   onBack={() => setView("dashboard")}
                 />
               )}

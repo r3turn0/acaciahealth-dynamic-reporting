@@ -2,32 +2,54 @@ import sql from "mssql";
 
 let pool: sql.ConnectionPool | null = null;
 
-// mssql does not accept connectionString inside config — pass it directly to sql.connect()
-// server is required by the type but unused when SQL_CONNECTION_STRING is provided
-const config: sql.config = {
-  server: process.env.SQL_SERVER ?? "localhost",
-  options: {
-    encrypt: true,
-    trustServerCertificate: false,
-    enableArithAbort: true,
-    readOnlyIntent: true,
-  },
-  requestTimeout: 30000,
-  connectionTimeout: 15000,
-};
+// Supports both a full SQL_CONNECTION_STRING and individual DB_HOST/DB_NAME/DB_USER/DB_PASS vars.
+// Individual vars take precedence when all four are present, matching the deployment spec.
+function buildConfig(): sql.config {
+  const host = process.env.DB_HOST;
+  const db   = process.env.DB_NAME;
+  const user = process.env.DB_USER;
+  const pass = process.env.DB_PASS;
+
+  if (host && db && user && pass) {
+    return {
+      server: host,
+      database: db,
+      user,
+      password: pass,
+      options: {
+        encrypt: true,               // required for Azure SQL
+        trustServerCertificate: false,
+        enableArithAbort: true,
+        readOnlyIntent: true,        // enforce read-only at driver level
+      },
+      requestTimeout: 30000,
+      connectionTimeout: 15000,
+    };
+  }
+
+  // Fallback: full connection string (e.g. SQL_CONNECTION_STRING) or localhost defaults
+  return {
+    server: process.env.SQL_SERVER ?? "localhost",
+    options: {
+      encrypt: true,
+      trustServerCertificate: false,
+      enableArithAbort: true,
+      readOnlyIntent: true,
+    },
+    requestTimeout: 30000,
+    connectionTimeout: 15000,
+  };
+}
 
 async function getPool(): Promise<sql.ConnectionPool> {
   if (pool && pool.connected) return pool;
   if (pool) {
-    try {
-      await pool.close();
-    } catch {
-      // ignore close errors
-    }
+    try { await pool.close(); } catch { /* ignore close errors */ }
   }
-  // When SQL_CONNECTION_STRING is set, pass it directly; otherwise use config object
-  const connArg = process.env.SQL_CONNECTION_STRING ?? config;
-  pool = await sql.connect(connArg as string);
+  // Allow a raw connection string override for legacy deployments
+  const connArg: string | sql.config =
+    process.env.SQL_CONNECTION_STRING ?? buildConfig();
+  pool = await sql.connect(connArg as sql.config);
   return pool;
 }
 
