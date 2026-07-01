@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -14,14 +14,18 @@ import {
   Download,
   Lightbulb,
   Loader2,
+  MessageSquare,
   RefreshCw,
+  Search,
+  Send,
   ShieldAlert,
   Sparkles,
   TrendingUp,
+  X,
 } from "lucide-react";
 import { format } from "date-fns";
 import type { BusinessInsights } from "@/app/api/kpi/interpret/route";
-import type { SavedReport } from "@/lib/agents/reportRegistry";
+import type { SavedReport } from "@/components/studio/SavedReports";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +35,13 @@ interface InterpretMeta {
   sample_count: number;
   generated_at: string;
   fallback?: boolean;
+}
+
+interface FollowUpMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  loading?: boolean;
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -95,7 +106,11 @@ function AlertCard({ alert }: { alert: BusinessInsights["alerts"][0] }) {
   );
 }
 
-function InsightSection({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
+function InsightSection({ title, icon: Icon, children }: {
+  title: string;
+  icon: React.ElementType;
+  children: React.ReactNode;
+}) {
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
       <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border bg-muted/20">
@@ -106,8 +121,6 @@ function InsightSection({ title, icon: Icon, children }: { title: string; icon: 
     </div>
   );
 }
-
-// ── Raw JSON panel ────────────────────────────────────────────────────────────
 
 function RawJsonPanel({ insights }: { insights: BusinessInsights }) {
   const [copied, setCopied] = useState(false);
@@ -132,7 +145,9 @@ function RawJsonPanel({ insights }: { insights: BusinessInsights }) {
   return (
     <InsightSection title="Business Insights JSON" icon={BookOpen}>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-muted-foreground">Raw object — pipe this into downstream systems, dashboards, or reports.</p>
+        <p className="text-xs text-muted-foreground">
+          Raw object — pipe this into downstream systems, dashboards, or reports.
+        </p>
         <div className="flex items-center gap-2">
           <button
             onClick={download}
@@ -156,15 +171,165 @@ function RawJsonPanel({ insights }: { insights: BusinessInsights }) {
   );
 }
 
+// ── Follow-up thread ──────────────────────────────────────────────────────────
+
+function FollowUpThread({
+  insights,
+  reportName,
+  kpi,
+}: {
+  insights: BusinessInsights;
+  reportName: string;
+  kpi: string;
+}) {
+  const [messages, setMessages] = useState<FollowUpMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const SUGGESTIONS = [
+    "Which branch needs the most attention?",
+    "What caused the top alert?",
+    "How can we improve the lowest-performing segment?",
+    "What should leadership focus on this week?",
+  ];
+
+  async function ask(question: string) {
+    if (!question.trim() || loading) return;
+    const userMsg: FollowUpMessage = { id: Date.now().toString(), role: "user", content: question };
+    const placeholder: FollowUpMessage = { id: `${Date.now()}-loading`, role: "assistant", content: "", loading: true };
+    setMessages((prev) => [...prev, userMsg, placeholder]);
+    setInput("");
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/kpi/followup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, insights, report_name: reportName, kpi }),
+      });
+      const data = await res.json();
+      const answer = data.answer ?? "Sorry, I could not generate an answer.";
+      setMessages((prev) =>
+        prev.map((m) => (m.id === placeholder.id ? { ...m, content: answer, loading: false } : m))
+      );
+    } catch {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === placeholder.id
+            ? { ...m, content: "Failed to get a response. Please try again.", loading: false }
+            : m
+        )
+      );
+    } finally {
+      setLoading(false);
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg overflow-hidden">
+      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border bg-muted/20">
+        <MessageSquare className="w-4 h-4 text-primary" />
+        <h3 className="text-sm font-semibold text-foreground">Ask Follow-Up Questions</h3>
+        {messages.length > 0 && (
+          <span className="ml-auto text-[10px] text-muted-foreground">
+            {Math.ceil(messages.filter((m) => m.role === "user").length)} question{messages.filter((m) => m.role === "user").length !== 1 ? "s" : ""} asked
+          </span>
+        )}
+      </div>
+
+      <div className="p-4 flex flex-col gap-3">
+        {/* Suggestion chips — only shown when no messages yet */}
+        {messages.length === 0 && (
+          <div className="flex flex-wrap gap-2">
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                onClick={() => ask(s)}
+                className="text-xs text-muted-foreground hover:text-primary border border-border hover:border-primary/40 rounded-full px-3 py-1 transition-colors bg-muted/30 hover:bg-primary/5"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Message thread */}
+        {messages.length > 0 && (
+          <div className="flex flex-col gap-3 max-h-80 overflow-y-auto pr-1">
+            {messages.map((m) => (
+              <div
+                key={m.id}
+                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed ${
+                    m.role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted border border-border text-foreground"
+                  }`}
+                >
+                  {m.loading ? (
+                    <span className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Thinking...
+                    </span>
+                  ) : (
+                    m.content
+                  )}
+                </div>
+              </div>
+            ))}
+            <div ref={bottomRef} />
+          </div>
+        )}
+
+        {/* Input row */}
+        <div className="flex gap-2 items-center mt-1">
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                e.preventDefault();
+                ask(input);
+              }
+            }}
+            placeholder="Ask a follow-up question about this report..."
+            disabled={loading}
+            className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors disabled:opacity-60"
+          />
+          <button
+            onClick={() => ask(input)}
+            disabled={loading || !input.trim()}
+            className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            aria-label="Send"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function KpiInterpreter() {
   const [reports, setReports] = useState<SavedReport[] | null>(null);
   const [loadingReports, setLoadingReports] = useState(false);
   const [selectedReport, setSelectedReport] = useState<SavedReport | null>(null);
+  const [search, setSearch] = useState("");
+  const [filterKpi, setFilterKpi] = useState("all");
   const [dateRange, setDateRange] = useState(() => {
-    // Lazy initializer — only runs on the client, never during SSR,
-    // so the server and client always start with the same empty strings.
     if (typeof window === "undefined") return { start: "", end: "" };
     const end = new Date();
     const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -179,7 +344,6 @@ export function KpiInterpreter() {
   const [showJson, setShowJson] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load saved reports from registry
   const loadReports = useCallback(async () => {
     setLoadingReports(true);
     try {
@@ -193,7 +357,22 @@ export function KpiInterpreter() {
     }
   }, []);
 
-  // Run the AI interpretation
+  // Derived filter
+  const allKpis = reports
+    ? Array.from(new Set(reports.map((r) => r.kpi).filter(Boolean))).sort()
+    : [];
+
+  const filteredReports = (reports ?? []).filter((r) => {
+    const q = search.toLowerCase();
+    const matchesSearch =
+      !q ||
+      r.name.toLowerCase().includes(q) ||
+      r.kpi?.toLowerCase().includes(q) ||
+      r.description?.toLowerCase().includes(q);
+    const matchesKpi = filterKpi === "all" || r.kpi === filterKpi;
+    return matchesSearch && matchesKpi;
+  });
+
   async function interpret() {
     if (!selectedReport) return;
     setInterpreting(true);
@@ -202,7 +381,6 @@ export function KpiInterpreter() {
     setError(null);
 
     try {
-      // First, re-execute the report to get fresh data to interpret
       const runRes = await fetch("/api/report/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -218,7 +396,6 @@ export function KpiInterpreter() {
       const rows: Record<string, unknown>[] = runJson.data ?? [];
       const columns: string[] = rows.length > 0 ? Object.keys(rows[0]) : [];
 
-      // Then call the interpreter
       const intRes = await fetch("/api/kpi/interpret", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -234,14 +411,14 @@ export function KpiInterpreter() {
       const intJson = await intRes.json();
       setInsights(intJson.insights);
       setMeta(intJson.meta);
-    } catch (err) {
+    } catch {
       setError("Interpretation failed. Please try again.");
     } finally {
       setInterpreting(false);
     }
   }
 
-  // ── Render: report selector panel ─────────────────────────────────────────
+  // ── Empty state ────────────────────────────────────────────────────────────
 
   if (!reports) {
     return (
@@ -252,7 +429,8 @@ export function KpiInterpreter() {
         <div className="text-center">
           <p className="text-sm font-medium text-foreground">KPI Interpreter</p>
           <p className="text-xs text-muted-foreground mt-1 max-w-xs leading-relaxed">
-            Load your saved reports, select one, and the AI will generate a structured business insights JSON with trends, alerts, and recommendations.
+            Load your saved reports, select one, and the AI will generate a structured business
+            insights JSON with trends, alerts, and recommendations.
           </p>
         </div>
         <button
@@ -267,7 +445,7 @@ export function KpiInterpreter() {
     );
   }
 
-  // ── Render: report list + configuration ───────────────────────────────────
+  // ── Main view ──────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col gap-5">
@@ -285,11 +463,57 @@ export function KpiInterpreter() {
           </button>
         </div>
 
+        {/* Search + KPI filter */}
+        <div className="flex gap-2 mb-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search reports..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-muted border border-border rounded-md pl-8 pr-7 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          {allKpis.length > 1 && (
+            <select
+              value={filterKpi}
+              onChange={(e) => setFilterKpi(e.target.value)}
+              className="bg-muted border border-border rounded-md px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="all">All KPIs</option>
+              {allKpis.map((k) => (
+                <option key={k} value={k} className="capitalize">{k}</option>
+              ))}
+            </select>
+          )}
+        </div>
+
         {reports.length === 0 ? (
-          <p className="text-xs text-muted-foreground py-4 text-center">No saved reports found. Create one in Report Studio first.</p>
+          <p className="text-xs text-muted-foreground py-4 text-center">
+            No saved reports found. Create one in Report Studio first.
+          </p>
+        ) : filteredReports.length === 0 ? (
+          <div className="flex items-center justify-between py-4 px-2">
+            <p className="text-xs text-muted-foreground">No reports match your search.</p>
+            <button
+              onClick={() => { setSearch(""); setFilterKpi("all"); }}
+              className="text-xs text-primary hover:text-primary/80 underline underline-offset-2"
+            >
+              Clear
+            </button>
+          </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {reports.map((r) => (
+            {filteredReports.map((r) => (
               <button
                 key={r.id}
                 onClick={() => { setSelectedReport(r); setInsights(null); }}
@@ -302,10 +526,14 @@ export function KpiInterpreter() {
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{r.name}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{r.description || r.prompt}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                      {r.description || r.prompt}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 capitalize">{r.kpi}</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 capitalize">
+                      {r.kpi}
+                    </span>
                     <span className="text-[10px] text-muted-foreground">{r.run_count} runs</span>
                   </div>
                 </div>
@@ -394,9 +622,13 @@ export function KpiInterpreter() {
               {insights.headline_metric && (
                 <div className="shrink-0 sm:w-52">
                   <div className="bg-primary/8 border border-primary/25 rounded-lg p-4 text-center">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">{insights.headline_metric.label}</p>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">
+                      {insights.headline_metric.label}
+                    </p>
                     <p className="text-3xl font-bold text-primary mt-1">{insights.headline_metric.value}</p>
-                    <p className="text-[11px] text-muted-foreground mt-1 leading-snug">{insights.headline_metric.context}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
+                      {insights.headline_metric.context}
+                    </p>
                   </div>
                 </div>
               )}
@@ -482,6 +714,13 @@ export function KpiInterpreter() {
 
           {/* Raw JSON panel */}
           {showJson && <RawJsonPanel insights={insights} />}
+
+          {/* Follow-up questions */}
+          <FollowUpThread
+            insights={insights}
+            reportName={selectedReport?.name ?? ""}
+            kpi={selectedReport?.kpi ?? ""}
+          />
         </div>
       )}
     </div>

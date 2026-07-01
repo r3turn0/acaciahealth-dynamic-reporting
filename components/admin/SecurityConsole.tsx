@@ -22,6 +22,7 @@ import {
   Database,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { AuthUser } from "@/components/auth/LoginPage";
 
 type AdminTab = "rbac" | "policies" | "allowlist" | "pam" | "breakglass";
 
@@ -532,7 +533,7 @@ function BreakGlassPanel() {
 
 // ── Main SecurityConsole ──────────────────────────────────────────────────────
 
-export function SecurityConsole() {
+export function SecurityConsole({ currentUser }: { currentUser?: AuthUser }) {
   const [tab, setTab] = useState<AdminTab>("rbac");
   const [data, setData] = useState<{ roles: Role[]; users: User[]; ca_policies: CaPolicy[] } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -558,7 +559,7 @@ export function SecurityConsole() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-base font-semibold text-foreground">Security Console</h2>
             <span className="text-[10px] px-2 py-0.5 rounded border border-destructive/40 text-destructive bg-destructive/8 font-medium">
               Privileged — AAL3
@@ -566,6 +567,11 @@ export function SecurityConsole() {
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
             Manage roles, policies, access controls, and privileged operations. All changes are immutably audited.
+            {currentUser && (
+              <span className="ml-1 text-foreground font-medium">
+                Signed in as {currentUser.name} ({currentUser.email})
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">

@@ -2,8 +2,10 @@ import sql from "mssql";
 
 let pool: sql.ConnectionPool | null = null;
 
+// mssql does not accept connectionString inside config — pass it directly to sql.connect()
+// server is required by the type but unused when SQL_CONNECTION_STRING is provided
 const config: sql.config = {
-  connectionString: process.env.SQL_CONNECTION_STRING,
+  server: process.env.SQL_SERVER ?? "localhost",
   options: {
     encrypt: true,
     trustServerCertificate: false,
@@ -23,7 +25,9 @@ async function getPool(): Promise<sql.ConnectionPool> {
       // ignore close errors
     }
   }
-  pool = await sql.connect(config);
+  // When SQL_CONNECTION_STRING is set, pass it directly; otherwise use config object
+  const connArg = process.env.SQL_CONNECTION_STRING ?? config;
+  pool = await sql.connect(connArg as string);
   return pool;
 }
 

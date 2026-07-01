@@ -11,6 +11,7 @@ import { SavedReports } from "@/components/studio/SavedReports";
 import type { LoadedReport } from "@/components/studio/ReportStudio";
 import { DataExplorer } from "@/components/data/DataExplorer";
 import { MetadataReportEngine } from "@/components/schema/MetadataReportEngine";
+
 import { LoginPage } from "@/components/auth/LoginPage";
 import type { AuthUser } from "@/components/auth/LoginPage";
 import { SessionManager } from "@/components/security/SessionManager";
@@ -45,6 +46,7 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
     title: "Metadata Engine",
     subtitle: "Upload metadata.json to build schema model, discover fields, resolve joins, and generate ReportPlans",
   },
+
   saved: {
     title: "Saved Reports",
     subtitle: "Your saved report library — load, re-run, or delete",
@@ -174,7 +176,7 @@ export default function Home() {
             </button>
             {/* User avatar + sign out */}
             <div className="flex items-center gap-2">
-              <div className="flex flex-col items-end hidden sm:flex">
+              <div className="hidden sm:flex flex-col items-end">
                 <span className="text-xs font-medium text-foreground leading-none">{authUser.name}</span>
                 <span className="text-[10px] text-muted-foreground mt-0.5">{authUser.role} · {authUser.aal}</span>
               </div>
@@ -251,6 +253,7 @@ export default function Home() {
               <MetadataReportEngine />
             </div>
           )}
+
           {view === "audit" && (
             <div className="max-w-5xl">
               <AuditDashboard />
@@ -258,13 +261,13 @@ export default function Home() {
           )}
           {view === "sessions" && (
             <div className="max-w-3xl">
-              <SessionManager />
+              <SessionManager currentUser={authUser} />
             </div>
           )}
           {view === "admin" && (
             <div className="max-w-5xl">
               {authUser.role === "Admin" ? (
-                <SecurityConsole />
+                <SecurityConsole currentUser={authUser} />
               ) : (
                 <AccessDenied
                   requiredRole="Admin"

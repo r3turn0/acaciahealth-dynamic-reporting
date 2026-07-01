@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Bookmark } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Bookmark, Check, Loader2, X } from "lucide-react";
 import { AskAI } from "./AskAI";
 import { SQLEditor } from "./SQLEditor";
 import { QueryExplanation } from "./QueryExplanation";
@@ -65,6 +65,14 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
     prompt: string;
     kpi: string;
   } | null>(null);
+
+  // Inline save modal state
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveModalName, setSaveModalName] = useState("");
+  const [saveModalDesc, setSaveModalDesc] = useState("");
+  const [saveModalSaving, setSaveModalSaving] = useState(false);
+  const [saveModalDone, setSaveModalDone] = useState(false);
+  const saveNameRef = useRef<HTMLInputElement>(null);
 
   // Sync when an external saved report is pushed in after initial render
   useEffect(() => {
@@ -158,6 +166,43 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
     setTab("saved");
   }
 
+  function openSaveModal() {
+    if (!sql.trim()) return;
+    setSaveModalName(
+      currentPlan?.kpi_detected ? `${currentPlan.kpi_detected} Report` : "Custom Report"
+    );
+    setSaveModalDesc("");
+    setSaveModalDone(false);
+    setShowSaveModal(true);
+    setTimeout(() => saveNameRef.current?.focus(), 50);
+  }
+
+  async function submitSaveModal() {
+    if (!saveModalName.trim() || saveModalSaving) return;
+    setSaveModalSaving(true);
+    try {
+      const res = await fetch("/api/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: saveModalName.trim(),
+          description: saveModalDesc.trim(),
+          prompt: currentPlan?.explanation ?? "",
+          sql,
+          kpi: currentPlan?.kpi_detected ?? "custom",
+          tags: currentPlan?.kpi_detected ? [currentPlan.kpi_detected] : [],
+          created_by: "analyst",
+        }),
+      });
+      if (res.ok) {
+        setSaveModalDone(true);
+        setTimeout(() => setShowSaveModal(false), 1400);
+      }
+    } finally {
+      setSaveModalSaving(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 max-w-5xl">
       {/* Tab bar */}
@@ -230,14 +275,102 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
           {result && (
             <div className="flex flex-col gap-3">
               <ResultsTable result={result} />
+
               {/* Save button */}
               <button
-                onClick={triggerSave}
+                onClick={openSaveModal}
                 className="self-start flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded border border-border hover:border-primary/40"
               >
                 <Bookmark className="w-3.5 h-3.5" />
                 Save this report
               </button>
+            </div>
+          )}
+
+          {/* Inline save modal */}
+          {showSaveModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm">
+              <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm mx-4 p-5 flex flex-col gap-4">
+                {saveModalDone ? (
+                  <div className="flex flex-col items-center gap-3 py-4">
+                    <div className="w-10 h-10 rounded-full bg-chart-1/15 border border-chart-1/30 flex items-center justify-center">
+                      <Check className="w-5 h-5 text-chart-1" />
+                    </div>
+                    <p className="text-sm font-medium text-foreground">Report saved</p>
+                    <p className="text-xs text-muted-foreground text-center">
+                      &ldquo;{saveModalName}&rdquo; has been added to your Saved Reports.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Bookmark className="w-4 h-4 text-primary" />
+                        <h3 className="text-sm font-semibold text-foreground">Save Report</h3>
+                      </div>
+                      <button
+                        onClick={() => setShowSaveModal(false)}
+                        className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-foreground">Report name</label>
+                        <input
+                          ref={saveNameRef}
+                          type="text"
+                          value={saveModalName}
+                          onChange={(e) => setSaveModalName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) submitSaveModal(); }}
+                          placeholder="e.g. Monthly Admissions by Branch"
+                          className="bg-muted border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-foreground">Description <span className="text-muted-foreground font-normal">(optional)</span></label>
+                        <input
+                          type="text"
+                          value={saveModalDesc}
+                          onChange={(e) => setSaveModalDesc(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) submitSaveModal(); }}
+                          placeholder="What does this report show?"
+                          className="bg-muted border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                      {currentPlan?.kpi_detected && (
+                        <p className="text-[11px] text-muted-foreground">
+                          KPI: <span className="text-primary font-mono">{currentPlan.kpi_detected}</span>
+                          {" "}&middot; tag will be added automatically
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        onClick={submitSaveModal}
+                        disabled={saveModalSaving || !saveModalName.trim()}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {saveModalSaving ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Bookmark className="w-3.5 h-3.5" />
+                        )}
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setShowSaveModal(false)}
+                        className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>

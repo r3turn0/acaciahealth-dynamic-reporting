@@ -109,7 +109,7 @@ function StatusRow({
       <div className="flex items-center gap-1.5">
         <span className="text-xs text-foreground capitalize">{value}</span>
         {warning ? (
-          <AlertCircle className="w-3.5 h-3.5 text-chart-5" title={warningText} />
+          <span title={warningText}><AlertCircle className="w-3.5 h-3.5 text-chart-5" /></span>
         ) : ok ? (
           <CheckCircle2 className="w-3.5 h-3.5 text-chart-3" />
         ) : (

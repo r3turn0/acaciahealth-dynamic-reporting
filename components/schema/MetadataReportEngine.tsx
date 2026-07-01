@@ -181,7 +181,25 @@ export function MetadataReportEngine() {
 
   function copyPlan() {
     if (!reportPlan) return;
-    navigator.clipboard.writeText(JSON.stringify(reportPlan, null, 2));
+    const text = JSON.stringify(reportPlan, null, 2);
+
+    const tryExecCommand = () => {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.cssText = "position:fixed;top:-9999px;left:-9999px;opacity:0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try { document.execCommand("copy"); } catch { /* ignore */ }
+      document.body.removeChild(ta);
+    };
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(tryExecCommand);
+    } else {
+      tryExecCommand();
+    }
+
     setPlanCopied(true);
     setTimeout(() => setPlanCopied(false), 1500);
   }

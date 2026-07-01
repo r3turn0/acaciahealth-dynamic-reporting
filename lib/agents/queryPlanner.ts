@@ -9,6 +9,7 @@ import { z } from "zod";
 import schemaConfig from "../config/schemaConfig.json";
 import kpiConfig from "../config/kpiConfig.json";
 import semanticLayer from "../config/semanticLayer.json";
+import { getModel, getModelId } from "../ai/gateway";
 
 // ── Output schema ─────────────────────────────────────────────────────────────
 
@@ -112,12 +113,8 @@ User role: ${role}
 Return a structured QueryPlan object.
 `.trim();
 
-  const model = process.env.AZURE_OPENAI_DEPLOYMENT
-    ? `azure/${process.env.AZURE_OPENAI_DEPLOYMENT}`
-    : "openai/gpt-4o-mini";
-
   const result = await generateText({
-    model,
+    model: getModel("default"),
     system: buildSystemPrompt(),
     prompt: userMessage,
     experimental_output: Output.object({ schema: QueryPlanSchema }),
