@@ -6,6 +6,7 @@ import { AskAI } from "./AskAI";
 import { SQLEditor } from "./SQLEditor";
 import { QueryExplanation } from "./QueryExplanation";
 import { ResultsTable } from "./ResultsTable";
+import { PostQueryAnalytics } from "./PostQueryAnalytics";
 import { SavedReports } from "./SavedReports";
 import { VisualQueryBuilder } from "./VisualQueryBuilder";
 import type { QueryPlan } from "./AskAI";
@@ -275,6 +276,9 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
           {result && (
             <div className="flex flex-col gap-3">
               <ResultsTable result={result} />
+
+              {/* Post-Query Analytics Engine */}
+              <PostQueryAnalytics result={result} />
 
               {/* Save button */}
               <button
