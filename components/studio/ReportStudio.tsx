@@ -7,12 +7,13 @@ import { SQLEditor } from "./SQLEditor";
 import { QueryExplanation } from "./QueryExplanation";
 import { ResultsTable } from "./ResultsTable";
 import { PostQueryAnalytics } from "./PostQueryAnalytics";
+import { SemanticQueryPanel } from "./SemanticQueryPanel";
 import { SavedReports } from "./SavedReports";
 import { VisualQueryBuilder } from "./VisualQueryBuilder";
 import type { QueryPlan } from "./AskAI";
 import type { ReportResult } from "./ResultsTable";
 
-type StudioTab = "ask" | "builder" | "saved";
+type StudioTab = "ask" | "semantic" | "builder" | "saved";
 
 export interface LoadedReport {
   sql: string;
@@ -211,6 +212,7 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
         {(
           [
             { id: "ask", label: "Ask AI / SQL" },
+            { id: "semantic", label: "Semantic Engine" },
             { id: "builder", label: "Visual Builder" },
             { id: "saved", label: "Saved Reports" },
           ] as { id: StudioTab; label: string }[]
@@ -392,6 +394,20 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
               setTab("ask");
             }}
             loading={executing}
+          />
+        </div>
+      )}
+
+      {tab === "semantic" && (
+        <div className="bg-card border border-border rounded-lg p-5">
+          <SemanticQueryPanel
+            startDate={startDate}
+            endDate={endDate}
+            onPlanReady={(plan) => {
+              setSql(plan.sql);
+              setCurrentPlan(plan);
+              setTab("ask");
+            }}
           />
         </div>
       )}
