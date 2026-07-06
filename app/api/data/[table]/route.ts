@@ -11,8 +11,11 @@
  *   filters     JSON-encoded { column: value } map (substring match)
  */
 
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import schemaConfig from "@/lib/config/schemaConfig.json";
+import { isDbConfigured } from "@/lib/services/db";
 
 const ALLOWED_TABLES = Object.keys(schemaConfig);
 
@@ -126,8 +129,8 @@ export async function GET(
     // ignore invalid JSON
   }
 
-  // Demo mode — generate deterministic-ish mock data
-  if (!process.env.SQL_CONNECTION_STRING) {
+  // Demo mode — no DB configured
+  if (!isDbConfigured()) {
     const TOTAL_DEMO = decodedTable === "BRANCHES"     ? BRANCH_CODES.length
                      : decodedTable === "SERVICE_LINES" ? SERVICE_LINES.length
                      : decodedTable === "CARE_TYPES"    ? CARE_TYPES.length
@@ -209,7 +212,7 @@ export async function GET(
       source:     "live_db",
     });
   } catch (err) {
-    console.error("[v0] /api/data error:", err);
+    console.error("[db] /api/data error:", err);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });
   }
 }

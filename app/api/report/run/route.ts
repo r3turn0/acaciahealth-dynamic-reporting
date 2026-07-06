@@ -1,7 +1,9 @@
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { generateSQL } from "@/lib/services/queryGenerator";
 import { validateQuery } from "@/lib/services/queryGuard";
-import { executeQuery } from "@/lib/services/db";
+import { executeQuery, isDbConfigured } from "@/lib/services/db";
 import { formatReport } from "@/lib/services/formatter";
 import { buildCacheKey, getCache, setCache } from "@/lib/services/cache";
 import type { ReportOutput } from "@/lib/services/formatter";
@@ -48,7 +50,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Check if DB is configured
-    if (!process.env.SQL_CONNECTION_STRING) {
+    if (!isDbConfigured()) {
       // Return mock data for demo/preview purposes
       const mockData = generateMockData(kpi, filters);
       const report = formatReport(report_name, filters, mockData, kpi, sql);
@@ -63,9 +65,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ...report, cache_hit: false });
   } catch (err) {
-    console.error("[v0] Report run error:", err);
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[db] Report run error:", err);
+    return NextResponse.json({ error: "Report execution failed" }, { status: 500 });
   }
 }
 

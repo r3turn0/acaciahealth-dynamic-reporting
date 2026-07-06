@@ -5,9 +5,11 @@
  * caps results at MAX_ROWS, and times out at 30 seconds.
  */
 
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { validateQuery } from "@/lib/services/queryGuard";
-import { executeQuery } from "@/lib/services/db";
+import { executeQuery, isDbConfigured } from "@/lib/services/db";
 import { formatReport } from "@/lib/services/formatter";
 import { buildCacheKey, getCache, setCache } from "@/lib/services/cache";
 import type { ReportOutput } from "@/lib/services/formatter";
@@ -59,8 +61,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Demo mode
-    if (!process.env.SQL_CONNECTION_STRING) {
+    // Demo mode — no DB configured
+    if (!isDbConfigured()) {
       const demo = buildDemoResult(safeSql, report_name ?? "Custom Query", start_date, end_date);
       return NextResponse.json({
         ...demo,
@@ -92,9 +94,9 @@ export async function POST(req: NextRequest) {
       report_id: report_id ?? null,
     });
   } catch (err) {
-    console.error("[v0] /api/run-sql error:", err);
-    const message = err instanceof Error ? err.message : "Execution failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[db] /api/run-sql error:", err);
+    // Never expose raw DB error messages to the client
+    return NextResponse.json({ error: "Query execution failed" }, { status: 500 });
   }
 }
 

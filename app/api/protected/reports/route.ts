@@ -5,9 +5,11 @@
  * Unauthorized requests receive 401.
  */
 
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { executeRawQuery } from "@/lib/services/db";
+import { executeRawQuery, isDbConfigured } from "@/lib/services/db";
 import { buildCacheKey, getCache, setCache } from "@/lib/services/cache";
 
 const DEMO_REPORTS = Array.from({ length: 20 }, (_, i) => ({
@@ -39,7 +41,7 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Demo mode (no DB configured) ────────────────────────────────────────
-  if (!process.env.DB_HOST && !process.env.SQL_CONNECTION_STRING) {
+  if (!isDbConfigured()) {
     return NextResponse.json({
       data: DEMO_REPORTS,
       cache_hit: false,
@@ -56,7 +58,7 @@ export async function GET(req: NextRequest) {
     setCache(cacheKey, rows, 60_000); // 60 s cache
     return NextResponse.json({ data: rows, cache_hit: false, user: token.email });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Query failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[db] /api/protected/reports error:", err);
+    return NextResponse.json({ error: "Report query failed" }, { status: 500 });
   }
 }

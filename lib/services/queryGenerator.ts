@@ -21,6 +21,7 @@ interface GeneratedQuery {
   params: {
     StartDate: string;
     EndDate: string;
+    BranchCode?: string;
   };
   kpi: KpiKey;
   tables_used: string[];
@@ -225,8 +226,9 @@ export function generateSQL(prompt: string, filters: Filters): GeneratedQuery {
     `${kpi.alias}.${kpi.date_column} BETWEEN @StartDate AND @EndDate`,
   ];
   if (filters.branch_code) {
+    // Use a parameterized placeholder — never interpolate user input into SQL
     whereParts.push(
-      `RTRIM(${kpi.fact_table === "Billing.LINE_ITEMS" ? "epi" : kpi.alias}.epi_branchcode) = '${filters.branch_code}'`
+      `RTRIM(${kpi.fact_table === "Billing.LINE_ITEMS" ? "epi" : kpi.alias}.epi_branchcode) = @BranchCode`
     );
   }
 
@@ -268,6 +270,7 @@ export function generateSQL(prompt: string, filters: Filters): GeneratedQuery {
     params: {
       StartDate: filters.date_range.start_date,
       EndDate: filters.date_range.end_date,
+      ...(filters.branch_code ? { BranchCode: filters.branch_code } : {}),
     },
     kpi: kpiKey,
     tables_used: [...new Set(tablesUsed)],

@@ -5,6 +5,8 @@
  * explanation, cost analysis, and execution strategy.
  */
 
+export const runtime = "nodejs";
+
 import { NextRequest, NextResponse } from "next/server";
 import { planQuery } from "@/lib/agents/queryPlanner";
 import { generateSQL } from "@/lib/services/queryGenerator";
@@ -107,8 +109,7 @@ export async function POST(req: NextRequest) {
       ai_powered: aiAvailable,
     });
   } catch (err) {
-    console.error("[v0] generate-query error:", err);
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[db] generate-query error:", err);
+    return NextResponse.json({ error: "Query generation failed" }, { status: 500 });
   }
 }

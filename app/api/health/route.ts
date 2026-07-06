@@ -1,11 +1,12 @@
+export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
-import { checkConnection } from "@/lib/services/db";
+import { checkConnection, isDbConfigured } from "@/lib/services/db";
 import { getCacheStats } from "@/lib/services/cache";
 
 export async function GET() {
-  const dbConnected = process.env.SQL_CONNECTION_STRING
-    ? await checkConnection()
-    : false;
+  const dbConfigured = isDbConfigured();
+  const dbConnected = dbConfigured ? await checkConnection() : false;
 
   const cacheStats = getCacheStats();
 
@@ -16,8 +17,8 @@ export async function GET() {
     services: {
       database: {
         connected: dbConnected,
-        configured: !!process.env.SQL_CONNECTION_STRING,
-        mode: process.env.SQL_CONNECTION_STRING ? "live_db" : "demo",
+        configured: dbConfigured,
+        mode: dbConfigured ? "live_db" : "demo",
       },
       ai: {
         configured: !!(process.env.AI_GATEWAY_API_KEY || process.env.AZURE_OPENAI_API_KEY),
