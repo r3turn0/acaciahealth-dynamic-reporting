@@ -48,32 +48,46 @@ declare global {
 // ── Config builder ────────────────────────────────────────────────────────────
 
 function buildConfig(): sql.config {
-  // Option 1: DATABASE_URL (primary per spec)
+  // Placeholder tokens that indicate an unfilled template value.
+  const PLACEHOLDER_HOSTS = new Set(["host", "hostname", "your-host", "example.com", "changeme", ""]);
+  const PLACEHOLDER_DBS = new Set(["db", "database", "your-database", "changeme", ""]);
+
+  // Option 1: DATABASE_URL (primary per spec) — only if it is NOT a placeholder.
   // Format: mssql://user:pass@host/database
   const databaseUrl = process.env.DATABASE_URL;
   if (databaseUrl) {
     try {
       const url = new URL(databaseUrl);
-      return {
-        server: url.hostname,
-        port: url.port ? parseInt(url.port, 10) : 1433,
-        database: url.pathname.replace(/^\//, ""),
-        user: decodeURIComponent(url.username),
-        password: decodeURIComponent(url.password),
-        options: {
-          encrypt: true,
-          trustServerCertificate: url.searchParams.get("trustServerCertificate") === "true",
-          enableArithAbort: true,
-          readOnlyIntent: true,
-        },
-        pool: {
-          max: 10,
-          min: 0,
-          idleTimeoutMillis: 30000,
-        },
-        requestTimeout: 30000,
-        connectionTimeout: 15000,
-      };
+      const host = url.hostname.toLowerCase();
+      const dbName = url.pathname.replace(/^\//, "");
+
+      if (PLACEHOLDER_HOSTS.has(host) || PLACEHOLDER_DBS.has(dbName.toLowerCase())) {
+        // Template value was never filled in — ignore it and fall through to DB_* vars.
+        console.warn(
+          `[db] Ignoring DATABASE_URL: looks like an unfilled placeholder (host="${url.hostname}", db="${dbName}"). Falling back to DB_HOST/DB_NAME.`
+        );
+      } else {
+        return {
+          server: url.hostname,
+          port: url.port ? parseInt(url.port, 10) : 1433,
+          database: dbName,
+          user: decodeURIComponent(url.username),
+          password: decodeURIComponent(url.password),
+          options: {
+            encrypt: true,
+            trustServerCertificate: url.searchParams.get("trustServerCertificate") === "true",
+            enableArithAbort: true,
+            readOnlyIntent: true,
+          },
+          pool: {
+            max: 10,
+            min: 0,
+            idleTimeoutMillis: 30000,
+          },
+          requestTimeout: 30000,
+          connectionTimeout: 15000,
+        };
+      }
     } catch (e) {
       console.error("[db] Failed to parse DATABASE_URL:", e);
     }
@@ -88,12 +102,15 @@ function buildConfig(): sql.config {
   if (host && db && user && pass) {
     return {
       server: host,
+      port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 1433,
       database: db,
       user,
       password: pass,
       options: {
-        encrypt: true,
-        trustServerCertificate: false,
+        encrypt: process.env.DB_ENCRYPT !== "false",
+        // On-prem SQL Servers commonly use a self-signed cert. Default to trusting it;
+        // set DB_TRUST_CERT="false" to enforce strict cert validation.
+        trustServerCertificate: process.env.DB_TRUST_CERT !== "false",
         enableArithAbort: true,
         readOnlyIntent: true,
       },
