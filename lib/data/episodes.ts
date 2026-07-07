@@ -6,7 +6,6 @@
  * This module is the single place where episode-related SQL lives.
  */
 
-import sql from "mssql";
 import { executeQuery, executeQueryWithParams } from "@/lib/services/db";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -149,7 +148,7 @@ export async function getEpisodeById(
 ): Promise<Record<string, unknown> | null> {
   const rows = await executeQueryWithParams(
     `SELECT TOP 1 * FROM CLIENT_EPISODES_ALL WHERE epi_id = @EpisodeId`,
-    [{ name: "EpisodeId", type: sql.Int, value: episodeId }]
+    [{ name: "EpisodeId", type: "int", value: episodeId }]
   );
   return rows[0] ?? null;
 }
