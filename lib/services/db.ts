@@ -126,7 +126,7 @@ function buildConfig(): sql.config {
 
   // Option 3: Legacy SQL_CONNECTION_STRING (passed as config server fallback)
   return {
-    server: process.env.SQL_SERVER ?? "mollusk-clip-bullion.ngrok-free.dev",
+    server: process.env.SQL_SERVER ?? "localhost",
     options: {
       encrypt: true,
       trustServerCertificate: false,
@@ -163,8 +163,16 @@ function sleep(ms: number): Promise<void> {
 
 async function connectWithRetry(attempt = 1): Promise<sql.ConnectionPool> {
   try {
+    // Prefer structured config (DATABASE_URL / DB_* vars) so a stray or placeholder
+    // SQL_CONNECTION_STRING can never override real credentials. Only fall back to the
+    // raw connection string when no other DB config is present.
+    const hasStructured =
+      !!process.env.DATABASE_URL ||
+      !!(process.env.DB_HOST && process.env.DB_NAME && process.env.DB_USER && process.env.DB_PASS);
     const connArg: string | sql.config =
-      process.env.SQL_CONNECTION_STRING ?? buildConfig();
+      hasStructured || !process.env.SQL_CONNECTION_STRING
+        ? buildConfig()
+        : process.env.SQL_CONNECTION_STRING;
     const pool = await sql.connect(connArg as sql.config);
     console.log(`[db] Connected to SQL Server (attempt ${attempt})`);
     return pool;
