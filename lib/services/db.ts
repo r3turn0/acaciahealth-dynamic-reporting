@@ -109,7 +109,7 @@ function buildConfig(): sql.config {
 
   // Option 3: Legacy SQL_CONNECTION_STRING (passed as config server fallback)
   return {
-    server: process.env.SQL_SERVER ?? "localhost",
+    server: process.env.SQL_SERVER ?? "mollusk-clip-bullion.ngrok-free.dev",
     options: {
       encrypt: true,
       trustServerCertificate: false,
