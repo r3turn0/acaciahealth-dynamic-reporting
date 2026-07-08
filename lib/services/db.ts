@@ -45,6 +45,18 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_QUERY_PATH = "/api/query";
 const DEFAULT_HEALTH_PATH = "/api/health";
 
+// ── Errors ────────────────────────────────────────────────────────────────────
+
+/** Thrown when the VM backend cannot be reached at all (tunnel offline, DNS
+ *  failure, timeout). Distinct from a query that reached the backend and errored. */
+export class BackendUnreachableError extends Error {
+  readonly code = "BACKEND_UNREACHABLE";
+  constructor(message: string) {
+    super(message);
+    this.name = "BackendUnreachableError";
+  }
+}
+
 // ── Config helpers ──────────────────────────────────────────────────────────────
 
 function getBackendBaseUrl(): string | null {
@@ -135,6 +147,15 @@ async function postQuery(
       }
       // Log server-side detail; callers surface a generic message to clients.
       const detail = await res.text().catch(() => "");
+      // ngrok serves an HTML error page (e.g. ERR_NGROK_3200 "endpoint offline")
+      // when the tunnel is down or misrouted. Treat this as unreachable, not a query error.
+      const ngrokErr = detail.match(/ERR_NGROK_\d+/);
+      if (ngrokErr || /<html/i.test(detail)) {
+        console.error(`[db] Backend unreachable via ngrok (${res.status}): ${ngrokErr?.[0] ?? "HTML response"}`);
+        throw new BackendUnreachableError(
+          `Reporting backend is offline (ngrok ${ngrokErr?.[0] ?? "tunnel error"}). The VM backend service or ngrok tunnel is not running.`
+        );
+      }
       console.error(`[db] Backend query failed (${res.status}):`, detail.slice(0, 500));
       throw new Error(`Backend query failed with status ${res.status}`);
     }
@@ -154,6 +175,14 @@ async function postQuery(
       return postQuery(sqlText, params, attempt + 1);
     }
     console.error(`[db] Backend query error after ${attempt} attempt(s):`, (err as Error).message);
+    // Network-level failures (DNS, refused, timeout) mean the backend is unreachable.
+    if (isAbort || isNetwork) {
+      throw new BackendUnreachableError(
+        isAbort
+          ? "Reporting backend timed out. The VM backend service may be slow or the ngrok tunnel is down."
+          : "Reporting backend is unreachable. Check that the VM backend service and ngrok tunnel are running."
+      );
+    }
     throw err;
   } finally {
     clearTimeout(timer);

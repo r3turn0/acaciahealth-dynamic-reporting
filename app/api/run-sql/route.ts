@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { validateQuery } from "@/lib/services/queryGuard";
-import { executeQuery, isDbConfigured } from "@/lib/services/db";
+import { executeQuery, isDbConfigured, BackendUnreachableError } from "@/lib/services/db";
 import { formatReport } from "@/lib/services/formatter";
 import { buildCacheKey, getCache, setCache } from "@/lib/services/cache";
 import type { ReportOutput } from "@/lib/services/formatter";
@@ -95,6 +95,17 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("[db] /api/run-sql error:", err);
+    // Backend connectivity problems get a clear, actionable message + 503.
+    if (err instanceof BackendUnreachableError) {
+      return NextResponse.json(
+        {
+          error: err.message,
+          code: err.code,
+          hint: "Start the VM backend service and point ngrok at it (ngrok http <backend-port>), then retry.",
+        },
+        { status: 503 }
+      );
+    }
     // Never expose raw DB error messages to the client
     return NextResponse.json({ error: "Query execution failed" }, { status: 500 });
   }
