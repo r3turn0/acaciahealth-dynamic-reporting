@@ -1,0 +1,17 @@
+{
+  "name": "acaciahealth-vm-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Private VM backend service: bridges Next.js (via ngrok) to the SQL Server database. Owns the DB connection string; Next.js never connects to SQL directly.",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "mssql": "^11.0.1"
+  }
+}
