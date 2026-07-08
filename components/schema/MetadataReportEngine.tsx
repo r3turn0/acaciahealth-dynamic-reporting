@@ -30,7 +30,7 @@ import {
   Shield,
   Info,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, copyToClipboard } from "@/lib/utils";
 import type {
   Column,
   FilterOperator,
@@ -179,27 +179,9 @@ export function MetadataReportEngine() {
     setReportPlan(plan);
   }
 
-  function copyPlan() {
+  async function copyPlan() {
     if (!reportPlan) return;
-    const text = JSON.stringify(reportPlan, null, 2);
-
-    const tryExecCommand = () => {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.cssText = "position:fixed;top:-9999px;left:-9999px;opacity:0";
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      try { document.execCommand("copy"); } catch { /* ignore */ }
-      document.body.removeChild(ta);
-    };
-
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).catch(tryExecCommand);
-    } else {
-      tryExecCommand();
-    }
-
+    await copyToClipboard(JSON.stringify(reportPlan, null, 2));
     setPlanCopied(true);
     setTimeout(() => setPlanCopied(false), 1500);
   }

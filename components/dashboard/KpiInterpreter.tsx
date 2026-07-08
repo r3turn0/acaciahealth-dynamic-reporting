@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { copyToClipboard } from "@/lib/utils";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -126,8 +127,8 @@ function RawJsonPanel({ insights }: { insights: BusinessInsights }) {
   const [copied, setCopied] = useState(false);
   const json = JSON.stringify(insights, null, 2);
 
-  function copy() {
-    navigator.clipboard.writeText(json);
+  async function copy() {
+    await copyToClipboard(json);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }

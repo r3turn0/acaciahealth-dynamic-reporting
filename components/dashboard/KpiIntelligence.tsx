@@ -27,7 +27,7 @@ import {
   Target,
   X,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, copyToClipboard } from "@/lib/utils";
 import { FileUploadButton } from "@/components/ui/FileUpload";
 import type { UploadedFile } from "@/components/ui/FileUpload";
 import type {
@@ -416,8 +416,8 @@ function PowerBiExport({ schema }: { schema: KpiIntelligenceResponse["powerBiSch
   const [copied, setCopied] = useState(false);
   const json = JSON.stringify(schema, null, 2);
 
-  function copy() {
-    navigator.clipboard.writeText(json);
+  async function copy() {
+    await copyToClipboard(json);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }

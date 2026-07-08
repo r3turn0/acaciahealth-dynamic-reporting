@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Code2, Play, Loader2, ShieldCheck, ShieldX, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { copyToClipboard } from "@/lib/utils";
 
 interface ValidationResult {
   valid: boolean;
@@ -51,7 +52,7 @@ export function SQLEditor({ sql, onChange, onRun, loading, startDate, endDate }:
   }, [sql]);
 
   async function copySQL() {
-    await navigator.clipboard.writeText(sql);
+    await copyToClipboard(sql);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
