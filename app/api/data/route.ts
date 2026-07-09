@@ -15,7 +15,12 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getContract } from "@/lib/access/contractService";
-import { buildSafeQuery, DEFAULT_PAGE_SIZE } from "@/lib/access/queryBuilder";
+import {
+  buildSafeQuery,
+  buildJoinedQuery,
+  DEFAULT_PAGE_SIZE,
+} from "@/lib/access/queryBuilder";
+import { getAllTables } from "@/lib/access/schemaRegistry";
 import {
   executeQueryWithParams,
   executeRawQuery,
@@ -54,6 +59,10 @@ export async function GET(req: NextRequest) {
   const page = Math.max(1, parseInt(params.get("page") ?? "1", 10) || 1);
   const pageSize = parseInt(params.get("pageSize") ?? String(DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE;
   const orderBy = params.get("orderBy") ?? undefined;
+  const joinIds = (params.get("join") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   if (!appId || !table) {
     return NextResponse.json({ error: "Missing appId or table" }, { status: 400 });
@@ -65,19 +74,31 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "No contract found for this app" }, { status: 403 });
   }
 
-  // 2. Build the safe, paginated query (throws if table/columns not allowed).
-  let safe;
+  // 2. Build the safe, paginated query (throws if table/columns/join not allowed).
+  let safe: SafeQuery;
   try {
-    safe = buildSafeQuery(contract, table, { page, pageSize, orderBy });
+    if (joinIds.length > 0) {
+      // Joined read — predicates come from the schema registry, never the client.
+      const meta = await getAllTables();
+      safe = buildJoinedQuery(contract, table, joinIds, meta, { page, pageSize, orderBy });
+    } else {
+      safe = buildSafeQuery(contract, table, { page, pageSize, orderBy });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Query build failed";
-    // "Table not allowed" is an authorization failure → 403.
-    const status = message === "Table not allowed" ? 403 : 400;
+    // Authorization failures → 403; everything else is a bad request.
+    const status = /not allowed/i.test(message) ? 403 : 400;
     return NextResponse.json({ error: message }, { status });
   }
 
-  const canonicalTable =
+  const baseCanonical =
     contract.tables.find((t) => t.name.toLowerCase() === table.toLowerCase())?.name ?? table;
+  const canonicalTable =
+    joinIds.length > 0
+      ? `${baseCanonical.split(".").pop()} ⋈ ${joinIds
+          .map((j) => j.split(".").pop())
+          .join(" ⋈ ")}`
+      : baseCanonical;
 
   // 3a. Demo mode — deterministic synthetic rows scoped to allowed columns.
   if (!isDbConfigured()) {

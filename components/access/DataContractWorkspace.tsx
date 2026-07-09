@@ -16,16 +16,23 @@ import {
   Lock,
   FileCheck2,
   AlertCircle,
+  Link2,
+  Waypoints,
 } from "lucide-react";
 
 // ── Types (mirror the access-proxy API shapes) ─────────────────────────────────
 
 interface RegistryColumn { name: string; type: string }
-interface RegistryTable { id: string; schema: string; name: string; columns: RegistryColumn[] }
+interface RegistryRelationship { toTable: string; condition: string }
+interface RegistryTable {
+  id: string; schema: string; name: string; alias: string;
+  columns: RegistryColumn[]; relationships: RegistryRelationship[];
+}
 interface RegisteredSchema {
   id: string; name: string; source: "upload" | "introspection";
   tables: RegistryTable[]; registeredAt: string;
 }
+interface ContractJoin { fromTable: string; toTable: string; type: "FK" }
 interface DataPage {
   table: string; columns: string[]; rows: Record<string, unknown>[];
   page: number; pageSize: number; total: number; totalPages: number;
@@ -56,12 +63,16 @@ export function DataContractWorkspace() {
 
   // selection: tableId -> Set<columnName>
   const [selection, setSelection] = useState<Map<string, Set<string>>>(new Map());
+  // join selection: "fromId||toId"
+  const [selectedJoins, setSelectedJoins] = useState<Set<string>>(new Set());
 
   const [saving, setSaving] = useState(false);
   const [contractMsg, setContractMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [activeJoins, setActiveJoins] = useState<ContractJoin[]>([]);
 
   // preview state
   const [previewTable, setPreviewTable] = useState<string | null>(null);
+  const [previewJoin, setPreviewJoin] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [data, setData] = useState<DataPage | null>(null);
@@ -134,6 +145,49 @@ export function DataContractWorkspace() {
     [selection]
   );
 
+  // FK relationships available between currently-selected tables.
+  const availableJoins = useMemo(() => {
+    const selectedIds = new Set([...selection.keys()].map((k) => k.toLowerCase()));
+    const out: { key: string; fromId: string; toId: string; fromShort: string; toShort: string }[] = [];
+    const seen = new Set<string>();
+    for (const t of allTables) {
+      if (!selection.has(t.id)) continue;
+      for (const r of t.relationships ?? []) {
+        if (!selectedIds.has(r.toTable.toLowerCase())) continue;
+        const key = `${t.id}||${r.toTable}`;
+        const rev = `${r.toTable}||${t.id}`;
+        if (seen.has(key) || seen.has(rev)) continue;
+        seen.add(key);
+        const toTbl = allTables.find((x) => x.id.toLowerCase() === r.toTable.toLowerCase());
+        out.push({
+          key,
+          fromId: t.id,
+          toId: r.toTable,
+          fromShort: t.name,
+          toShort: toTbl?.name ?? r.toTable.split(".").pop()!,
+        });
+      }
+    }
+    return out;
+  }, [allTables, selection]);
+
+  const toggleJoin = useCallback((key: string) => {
+    setSelectedJoins((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }, []);
+
+  // Drop join selections whose tables are no longer both selected.
+  useEffect(() => {
+    setSelectedJoins((prev) => {
+      const valid = new Set(availableJoins.map((j) => j.key));
+      const next = new Set([...prev].filter((k) => valid.has(k)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [availableJoins]);
+
   // ── Create contract ────────────────────────────────────────────────────────────
   async function createContract() {
     setSaving(true);
@@ -142,11 +196,17 @@ export function DataContractWorkspace() {
       name: t.id,
       allowedColumns: [...(selection.get(t.id) ?? [])],
     }));
+    const joins: ContractJoin[] = [...selectedJoins]
+      .filter((k) => availableJoins.some((a) => a.key === k))
+      .map((k) => {
+        const [fromTable, toTable] = k.split("||");
+        return { fromTable, toTable, type: "FK" as const };
+      });
     try {
       const res = await fetch("/api/contract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appId, tables }),
+        body: JSON.stringify({ appId, tables, joins }),
       });
       const body = await res.json();
       if (!res.ok) {
@@ -155,10 +215,13 @@ export function DataContractWorkspace() {
           : body.error;
         throw new Error(detail ?? "Failed to create contract");
       }
-      setContractMsg({ ok: true, text: `Contract active for "${appId}" — ${tables.length} table(s), ${totalColumns} column(s) exposed.` });
+      const joinNote = joins.length ? `, ${joins.length} join(s)` : "";
+      setContractMsg({ ok: true, text: `Contract active for "${appId}" — ${tables.length} table(s), ${totalColumns} column(s)${joinNote} exposed.` });
+      setActiveJoins(body.contract?.joins ?? joins);
       // Auto-preview the first table in the new contract.
       const first = tables[0]?.name ?? null;
       setPreviewTable(first);
+      setPreviewJoin(null);
       setPage(1);
     } catch (e) {
       setContractMsg({ ok: false, text: (e as Error).message });
@@ -172,9 +235,10 @@ export function DataContractWorkspace() {
     if (!previewTable) return;
     setLoadingData(true);
     setDataError(null);
-    const url = `/api/data?appId=${encodeURIComponent(appId)}&table=${encodeURIComponent(
-      previewTable
-    )}&page=${page}&pageSize=${pageSize}`;
+    const url =
+      `/api/data?appId=${encodeURIComponent(appId)}&table=${encodeURIComponent(previewTable)}` +
+      `&page=${page}&pageSize=${pageSize}` +
+      (previewJoin ? `&join=${encodeURIComponent(previewJoin)}` : "");
     fetch(url)
       .then(async (r) => {
         const b = await r.json();

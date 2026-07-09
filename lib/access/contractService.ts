@@ -13,7 +13,7 @@
 //   ]);
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { findTable } from "./schemaRegistry";
+import { findTable, findRelationship } from "./schemaRegistry";
 
 export interface ContractTable {
   /** Table id or name — must exist in the schema registry. */
@@ -21,9 +21,22 @@ export interface ContractTable {
   allowedColumns: string[];
 }
 
+export type RelationshipType = "FK";
+
+/**
+ * A join the app is allowed to perform. Both tables must be in the contract
+ * and an FK relationship must exist between them in the schema registry.
+ */
+export interface ContractJoin {
+  fromTable: string;
+  toTable: string;
+  type: RelationshipType;
+}
+
 export interface DataContract {
   appId: string;
   tables: ContractTable[];
+  joins: ContractJoin[];
   createdAt: string;
   updatedAt: string;
 }
@@ -91,6 +104,45 @@ export async function validateContract(
   return errors;
 }
 
+/**
+ * Validate proposed joins: every join must connect two tables that are both
+ * in the contract AND have a real FK relationship in the schema registry.
+ */
+export async function validateJoins(
+  tables: ContractTable[],
+  joins: ContractJoin[]
+): Promise<ContractValidationError[]> {
+  if (!Array.isArray(joins) || joins.length === 0) return [];
+
+  const errors: ContractValidationError[] = [];
+  const inContract = new Set(tables.map((t) => t.name.toLowerCase()));
+  const shortInContract = new Set(
+    tables.map((t) => t.name.split(".").pop()!.toLowerCase())
+  );
+
+  const isInContract = (name: string) =>
+    inContract.has(name.toLowerCase()) ||
+    shortInContract.has(name.split(".").pop()!.toLowerCase());
+
+  for (const j of joins) {
+    const label = `${j.fromTable} ⋈ ${j.toTable}`;
+    if (!j?.fromTable || !j?.toTable) {
+      errors.push({ table: label, message: "Join must specify fromTable and toTable." });
+      continue;
+    }
+    if (!isInContract(j.fromTable) || !isInContract(j.toTable)) {
+      errors.push({ table: label, message: "Both joined tables must be in the contract." });
+      continue;
+    }
+    const rel = await findRelationship(j.fromTable, j.toTable);
+    if (!rel) {
+      errors.push({ table: label, message: "No FK relationship exists between these tables." });
+    }
+  }
+
+  return errors;
+}
+
 // ── CRUD ──────────────────────────────────────────────────────────────────────────
 
 /**
@@ -99,11 +151,15 @@ export async function validateContract(
  */
 export async function createContract(
   appId: string,
-  tables: ContractTable[]
+  tables: ContractTable[],
+  joins: ContractJoin[] = []
 ): Promise<DataContract> {
   if (!appId) throw new Error("appId is required");
 
-  const errors = await validateContract(tables);
+  const errors = [
+    ...(await validateContract(tables)),
+    ...(await validateJoins(tables, joins)),
+  ];
   if (errors.length > 0) {
     throw new Error(
       `Contract validation failed: ${errors.map((e) => `${e.table} — ${e.message}`).join("; ")}`
@@ -120,11 +176,26 @@ export async function createContract(
     });
   }
 
+  // Normalize join endpoints to canonical ids and de-duplicate.
+  const normalizedJoins: ContractJoin[] = [];
+  const seen = new Set<string>();
+  for (const j of joins) {
+    const from = await findTable(j.fromTable);
+    const to = await findTable(j.toTable);
+    if (!from || !to) continue;
+    const key = `${from.id.toLowerCase()}::${to.id.toLowerCase()}`;
+    const keyRev = `${to.id.toLowerCase()}::${from.id.toLowerCase()}`;
+    if (seen.has(key) || seen.has(keyRev)) continue;
+    seen.add(key);
+    normalizedJoins.push({ fromTable: from.id, toTable: to.id, type: "FK" });
+  }
+
   const now = new Date().toISOString();
   const existing = store().get(appId);
   const contract: DataContract = {
     appId,
     tables: normalized,
+    joins: normalizedJoins,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -160,4 +231,28 @@ export function allowedColumnsFor(
     (t) => t.name.toLowerCase() === lower || t.name.split(".").pop()!.toLowerCase() === lower
   );
   return entry ? entry.allowedColumns : null;
+}
+
+/**
+ * Whether the contract authorizes joining two tables (either direction).
+ * The Access Proxy calls this before ever assembling a joined query.
+ */
+export function isJoinAllowed(
+  contract: DataContract,
+  aTable: string,
+  bTable: string
+): boolean {
+  const a = aTable.toLowerCase();
+  const aShort = aTable.split(".").pop()!.toLowerCase();
+  const b = bTable.toLowerCase();
+  const bShort = bTable.split(".").pop()!.toLowerCase();
+  const matches = (name: string, full: string, short: string) => {
+    const n = name.toLowerCase();
+    return n === full || n.split(".").pop() === short;
+  };
+  return (contract.joins ?? []).some(
+    (j) =>
+      (matches(j.fromTable, a, aShort) && matches(j.toTable, b, bShort)) ||
+      (matches(j.fromTable, b, bShort) && matches(j.toTable, a, aShort))
+  );
 }

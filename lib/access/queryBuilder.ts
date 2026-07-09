@@ -15,8 +15,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { DataContract } from "./contractService";
-import { allowedColumnsFor } from "./contractService";
+import { allowedColumnsFor, isJoinAllowed } from "./contractService";
+import type { RegistryTable } from "./schemaRegistry";
 import type { NamedParam } from "@/lib/services/db";
+
+export const MAX_JOINS = 5;
 
 export const DEFAULT_PAGE_SIZE = 100;
 export const MAX_PAGE_SIZE = 500;
@@ -134,4 +137,156 @@ export function buildSafeQuery(
   const countText = `SELECT COUNT(*) AS total FROM ${safeTable}`;
 
   return { text, countText, values, columns: allowed, page, pageSize };
+}
+
+// ── Joined builder ───────────────────────────────────────────────────────────────
+//
+// Builds a multi-table INNER JOIN, still fully contract-scoped and paginated.
+// 🚨 The ON conditions come ONLY from the schema registry (config-controlled)
+//    and are never taken from the caller. The client supplies WHICH tables to
+//    join; the join predicate is looked up, so no SQL can be injected here.
+
+interface IncludedTable {
+  meta: RegistryTable;
+  alias: string;
+  quoted: string;
+  short: string;
+  columns: string[];
+  onCondition?: string; // set for non-base tables
+}
+
+/** Resolve a registry table from the provided metadata map by id or name. */
+function resolveMeta(map: Map<string, RegistryTable>, key: string): RegistryTable | null {
+  const lower = key.toLowerCase();
+  for (const [id, t] of map) {
+    if (
+      id.toLowerCase() === lower ||
+      t.name.toLowerCase() === lower ||
+      id.split(".").pop()!.toLowerCase() === lower
+    ) {
+      return t;
+    }
+  }
+  return null;
+}
+
+/** Find the config-defined join predicate between two tables (either direction). */
+function relationBetween(a: RegistryTable, b: RegistryTable): string | null {
+  const fwd = a.relationships.find((r) => r.toTable.toLowerCase() === b.id.toLowerCase());
+  if (fwd) return fwd.condition;
+  const rev = b.relationships.find((r) => r.toTable.toLowerCase() === a.id.toLowerCase());
+  if (rev) return rev.condition;
+  return null;
+}
+
+function prepareTable(
+  contract: DataContract,
+  meta: RegistryTable
+): Omit<IncludedTable, "onCondition"> {
+  const allowed = allowedColumnsFor(contract, meta.id);
+  if (!allowed) throw new Error("Table not allowed");
+  if (allowed.length === 0) throw new Error("No columns defined for table");
+  if (!meta.alias || !IDENT.test(meta.alias)) {
+    throw new Error(`Table "${meta.name}" has no valid alias for joins`);
+  }
+  // Validate each column identifier up front.
+  allowed.forEach((c) => assertIdent(c, "column"));
+  return {
+    meta,
+    alias: meta.alias,
+    quoted: quoteTable(meta.id),
+    short: meta.name.split(".").pop()!,
+    columns: allowed,
+  };
+}
+
+/**
+ * Build a safe, paginated, contract-scoped INNER JOIN across a base table and
+ * one or more related tables. Throws with an authorization-style message when
+ * any table/join is not permitted by the contract.
+ */
+export function buildJoinedQuery(
+  contract: DataContract,
+  baseTableId: string,
+  joinTableIds: string[],
+  tableMeta: Map<string, RegistryTable>,
+  pagination: Pagination = {}
+): SafeQuery {
+  if (joinTableIds.length === 0) throw new Error("No join tables specified");
+  if (joinTableIds.length > MAX_JOINS) throw new Error("Too many joins requested");
+
+  // 1. Base table.
+  const baseMeta = resolveMeta(tableMeta, baseTableId);
+  if (!baseMeta) throw new Error("Table not allowed");
+  const base: IncludedTable = prepareTable(contract, baseMeta);
+  const included: IncludedTable[] = [base];
+
+  // 2. Each join table must be in the contract, authorized as a join, and have
+  //    a config-defined predicate against an already-included table.
+  for (const jid of joinTableIds) {
+    const jMeta = resolveMeta(tableMeta, jid);
+    if (!jMeta) throw new Error("Join not allowed");
+    if (included.some((t) => t.meta.id.toLowerCase() === jMeta.id.toLowerCase())) continue;
+
+    let condition: string | null = null;
+    for (const other of included) {
+      if (!isJoinAllowed(contract, other.meta.id, jMeta.id)) continue;
+      const rel = relationBetween(other.meta, jMeta);
+      if (rel) {
+        condition = rel;
+        break;
+      }
+    }
+    if (!condition) throw new Error("Join not allowed");
+
+    included.push({ ...prepareTable(contract, jMeta), onCondition: condition });
+  }
+
+  // 3. SELECT — qualified, aliased, contract-allowed columns only.
+  const selectParts: string[] = [];
+  const outColumns: string[] = [];
+  for (const t of included) {
+    for (const col of t.columns) {
+      const label = `${t.short}.${col}`;
+      selectParts.push(`[${t.alias}].${quoteColumn(col)} AS [${label}]`);
+      outColumns.push(label);
+    }
+  }
+
+  // 4. FROM + INNER JOINs (predicates are config-controlled, see note above).
+  const fromClause =
+    `${base.quoted} AS [${base.alias}]` +
+    included
+      .slice(1)
+      .map((t) => ` INNER JOIN ${t.quoted} AS [${t.alias}] ON ${t.onCondition}`)
+      .join("");
+
+  // 5. ORDER BY base's first allowed column (required for OFFSET…FETCH).
+  const orderCandidate = pagination.orderBy;
+  const orderCol =
+    orderCandidate && base.columns.some((c) => c.toLowerCase() === orderCandidate.toLowerCase())
+      ? orderCandidate
+      : base.columns[0];
+  const safeOrder = `[${base.alias}].${quoteColumn(orderCol)}`;
+
+  // 6. Pagination — bound parameters, never interpolated.
+  const page = clampPage(pagination.page);
+  const pageSize = clampPageSize(pagination.pageSize);
+  const offset = (page - 1) * pageSize;
+  const values: NamedParam[] = [
+    { name: "offset", value: offset, type: "int" },
+    { name: "pageSize", value: pageSize, type: "int" },
+  ];
+
+  const text = `
+    SELECT ${selectParts.join(", ")}
+    FROM ${fromClause}
+    ORDER BY ${safeOrder}
+    OFFSET @offset ROWS
+    FETCH NEXT @pageSize ROWS ONLY
+  `.trim();
+
+  const countText = `SELECT COUNT(*) AS total FROM ${fromClause}`;
+
+  return { text, countText, values, columns: outColumns, page, pageSize };
 }

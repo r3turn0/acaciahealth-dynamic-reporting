@@ -12,7 +12,9 @@ import {
   getContract,
   listContracts,
   validateContract,
+  validateJoins,
   type ContractTable,
+  type ContractJoin,
 } from "@/lib/access/contractService";
 
 export async function GET(req: NextRequest) {
@@ -28,7 +30,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  let body: { appId?: string; tables?: ContractTable[] };
+  let body: { appId?: string; tables?: ContractTable[]; joins?: ContractJoin[] };
   try {
     body = await req.json();
   } catch {
@@ -36,6 +38,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { appId, tables } = body;
+  const joins = Array.isArray(body.joins) ? body.joins : [];
   if (!appId || !Array.isArray(tables)) {
     return NextResponse.json(
       { error: "Body must include appId and tables[]" },
@@ -43,14 +46,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Validate against the schema registry before persisting.
-  const errors = await validateContract(tables);
+  // Validate tables + joins against the schema registry before persisting.
+  const errors = [
+    ...(await validateContract(tables)),
+    ...(await validateJoins(tables, joins)),
+  ];
   if (errors.length > 0) {
     return NextResponse.json({ error: "Contract validation failed", errors }, { status: 422 });
   }
 
   try {
-    const contract = await createContract(appId, tables);
+    const contract = await createContract(appId, tables, joins);
     return NextResponse.json({ contract }, { status: 201 });
   } catch (err) {
     console.error("[access] /api/contract POST error:", err);
