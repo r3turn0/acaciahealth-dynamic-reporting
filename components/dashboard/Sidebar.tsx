@@ -11,22 +11,20 @@ import {
   ShieldCheck,
   Sparkles,
   Bookmark,
-  Table2,
   Zap,
-  FlaskConical,
+  Compass,
+  Boxes,
   MonitorSmartphone,
   ShieldAlert,
-  Lock,
 } from "lucide-react";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard",          id: "dashboard", group: "main" },
-  { icon: Sparkles,        label: "Report Studio",      id: "studio",    group: "main" },
-  { icon: Table2,          label: "Data",               id: "data",      group: "main" },
-  { icon: BarChart3,       label: "KPI Explorer",       id: "kpi",       group: "main" },
-  { icon: Database,        label: "Schema Intelligence",id: "schema",    group: "main" },
-  { icon: FlaskConical,    label: "Metadata Engine",    id: "metadata",  group: "main" },
-  { icon: Lock,            label: "Data Contracts",     id: "contracts", group: "main" },
+  { icon: Compass,         label: "Discover Data",      id: "data",      group: "workflow" },
+  { icon: Boxes,           label: "Build Dataset",      id: "contracts", group: "workflow" },
+  { icon: BarChart3,       label: "KPI Explorer",       id: "kpi",       group: "workflow" },
+  { icon: Sparkles,        label: "Report Studio",      id: "studio",    group: "tools" },
+  { icon: Database,        label: "Schema Intelligence",id: "schema",    group: "tools" },
 
   { icon: Bookmark,        label: "Saved Reports",      id: "saved",     group: "reports" },
   { icon: ShieldCheck,     label: "Audit & Monitoring", id: "audit",     group: "reports" },
@@ -118,10 +116,59 @@ export function Sidebar({ activeView, userRole, onNavigate }: SidebarProps) {
       {/* Nav */}
       <nav className="flex flex-col gap-0.5 px-2 py-3 flex-1 overflow-y-auto">
         <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
-          Reporting
+          Overview
         </p>
         {navItems
           .filter((n) => n.group === "main")
+          .map(({ icon: Icon, label, id }) => (
+            <button
+              key={id}
+              onClick={() => onNavigate(id)}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-left w-full",
+                activeView === id
+                  ? "bg-primary/15 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              )}
+            >
+              <Icon className="w-4 h-4 shrink-0" />
+              {label}
+            </button>
+          ))}
+
+        <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+          Workflow
+        </p>
+        {navItems
+          .filter((n) => n.group === "workflow")
+          .map(({ icon: Icon, label, id }, i, arr) => (
+            <div key={id} className="flex flex-col">
+              <button
+                onClick={() => onNavigate(id)}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-left w-full",
+                  activeView === id
+                    ? "bg-primary/15 text-primary font-medium"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                )}
+              >
+                <span className="flex items-center justify-center w-5 h-5 rounded bg-muted/60 text-[10px] font-bold shrink-0">
+                  {i + 1}
+                </span>
+                <Icon className="w-4 h-4 shrink-0" />
+                {label}
+              </button>
+              {i < arr.length - 1 && (
+                <div className="ml-[1.55rem] h-2 w-px bg-border" aria-hidden="true" />
+              )}
+            </div>
+          ))}
+
+        <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+          Tools
+        </p>
+        {navItems
+          .filter((n) => n.group === "tools")
           .map(({ icon: Icon, label, id }) => (
             <button
               key={id}

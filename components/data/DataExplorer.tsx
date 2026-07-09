@@ -15,8 +15,14 @@ import {
   Database,
   Filter,
   AlertCircle,
+  Boxes,
+  Check,
 } from "lucide-react";
 import schemaConfig from "@/lib/config/schemaConfig.json";
+import {
+  addTableToDraft,
+  useDatasetDraft,
+} from "@/lib/access/datasetDraft";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -104,8 +110,14 @@ function ColumnFilter({ col, value, onChange }: {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function DataExplorer() {
+export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) {
+  const staged = useDatasetDraft();
   const [selectedTable, setSelectedTable] = useState<string>(TABLES[0]);
+
+  function handleAddToDataset() {
+    addTableToDraft(selectedTable);
+    onOpenBuilder?.();
+  }
   const [page, setPage]         = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [sort, setSort]         = useState<string | null>(null);
@@ -217,6 +229,7 @@ export function DataExplorer() {
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const columns = data?.columns ?? [];
+  const isStaged = staged.some((t) => t.toLowerCase() === selectedTable.toLowerCase());
 
   return (
     <div className="flex flex-col gap-4">
@@ -226,20 +239,24 @@ export function DataExplorer() {
         <div className="flex items-center gap-2 flex-wrap">
           <Database className="w-4 h-4 text-muted-foreground shrink-0" />
           <div className="flex flex-wrap gap-1.5">
-            {TABLES.map((t) => (
-              <button
-                key={t}
-                onClick={() => handleTableChange(t)}
-                className={cn(
-                  "text-xs px-2.5 py-1 rounded-md border transition-colors font-mono",
-                  selectedTable === t
-                    ? "bg-primary/15 border-primary/40 text-primary font-semibold"
-                    : "border-border text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-accent/30"
-                )}
-              >
-                {t}
-              </button>
-            ))}
+            {TABLES.map((t) => {
+              const tableStaged = staged.some((s) => s.toLowerCase() === t.toLowerCase());
+              return (
+                <button
+                  key={t}
+                  onClick={() => handleTableChange(t)}
+                  className={cn(
+                    "flex items-center gap-1 text-xs px-2.5 py-1 rounded-md border transition-colors font-mono",
+                    selectedTable === t
+                      ? "bg-primary/15 border-primary/40 text-primary font-semibold"
+                      : "border-border text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-accent/30"
+                  )}
+                >
+                  {tableStaged && <Check className="w-3 h-3 text-chart-3 shrink-0" />}
+                  {t}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -285,6 +302,13 @@ export function DataExplorer() {
           >
             <Download className="w-3.5 h-3.5" />
             CSV
+          </button>
+          <button
+            onClick={handleAddToDataset}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors"
+          >
+            {isStaged ? <Check className="w-3.5 h-3.5" /> : <Boxes className="w-3.5 h-3.5" />}
+            {isStaged ? "In Dataset — Open Builder" : "Add to Dataset"}
           </button>
         </div>
       </div>

@@ -18,7 +18,11 @@ import {
   AlertCircle,
   Link2,
   Waypoints,
+  Boxes,
+  Plus,
+  Sparkles,
 } from "lucide-react";
+import { useDatasetDraft, clearDatasetDraft } from "@/lib/access/datasetDraft";
 
 // ── Types (mirror the access-proxy API shapes) ─────────────────────────────────
 
@@ -179,6 +183,52 @@ export function DataContractWorkspace() {
     });
   }, []);
 
+  // ── Consume tables staged from the Discover Data tab ──────────────────────────
+  const stagedDraft = useDatasetDraft();
+  useEffect(() => {
+    if (stagedDraft.length === 0 || allTables.length === 0) return;
+    setSelection((prev) => {
+      const next = new Map(prev);
+      for (const name of stagedDraft) {
+        const t = allTables.find(
+          (x) =>
+            x.name.toLowerCase() === name.toLowerCase() ||
+            x.id.toLowerCase() === name.toLowerCase()
+        );
+        if (t && !next.has(t.id)) next.set(t.id, new Set(t.columns.map((c) => c.name)));
+      }
+      return next;
+    });
+    clearDatasetDraft();
+  }, [stagedDraft, allTables]);
+
+  // ── Suggested related tables (metadata-driven relationship insight) ───────────
+  const suggestedTables = useMemo(() => {
+    if (selection.size === 0) return [] as { table: RegistryTable; via: string }[];
+    const selectedIds = new Set([...selection.keys()].map((k) => k.toLowerCase()));
+    const out = new Map<string, { table: RegistryTable; via: string }>();
+    for (const t of allTables) {
+      // outbound FKs from selected tables → suggest their targets
+      if (selection.has(t.id)) {
+        for (const r of t.relationships ?? []) {
+          const target = allTables.find((x) => x.id.toLowerCase() === r.toTable.toLowerCase());
+          if (target && !selectedIds.has(target.id.toLowerCase()) && !out.has(target.id)) {
+            out.set(target.id, { table: target, via: t.name });
+          }
+        }
+        continue;
+      }
+      // inbound FKs: tables that reference a selected table
+      for (const r of t.relationships ?? []) {
+        if (selectedIds.has(r.toTable.toLowerCase()) && !out.has(t.id)) {
+          const viaTbl = allTables.find((x) => x.id.toLowerCase() === r.toTable.toLowerCase());
+          out.set(t.id, { table: t, via: viaTbl?.name ?? r.toTable.split(".").pop()! });
+        }
+      }
+    }
+    return [...out.values()];
+  }, [allTables, selection]);
+
   // Drop join selections whose tables are no longer both selected.
   useEffect(() => {
     setSelectedJoins((prev) => {
@@ -216,7 +266,7 @@ export function DataContractWorkspace() {
         throw new Error(detail ?? "Failed to create contract");
       }
       const joinNote = joins.length ? `, ${joins.length} join(s)` : "";
-      setContractMsg({ ok: true, text: `Contract active for "${appId}" — ${tables.length} table(s), ${totalColumns} column(s)${joinNote} exposed.` });
+      setContractMsg({ ok: true, text: `Dataset active for "${appId}" — ${tables.length} table(s), ${totalColumns} column(s)${joinNote} exposed.` });
       setActiveJoins(body.contract?.joins ?? joins);
       // Auto-preview the first table in the new contract.
       const first = tables[0]?.name ?? null;
@@ -265,15 +315,15 @@ export function DataContractWorkspace() {
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-card border border-border rounded-lg p-4">
         <div className="flex items-center gap-2 shrink-0">
           <div className="flex items-center justify-center w-8 h-8 rounded-md bg-primary/15">
-            <Lock className="w-4 h-4 text-primary" />
+            <Boxes className="w-4 h-4 text-primary" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-foreground leading-none">Data Contract</p>
-            <p className="text-[11px] text-muted-foreground mt-1">Scope exactly what this app can read</p>
+            <p className="text-sm font-semibold text-foreground leading-none">Dataset Builder</p>
+            <p className="text-[11px] text-muted-foreground mt-1">Shape a reusable, access-controlled dataset</p>
           </div>
         </div>
         <div className="flex items-center gap-2 sm:ml-auto w-full sm:w-auto">
-          <label htmlFor="appId" className="text-xs text-muted-foreground shrink-0">App ID</label>
+          <label htmlFor="appId" className="text-xs text-muted-foreground shrink-0">Dataset ID</label>
           <input
             id="appId"
             value={appId}
@@ -404,7 +454,7 @@ export function DataContractWorkspace() {
             <div className="flex-1 min-h-0 overflow-y-auto max-h-40 flex flex-col gap-1.5">
               {selectedTables.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-4 text-center">
-                  Select tables to build the contract. Everything else stays hidden.
+                  Select tables to build the dataset. Everything else stays hidden.
                 </p>
               ) : (
                 selectedTables.map((t) => (
@@ -419,6 +469,28 @@ export function DataContractWorkspace() {
                 ))
               )}
             </div>
+
+            {/* Suggested related tables (relationship insight) */}
+            {suggestedTables.length > 0 && (
+              <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-primary" />
+                  <span className="text-[11px] font-semibold text-foreground">Suggested related tables</span>
+                  <span className="text-[10px] text-muted-foreground ml-auto">from relationships</span>
+                </div>
+                {suggestedTables.map(({ table, via }) => (
+                  <button
+                    key={table.id}
+                    onClick={() => toggleTable(table)}
+                    className="flex items-center gap-1.5 text-[11px] rounded border border-dashed border-primary/40 px-2 py-1.5 transition-colors text-left hover:bg-primary/5"
+                  >
+                    <Plus className="w-3 h-3 text-primary shrink-0" />
+                    <span className="text-foreground truncate">{table.name}</span>
+                    <span className="text-muted-foreground truncate">· related to {via}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Relationships / joins */}
             {selectedTables.length >= 2 && (
@@ -464,7 +536,7 @@ export function DataContractWorkspace() {
               className="flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-md px-3 py-2 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileCheck2 className="w-4 h-4" />}
-              Create Data Contract
+              Build Dataset
             </button>
 
             {contractMsg && (
@@ -489,7 +561,7 @@ export function DataContractWorkspace() {
         <div className="bg-card border border-border rounded-lg flex flex-col">
           <div className="p-4 border-b border-border flex flex-wrap items-center gap-2">
             <Lock className="w-4 h-4 text-primary" />
-            <h2 className="text-sm font-semibold text-foreground">Contract Preview</h2>
+            <h2 className="text-sm font-semibold text-foreground">Dataset Preview</h2>
             {data && (
               <span
                 className={cn(

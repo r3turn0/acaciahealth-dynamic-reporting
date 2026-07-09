@@ -10,7 +10,6 @@ import { ReportStudio } from "@/components/studio/ReportStudio";
 import { SavedReports } from "@/components/studio/SavedReports";
 import type { LoadedReport } from "@/components/studio/ReportStudio";
 import { DataExplorer } from "@/components/data/DataExplorer";
-import { MetadataReportEngine } from "@/components/schema/MetadataReportEngine";
 import { DataContractWorkspace } from "@/components/access/DataContractWorkspace";
 
 import { LoginPage } from "@/components/auth/LoginPage";
@@ -21,7 +20,7 @@ import { AuditDashboard } from "@/components/audit/AuditDashboard";
 import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 
-type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "metadata" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin";
+type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin";
 
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   dashboard: {
@@ -33,8 +32,8 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
     subtitle: "Ask AI, edit SQL, run queries, view results, save reports",
   },
   data: {
-    title: "Data",
-    subtitle: "Browse, filter, sort, and export raw table data",
+    title: "Discover Data",
+    subtitle: "Search, preview, and sample tables — then add them to your dataset",
   },
   kpi: {
     title: "KPI Explorer",
@@ -44,13 +43,9 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
     title: "Schema Intelligence",
     subtitle: "Live database schema, join paths, and semantic layer",
   },
-  metadata: {
-    title: "Metadata Engine",
-    subtitle: "Upload metadata.json to build schema model, discover fields, resolve joins, and generate ReportPlans",
-  },
   contracts: {
-    title: "Data Contracts",
-    subtitle: "Scope tables and columns per app — the access proxy enforces read-only, contract-bound queries",
+    title: "Build Dataset",
+    subtitle: "Shape a reusable dataset — pick tables, columns, and relationships the access proxy will enforce",
   },
 
   saved: {
@@ -253,7 +248,7 @@ export default function Home() {
           )}
           {view === "data" && (
             <div className="max-w-6xl">
-              <DataExplorer />
+              <DataExplorer onOpenBuilder={() => setView("contracts")} />
             </div>
           )}
           {view === "saved" && (
@@ -281,11 +276,6 @@ export default function Home() {
           {view === "schema" && (
             <div className="max-w-5xl">
               <SchemaViewer />
-            </div>
-          )}
-          {view === "metadata" && (
-            <div className="max-w-5xl">
-              <MetadataReportEngine />
             </div>
           )}
           {view === "contracts" && (
@@ -367,24 +357,24 @@ function RecentReports() {
 function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {
   const actions = [
     {
-      id: "studio",
-      label: "Open Report Studio",
-      desc: "Ask AI, write SQL, run queries, save reports",
+      id: "data",
+      label: "1 · Discover Data",
+      desc: "Search, preview, and sample tables from the warehouse",
+    },
+    {
+      id: "contracts",
+      label: "2 · Build Dataset",
+      desc: "Pick tables, columns, and relationships into a reusable dataset",
     },
     {
       id: "kpi",
-      label: "Explore KPIs",
-      desc: "Browse admissions, revenue, census, discharges",
+      label: "3 · KPI Explorer",
+      desc: "Analyze your dataset and browse KPI definitions",
     },
     {
-      id: "data",
-      label: "Browse Table Data",
-      desc: "Filter, sort, and export raw rows from any table",
-    },
-    {
-      id: "schema",
-      label: "Schema Intelligence",
-      desc: "Tables, join paths, semantic layer, column types",
+      id: "studio",
+      label: "Report Studio",
+      desc: "Ask AI, write SQL, run queries, save reports",
     },
   ];
 
