@@ -1,4 +1,4 @@
-/**
+018496/**
  * Schema Intelligence Agent
  * Reads DB metadata from INFORMATION_SCHEMA (live) or falls back to static config.
  * Caches schema for 60 minutes.
