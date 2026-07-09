@@ -10,6 +10,7 @@ import { ReportStudio } from "@/components/studio/ReportStudio";
 import { SavedReports } from "@/components/studio/SavedReports";
 import type { LoadedReport } from "@/components/studio/ReportStudio";
 import { DataExplorer } from "@/components/data/DataExplorer";
+import { MetadataReportEngine } from "@/components/schema/MetadataReportEngine";
 import { DataContractWorkspace } from "@/components/access/DataContractWorkspace";
 
 import { LoginPage } from "@/components/auth/LoginPage";
@@ -20,7 +21,7 @@ import { AuditDashboard } from "@/components/audit/AuditDashboard";
 import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 
-type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin";
+type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "metadata" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin";
 
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   dashboard: {
@@ -42,6 +43,10 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   schema: {
     title: "Schema Intelligence",
     subtitle: "Live database schema, join paths, and semantic layer",
+  },
+  metadata: {
+    title: "Metadata Engine",
+    subtitle: "AI schema-inference tool — inspect tables, columns, roles, and join paths for fast lookup and grounding",
   },
   contracts: {
     title: "Build Dataset",
@@ -276,6 +281,11 @@ export default function Home() {
           {view === "schema" && (
             <div className="max-w-5xl">
               <SchemaViewer />
+            </div>
+          )}
+          {view === "metadata" && (
+            <div className="max-w-5xl">
+              <MetadataReportEngine />
             </div>
           )}
           {view === "contracts" && (

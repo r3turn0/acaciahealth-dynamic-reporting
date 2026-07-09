@@ -14,6 +14,7 @@ import {
   Zap,
   Compass,
   Boxes,
+  FlaskConical,
   MonitorSmartphone,
   ShieldAlert,
 } from "lucide-react";
@@ -25,6 +26,7 @@ const navItems = [
   { icon: BarChart3,       label: "KPI Explorer",       id: "kpi",       group: "workflow" },
   { icon: Sparkles,        label: "Report Studio",      id: "studio",    group: "tools" },
   { icon: Database,        label: "Schema Intelligence",id: "schema",    group: "tools" },
+  { icon: FlaskConical,    label: "Metadata Engine",    id: "metadata",  group: "tools" },
 
   { icon: Bookmark,        label: "Saved Reports",      id: "saved",     group: "reports" },
   { icon: ShieldCheck,     label: "Audit & Monitoring", id: "audit",     group: "reports" },
