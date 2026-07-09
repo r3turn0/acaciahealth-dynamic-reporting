@@ -251,7 +251,7 @@ export function DataContractWorkspace() {
         setData(null);
       })
       .finally(() => setLoadingData(false));
-  }, [previewTable, page, pageSize, appId]);
+  }, [previewTable, previewJoin, page, pageSize, appId]);
 
   const contractTables = useMemo(
     () => selectedTables.map((t) => t.id),
@@ -420,6 +420,44 @@ export function DataContractWorkspace() {
               )}
             </div>
 
+            {/* Relationships / joins */}
+            {selectedTables.length >= 2 && (
+              <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+                <div className="flex items-center gap-1.5">
+                  <Waypoints className="w-3.5 h-3.5 text-chart-2" />
+                  <span className="text-[11px] font-semibold text-foreground">Relationships</span>
+                  <span className="text-[10px] text-muted-foreground ml-auto">FK joins</span>
+                </div>
+                {availableJoins.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground py-1">
+                    No foreign-key relationships between the selected tables.
+                  </p>
+                ) : (
+                  availableJoins.map((j) => {
+                    const on = selectedJoins.has(j.key);
+                    return (
+                      <button
+                        key={j.key}
+                        onClick={() => toggleJoin(j.key)}
+                        className={cn(
+                          "flex items-center gap-1.5 text-[11px] rounded border px-2 py-1.5 transition-colors text-left",
+                          on
+                            ? "bg-chart-2/15 border-chart-2/40 text-foreground"
+                            : "border-border text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        <Link2 className={cn("w-3 h-3 shrink-0", on ? "text-chart-2" : "")} />
+                        <span className="truncate">
+                          {j.fromShort} <span className="text-muted-foreground">⋈</span> {j.toShort}
+                        </span>
+                        {on && <Check className="w-3 h-3 text-chart-2 ml-auto shrink-0" />}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
             <button
               onClick={createContract}
               disabled={selectedTables.length === 0 || saving}
@@ -465,11 +503,11 @@ export function DataContractWorkspace() {
             <div className="flex items-center gap-1 ml-auto flex-wrap">
               {contractTables.map((tid) => {
                 const short = tid.split(".").pop();
-                const active = previewTable?.toLowerCase() === tid.toLowerCase();
+                const active = previewTable?.toLowerCase() === tid.toLowerCase() && !previewJoin;
                 return (
                   <button
                     key={tid}
-                    onClick={() => { setPreviewTable(tid); setPage(1); }}
+                    onClick={() => { setPreviewTable(tid); setPreviewJoin(null); setPage(1); }}
                     className={cn(
                       "text-xs px-2.5 py-1 rounded-md border transition-colors",
                       active
@@ -478,6 +516,30 @@ export function DataContractWorkspace() {
                     )}
                   >
                     {short}
+                  </button>
+                );
+              })}
+              {/* Joined views — one tab per contract join */}
+              {activeJoins.map((j) => {
+                const fromShort = j.fromTable.split(".").pop()!;
+                const toShort = j.toTable.split(".").pop()!;
+                const active =
+                  previewTable?.toLowerCase() === j.fromTable.toLowerCase() &&
+                  previewJoin?.toLowerCase() === j.toTable.toLowerCase();
+                return (
+                  <button
+                    key={`${j.fromTable}||${j.toTable}`}
+                    onClick={() => { setPreviewTable(j.fromTable); setPreviewJoin(j.toTable); setPage(1); }}
+                    className={cn(
+                      "flex items-center gap-1 text-xs px-2.5 py-1 rounded-md border transition-colors",
+                      active
+                        ? "bg-chart-2/15 border-chart-2/40 text-foreground font-medium"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    )}
+                    title={`Joined view: ${fromShort} ⋈ ${toShort}`}
+                  >
+                    <Link2 className="w-3 h-3" />
+                    {fromShort} ⋈ {toShort}
                   </button>
                 );
               })}
