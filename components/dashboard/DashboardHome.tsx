@@ -92,7 +92,7 @@ export function DashboardHome({ onNavigate, onOpenReport }: DashboardHomeProps) 
   }
 
   return (
-    <div className="flex flex-col gap-6 max-w-6xl">
+    <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full">
       <KpiCards />
 
       {/* Pinned to dashboard */}
@@ -230,7 +230,7 @@ function PinnedBoard({
   );
 }
 
-// ── Recent reports ──────────────────────────────────────────────────────────
+// ── Recent reports ───────────────────────────────────��──────────────────────
 
 function RecentReportsList({
   reports,

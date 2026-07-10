@@ -246,17 +246,17 @@ export default function Home() {
             />
           )}
           {view === "studio" && (
-            <div className="max-w-5xl">
+            <div className="max-w-6xl mx-auto w-full">
               <ReportStudio initialReport={loadedReport} />
             </div>
           )}
           {view === "data" && (
-            <div className="max-w-6xl">
+            <div className="max-w-7xl mx-auto w-full">
               <DataExplorer onOpenBuilder={() => setView("contracts")} />
             </div>
           )}
           {view === "saved" && (
-            <div className="max-w-4xl">
+            <div className="max-w-5xl mx-auto w-full">
               <div className="bg-card border border-border rounded-lg p-5">
                 <SavedReports
                   allowCreate
@@ -274,38 +274,38 @@ export default function Home() {
             </div>
           )}
           {view === "kpi" && (
-            <div className="max-w-5xl">
+            <div className="max-w-6xl mx-auto w-full">
               <KpiExplorer />
             </div>
           )}
           {view === "schema" && (
-            <div className="max-w-5xl">
+            <div className="max-w-6xl mx-auto w-full">
               <SchemaViewer />
             </div>
           )}
           {view === "metadata" && (
-            <div className="max-w-5xl">
+            <div className="max-w-6xl mx-auto w-full">
               <MetadataReportEngine />
             </div>
           )}
           {view === "contracts" && (
-            <div className="max-w-6xl">
+            <div className="max-w-7xl mx-auto w-full">
               <DataContractWorkspace />
             </div>
           )}
 
           {view === "audit" && (
-            <div className="max-w-5xl">
+            <div className="max-w-6xl mx-auto w-full">
               <AuditDashboard />
             </div>
           )}
           {view === "sessions" && (
-            <div className="max-w-3xl">
+            <div className="max-w-3xl mx-auto w-full">
               <SessionManager currentUser={user} />
             </div>
           )}
           {view === "admin" && (
-            <div className="max-w-5xl">
+            <div className="max-w-6xl mx-auto w-full">
               {user.role === "Admin" ? (
                 <SecurityConsole currentUser={user} />
               ) : (
@@ -318,7 +318,7 @@ export default function Home() {
             </div>
           )}
           {view === "settings" && (
-            <div className="max-w-2xl">
+            <div className="max-w-2xl mx-auto w-full">
               <SettingsPanel />
             </div>
           )}
