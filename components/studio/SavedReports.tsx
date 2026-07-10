@@ -13,8 +13,17 @@ import {
   Search,
   X,
   SlidersHorizontal,
+  Pin,
+  PinOff,
+  FilePlus2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  useDashboardPins,
+  isPinned as isItemPinned,
+  pinItem,
+  unpinByRef,
+} from "@/lib/hooks/useDashboardPins";
 
 export interface SavedReport {
   id: string;
@@ -35,11 +44,13 @@ interface SavedReportsProps {
   onLoad: (report: SavedReport) => void;
   pendingSave?: { name: string; sql: string; prompt: string; kpi: string } | null;
   onSaveDone?: () => void;
+  /** Show the "New Report" button that lets users author a report from scratch. */
+  allowCreate?: boolean;
 }
 
 type SortKey = "created_date" | "last_run_date" | "run_count" | "name";
 
-export function SavedReports({ onLoad, pendingSave, onSaveDone }: SavedReportsProps) {
+export function SavedReports({ onLoad, pendingSave, onSaveDone, allowCreate = false }: SavedReportsProps) {
   const [reports, setReports] = useState<SavedReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -47,6 +58,14 @@ export function SavedReports({ onLoad, pendingSave, onSaveDone }: SavedReportsPr
   const [saveName, setSaveName] = useState("");
   const [saveDesc, setSaveDesc] = useState("");
   const [showSaveForm, setShowSaveForm] = useState(false);
+
+  // Manual authoring state (New Report from scratch)
+  const [manualMode, setManualMode] = useState(false);
+  const [manualSql, setManualSql] = useState("");
+  const [manualKpi, setManualKpi] = useState("custom");
+
+  // Subscribe to the shared pins store so pin/unpin re-renders this list.
+  useDashboardPins();
 
   // Filter state
   const [search, setSearch] = useState("");
@@ -111,7 +130,12 @@ export function SavedReports({ onLoad, pendingSave, onSaveDone }: SavedReportsPr
   const hasActiveFilters = search || filterKpi !== "all" || filterTag !== "all" || sortBy !== "created_date";
 
   async function saveReport() {
-    if (!pendingSave || !saveName.trim()) return;
+    // Two sources: a pendingSave pushed from Report Studio, or a manual author.
+    const sql = manualMode ? manualSql.trim() : pendingSave?.sql ?? "";
+    const kpi = manualMode ? (manualKpi.trim() || "custom") : pendingSave?.kpi ?? "custom";
+    const prompt = manualMode ? "" : pendingSave?.prompt ?? "";
+    if (!saveName.trim() || !sql) return;
+
     setSaving(true);
     try {
       const res = await fetch("/api/reports", {
@@ -120,10 +144,10 @@ export function SavedReports({ onLoad, pendingSave, onSaveDone }: SavedReportsPr
         body: JSON.stringify({
           name: saveName.trim(),
           description: saveDesc.trim(),
-          prompt: pendingSave.prompt,
-          sql: pendingSave.sql,
-          kpi: pendingSave.kpi,
-          tags: pendingSave.kpi ? [pendingSave.kpi] : [],
+          prompt,
+          sql,
+          kpi,
+          tags: kpi && kpi !== "custom" ? [kpi] : [],
           created_by: "analyst",
         }),
       });
@@ -131,6 +155,9 @@ export function SavedReports({ onLoad, pendingSave, onSaveDone }: SavedReportsPr
         await fetchReports();
         setSaveName("");
         setSaveDesc("");
+        setManualSql("");
+        setManualKpi("custom");
+        setManualMode(false);
         setShowSaveForm(false);
         onSaveDone?.();
       }
@@ -139,11 +166,43 @@ export function SavedReports({ onLoad, pendingSave, onSaveDone }: SavedReportsPr
     }
   }
 
+  function openManualForm() {
+    setManualMode(true);
+    setSaveName("");
+    setSaveDesc("");
+    setManualSql("");
+    setManualKpi("custom");
+    setShowSaveForm(true);
+  }
+
+  function closeSaveForm() {
+    setShowSaveForm(false);
+    setManualMode(false);
+    onSaveDone?.();
+  }
+
+  async function togglePin(r: SavedReport) {
+    if (isItemPinned("report", r.id)) {
+      await unpinByRef("report", r.id);
+    } else {
+      await pinItem({
+        type: "report",
+        refId: r.id,
+        title: r.name,
+        subtitle: r.description || `${r.kpi} report`,
+        kpi: r.kpi,
+        meta: { sql: r.sql, prompt: r.prompt },
+      });
+    }
+  }
+
   async function deleteReport(id: string) {
     setDeletingId(id);
     try {
       await fetch(`/api/reports/${id}`, { method: "DELETE" });
       setReports((prev) => prev.filter((r) => r.id !== id));
+      // Drop any dashboard pin that referenced this report.
+      if (isItemPinned("report", id)) await unpinByRef("report", id);
     } finally {
       setDeletingId(null);
     }
@@ -177,6 +236,16 @@ export function SavedReports({ onLoad, pendingSave, onSaveDone }: SavedReportsPr
           </span>
         </div>
         <div className="flex items-center gap-1.5">
+          {allowCreate && (
+            <button
+              onClick={openManualForm}
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border border-primary/40 text-primary bg-primary/8 hover:bg-primary/15 transition-colors font-medium"
+              title="Author a new report"
+            >
+              <FilePlus2 className="w-3.5 h-3.5" />
+              New Report
+            </button>
+          )}
           <button
             onClick={() => setShowFilters((v) => !v)}
             className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors ${
@@ -202,10 +271,12 @@ export function SavedReports({ onLoad, pendingSave, onSaveDone }: SavedReportsPr
         </div>
       </div>
 
-      {/* Save form */}
-      {showSaveForm && pendingSave && (
+      {/* Save form — used both for a query pushed from Studio and manual authoring */}
+      {showSaveForm && (pendingSave || manualMode) && (
         <div className="bg-muted/50 border border-border rounded-lg p-4 flex flex-col gap-3">
-          <p className="text-xs font-medium text-foreground">Save current query</p>
+          <p className="text-xs font-medium text-foreground">
+            {manualMode ? "New report" : "Save current query"}
+          </p>
           <input
             type="text"
             placeholder="Report name"
@@ -220,18 +291,40 @@ export function SavedReports({ onLoad, pendingSave, onSaveDone }: SavedReportsPr
             onChange={(e) => setSaveDesc(e.target.value)}
             className="bg-card border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           />
+          {manualMode && (
+            <>
+              <textarea
+                placeholder="SQL query (e.g. SELECT TOP 100 * FROM CLIENT_EPISODES_ALL)"
+                value={manualSql}
+                onChange={(e) => setManualSql(e.target.value)}
+                rows={5}
+                spellCheck={false}
+                className="bg-card border border-border rounded-md px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+              />
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] text-muted-foreground shrink-0">KPI category</label>
+                <input
+                  type="text"
+                  placeholder="custom"
+                  value={manualKpi}
+                  onChange={(e) => setManualKpi(e.target.value)}
+                  className="bg-card border border-border rounded-md px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary flex-1"
+                />
+              </div>
+            </>
+          )}
           <div className="flex items-center gap-2">
             <Button
               size="sm"
               onClick={saveReport}
-              disabled={saving || !saveName.trim()}
+              disabled={saving || !saveName.trim() || (manualMode && !manualSql.trim())}
               className="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 h-7 px-3 text-xs"
             >
               {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
               Save
             </Button>
             <button
-              onClick={() => { setShowSaveForm(false); onSaveDone?.(); }}
+              onClick={closeSaveForm}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Cancel
@@ -385,6 +478,23 @@ export function SavedReports({ onLoad, pendingSave, onSaveDone }: SavedReportsPr
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
+                  {(() => {
+                    const pinned = isItemPinned("report", r.id);
+                    return (
+                      <button
+                        onClick={() => togglePin(r)}
+                        className={`p-1.5 rounded border transition-colors ${
+                          pinned
+                            ? "border-chart-3/40 bg-chart-3/15 text-chart-3"
+                            : "border-border text-muted-foreground hover:text-foreground hover:border-chart-3/40"
+                        }`}
+                        title={pinned ? "Unpin from dashboard" : "Pin to dashboard"}
+                        aria-pressed={pinned}
+                      >
+                        {pinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+                      </button>
+                    );
+                  })()}
                   <button
                     onClick={() => onLoad(r)}
                     className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors px-2.5 py-1.5 rounded border border-primary/30 hover:bg-primary/10"

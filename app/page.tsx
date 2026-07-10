@@ -2,10 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
-import { KpiCards } from "@/components/dashboard/KpiCards";
 import { SchemaViewer } from "@/components/dashboard/SchemaViewer";
 import { KpiExplorer } from "@/components/dashboard/KpiExplorer";
-import { HealthStatus } from "@/components/dashboard/HealthStatus";
+import { DashboardHome } from "@/components/dashboard/DashboardHome";
 import { ReportStudio } from "@/components/studio/ReportStudio";
 import { SavedReports } from "@/components/studio/SavedReports";
 import type { LoadedReport } from "@/components/studio/ReportStudio";
@@ -233,18 +232,18 @@ export default function Home() {
         {/* Page content */}
         <main className="flex-1 overflow-y-auto px-5 md:px-6 py-6">
           {view === "dashboard" && (
-            <div className="flex flex-col gap-6 max-w-6xl">
-              <KpiCards />
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
-                  <RecentReports />
-                </div>
-                <div>
-                  <HealthStatus />
-                </div>
-              </div>
-              <QuickStart onNavigate={(id) => setView(id as View)} />
-            </div>
+            <DashboardHome
+              onNavigate={(id) => setView(id as View)}
+              onOpenReport={(report) => {
+                setLoadedReport({
+                  sql: report.sql,
+                  prompt: report.prompt,
+                  kpi: report.kpi,
+                  name: report.name,
+                });
+                setView("studio");
+              }}
+            />
           )}
           {view === "studio" && (
             <div className="max-w-5xl">
@@ -260,6 +259,7 @@ export default function Home() {
             <div className="max-w-4xl">
               <div className="bg-card border border-border rounded-lg p-5">
                 <SavedReports
+                  allowCreate
                   onLoad={(report) => {
                     setLoadedReport({
                       sql: report.sql,
@@ -329,85 +329,6 @@ export default function Home() {
 }
 
 // ── Supporting sub-views ──────────────────────────────────────────────────────
-
-function RecentReports() {
-  const reports = [
-    { name: "Weekly Admissions by Branch", kpi: "admissions", rows: 42, ran: "2 hours ago" },
-    { name: "Revenue WTD — Home Health", kpi: "revenue", rows: 18, ran: "5 hours ago" },
-    { name: "Active Census by Care Type", kpi: "census", rows: 12, ran: "1 day ago" },
-    { name: "Discharge Summary Weekly", kpi: "discharges", rows: 36, ran: "1 day ago" },
-  ];
-
-  return (
-    <div className="bg-card border border-border rounded-lg p-5">
-      <h2 className="text-sm font-semibold text-foreground mb-4">Recent Reports</h2>
-      <div className="flex flex-col gap-1">
-        {reports.map((r, i) => (
-          <div
-            key={i}
-            className="flex items-center justify-between py-2.5 border-b border-border/50 last:border-0"
-          >
-            <div>
-              <p className="text-sm text-foreground">{r.name}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{r.ran}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 capitalize">
-                {r.kpi}
-              </span>
-              <span className="text-xs text-muted-foreground">{r.rows} rows</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {
-  const actions = [
-    {
-      id: "data",
-      label: "1 · Discover Data",
-      desc: "Search, preview, and sample tables from the warehouse",
-    },
-    {
-      id: "contracts",
-      label: "2 · Build Dataset",
-      desc: "Pick tables, columns, and relationships into a reusable dataset",
-    },
-    {
-      id: "kpi",
-      label: "3 · KPI Explorer",
-      desc: "Analyze your dataset and browse KPI definitions",
-    },
-    {
-      id: "studio",
-      label: "Report Studio",
-      desc: "Ask AI, write SQL, run queries, save reports",
-    },
-  ];
-
-  return (
-    <div className="bg-card border border-border rounded-lg p-5">
-      <h2 className="text-sm font-semibold text-foreground mb-4">Quick Actions</h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {actions.map((a) => (
-          <button
-            key={a.id}
-            onClick={() => onNavigate(a.id)}
-            className="text-left border border-border rounded-lg p-4 hover:border-primary/50 hover:bg-primary/5 transition-colors"
-          >
-            <p className="text-sm font-medium text-foreground">{a.label}</p>
-            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{a.desc}</p>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-
 
 function AccessDenied({
   requiredRole,

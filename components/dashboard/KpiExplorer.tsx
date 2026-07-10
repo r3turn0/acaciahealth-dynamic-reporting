@@ -1,11 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { BarChart3, Brain, ExternalLink, Loader2, Sparkles } from "lucide-react";
+import { BarChart3, Brain, ExternalLink, Loader2, Sparkles, Pin, PinOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import kpiConfig from "@/lib/config/kpiConfig.json";
 import { KpiInterpreter } from "./KpiInterpreter";
 import { KpiIntelligence } from "./KpiIntelligence";
+import {
+  useDashboardPins,
+  isPinned as isItemPinned,
+  pinItem,
+  unpinByRef,
+} from "@/lib/hooks/useDashboardPins";
 
 type KpiKey = keyof typeof kpiConfig;
 type Tab = "definitions" | "interpreter" | "intelligence";
@@ -24,6 +30,9 @@ export function KpiExplorer() {
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Subscribe to the shared pins store so pin/unpin re-renders the cards.
+  useDashboardPins();
+
   async function fetchKpi(kpi: KpiKey) {
     setSelected(kpi);
     setLoading(true);
@@ -33,6 +42,26 @@ export function KpiExplorer() {
       setData(json);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function toggleKpiPin(kpi: KpiKey) {
+    const def = kpiConfig[kpi];
+    if (isItemPinned("kpi", kpi)) {
+      await unpinByRef("kpi", kpi);
+    } else {
+      await pinItem({
+        type: "kpi",
+        refId: kpi,
+        title: def.label,
+        subtitle: def.description,
+        kpi,
+        meta: {
+          aggregation: def.aggregation,
+          fact_table: def.fact_table,
+          grouping_options: def.grouping_options,
+        },
+      });
     }
   }
 
@@ -66,23 +95,41 @@ export function KpiExplorer() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {(Object.keys(kpiConfig) as KpiKey[]).map((kpi) => {
                 const def = kpiConfig[kpi];
+                const pinned = isItemPinned("kpi", kpi);
                 return (
-                  <button
+                  <div
                     key={kpi}
-                    onClick={() => fetchKpi(kpi)}
                     className={cn(
-                      "text-left border rounded-lg p-3 transition-colors",
+                      "relative border rounded-lg transition-colors",
                       selected === kpi
                         ? "border-primary bg-primary/10"
                         : "border-border bg-muted/30 hover:border-primary/50"
                     )}
                   >
-                    <p className="text-xs font-semibold text-foreground capitalize">{def.label}</p>
-                    <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed line-clamp-2">
-                      {def.description}
-                    </p>
-                    <p className="text-[10px] font-mono text-primary mt-2">{def.aggregation}</p>
-                  </button>
+                    <button
+                      onClick={() => toggleKpiPin(kpi)}
+                      className={cn(
+                        "absolute top-2 right-2 p-1 rounded border transition-colors z-10",
+                        pinned
+                          ? "border-chart-3/40 bg-chart-3/15 text-chart-3"
+                          : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                      )}
+                      title={pinned ? "Unpin from dashboard" : "Pin to dashboard"}
+                      aria-pressed={pinned}
+                    >
+                      {pinned ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
+                    </button>
+                    <button
+                      onClick={() => fetchKpi(kpi)}
+                      className="text-left w-full p-3 pr-9"
+                    >
+                      <p className="text-xs font-semibold text-foreground capitalize">{def.label}</p>
+                      <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed line-clamp-2">
+                        {def.description}
+                      </p>
+                      <p className="text-[10px] font-mono text-primary mt-2">{def.aggregation}</p>
+                    </button>
+                  </div>
                 );
               })}
             </div>
