@@ -10,6 +10,7 @@ import { SavedReports } from "@/components/studio/SavedReports";
 import type { LoadedReport } from "@/components/studio/ReportStudio";
 import { DataExplorer } from "@/components/data/DataExplorer";
 import { MetadataReportEngine } from "@/components/schema/MetadataReportEngine";
+import { BiStudio } from "@/components/bi/BiStudio";
 import { DataContractWorkspace } from "@/components/access/DataContractWorkspace";
 
 import { LoginPage } from "@/components/auth/LoginPage";
@@ -20,7 +21,7 @@ import { AuditDashboard } from "@/components/audit/AuditDashboard";
 import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 
-type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "metadata" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin";
+type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "metadata" | "bi" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin";
 
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   dashboard: {
@@ -46,6 +47,10 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   metadata: {
     title: "Metadata Engine",
     subtitle: "AI schema-inference tool — inspect tables, columns, roles, and join paths for fast lookup and grounding",
+  },
+  bi: {
+    title: "BI Studio",
+    subtitle: "Build datasets, explore KPIs with drag-and-drop, import Excel, and generate reports with AI",
   },
   contracts: {
     title: "Build Dataset",
@@ -286,6 +291,11 @@ export default function Home() {
           {view === "metadata" && (
             <div className="max-w-6xl mx-auto w-full">
               <MetadataReportEngine />
+            </div>
+          )}
+          {view === "bi" && (
+            <div className="max-w-7xl mx-auto w-full">
+              <BiStudio />
             </div>
           )}
           {view === "contracts" && (
