@@ -6,11 +6,14 @@ import {
   ArrowRight,
   Boxes,
   Check,
+  ChevronDown,
+  ChevronRight,
   Database,
   FileSpreadsheet,
   History,
   Link2,
   Plus,
+  Sliders,
   Trash2,
   Upload,
   X,
@@ -68,6 +71,7 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
   const [saving, setSaving] = useState(false);
   const [bumpVersion, setBumpVersion] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const editingExisting = draft.id !== null;
@@ -139,6 +143,7 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
         sampleData: sheet.rows.slice(0, 500),
         source: ext === "csv" ? "csv" : "excel",
       }));
+      setShowAdvanced(true);
     } catch {
       setUploadError("Could not parse that file. Use a .csv or .xlsx file.");
     }
@@ -185,6 +190,7 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
     setDraft(toDraft(ds));
     setBumpVersion(false);
     setUploadError(null);
+    setShowAdvanced(true);
   }
 
   const activeVersion = editingExisting
@@ -202,6 +208,7 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
           onClick={() => {
             setDraft(BLANK);
             setUploadError(null);
+            setShowAdvanced(false);
           }}
           className={cn(
             "flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors",
@@ -273,39 +280,47 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
           )}
         </div>
 
-        {/* Name + upload */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-1">
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-              Table name
-            </label>
-            <input
-              value={draft.name}
-              onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-              placeholder="e.g. Sales Dataset"
-              className="w-full px-3 py-2 rounded-md bg-muted/40 border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
-            />
-          </div>
-          <div className="flex flex-col justify-end">
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              className="sr-only"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleFile(f);
-                e.target.value = "";
-              }}
-            />
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-muted/40 text-sm text-foreground hover:border-primary/40 transition-colors"
-            >
-              <Upload className="w-3.5 h-3.5" /> Infer from CSV / Excel
-            </button>
-          </div>
+        {/* Table name */}
+        <div>
+          <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+            Table name
+          </label>
+          <input
+            value={draft.name}
+            onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+            placeholder="e.g. Sales Dataset"
+            className="w-full px-3 py-2 rounded-md bg-muted/40 border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+          />
         </div>
+
+        {/* Recommended: upload to auto-build the schema */}
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".csv,.xlsx,.xls"
+          className="sr-only"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleFile(f);
+            e.target.value = "";
+          }}
+        />
+        <button
+          onClick={() => fileRef.current?.click()}
+          className="flex items-center gap-3 w-full text-left px-4 py-3 rounded-lg border border-primary/40 bg-primary/8 hover:bg-primary/12 transition-colors"
+        >
+          <span className="flex items-center justify-center w-9 h-9 rounded-md bg-primary/15 text-primary shrink-0">
+            <Upload className="w-4 h-4" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-foreground">
+              Build fields from a CSV or Excel file
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Recommended — columns and types are detected automatically
+            </span>
+          </span>
+        </button>
 
         {uploadError && (
           <div className="flex items-center gap-2 text-xs text-destructive">
@@ -319,6 +334,27 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
           </div>
         )}
 
+        {/* Advanced disclosure: manual field + relationship editing */}
+        <button
+          onClick={() => setShowAdvanced((v) => !v)}
+          className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors pt-1"
+        >
+          {showAdvanced ? (
+            <ChevronDown className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronRight className="w-3.5 h-3.5" />
+          )}
+          <Sliders className="w-3.5 h-3.5" />
+          Advanced — edit fields &amp; relationships manually
+          {!showAdvanced && draft.fields.some((f) => f.name.trim()) && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+              {draft.fields.filter((f) => f.name.trim()).length} fields
+            </span>
+          )}
+        </button>
+
+        {showAdvanced && (
+        <>
         {/* Fields */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
@@ -418,6 +454,8 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
             </div>
           ))}
         </div>
+        </>
+        )}
 
         {/* Warnings */}
         {warnings.length > 0 && (
@@ -444,7 +482,7 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
             </label>
           ) : (
             <span className="text-[11px] text-muted-foreground">
-              Schemas persist as JSON via the datasetService.
+              Saved separately from your warehouse — nothing is written to the database.
             </span>
           )}
           <div className="flex items-center gap-2">

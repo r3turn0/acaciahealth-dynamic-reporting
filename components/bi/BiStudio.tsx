@@ -70,6 +70,24 @@ export function BiStudio() {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Quick-start guide */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
+        <div className="flex items-center gap-2 shrink-0">
+          <Sparkles className="w-4 h-4 text-primary" />
+          <span className="text-sm font-medium text-foreground">Fastest way to start</span>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed flex-1">
+          Upload a spreadsheet and we&apos;ll detect columns, suggest KPIs, and build charts
+          automatically. Prefer to define fields yourself? Use the Datasets tab.
+        </p>
+        <button
+          onClick={() => setTab("import")}
+          className="flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors"
+        >
+          <FileSpreadsheet className="w-3.5 h-3.5" /> Upload a workbook
+        </button>
+      </div>
+
       {/* Tab bar */}
       <div className="flex items-center gap-1 bg-muted/40 border border-border rounded-lg p-1 overflow-x-auto">
         {TABS.map(({ id, label, icon: Icon }) => {
