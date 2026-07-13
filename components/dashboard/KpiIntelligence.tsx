@@ -503,6 +503,28 @@ function PowerBiExport({ schema }: { schema: KpiIntelligenceResponse["powerBiSch
 
 // ── Ask AI box ────────────────────────────────────────────────────────────────
 
+// ── Date range helpers for the Ask-a-Question prompt ──────────────────────────
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function shiftDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return isoDate(d);
+}
+
+function defaultRange(): { start: string; end: string } {
+  return { start: shiftDays(-30), end: isoDate(new Date()) };
+}
+
+const DATE_PRESETS: { label: string; range: () => { start: string; end: string } }[] = [
+  { label: "30d", range: () => ({ start: shiftDays(-30), end: isoDate(new Date()) }) },
+  { label: "90d", range: () => ({ start: shiftDays(-90), end: isoDate(new Date()) }) },
+  { label: "YTD", range: () => ({ start: `${new Date().getFullYear()}-01-01`, end: isoDate(new Date()) }) },
+  { label: "1y", range: () => ({ start: shiftDays(-365), end: isoDate(new Date()) }) },
+];
+
 function AskAiBox({
   context,
   activePrompt,
@@ -516,9 +538,15 @@ function AskAiBox({
   const [attachedFile, setAttachedFile] = useState<UploadedFile | null>(null);
   const [response, setResponse] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [startDate, setStartDate] = useState(defaultRange().start);
+  const [endDate, setEndDate] = useState(defaultRange().end);
 
   async function ask(question: string) {
     if (!question.trim()) return;
+    if (startDate && endDate && startDate > endDate) {
+      setResponse("The start date must be on or before the end date.");
+      return;
+    }
     setLoading(true);
     setResponse(null);
     const fullQuestion = attachedFile
@@ -528,7 +556,12 @@ function AskAiBox({
       const res = await fetch("/api/generate-query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: fullQuestion, context }),
+        body: JSON.stringify({
+          prompt: fullQuestion,
+          context,
+          start_date: startDate,
+          end_date: endDate,
+        }),
       });
       const json = await res.json();
       const plan = json.plan;
@@ -568,11 +601,48 @@ function AskAiBox({
           </div>
         )}
         <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-end gap-3 px-3 py-2.5 rounded-lg bg-muted/30 border border-border">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Calendar className="w-3.5 h-3.5 text-primary" /> Date range
+            </span>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">From</span>
+              <input
+                type="date"
+                value={startDate}
+                max={endDate || undefined}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary transition-colors"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">To</span>
+              <input
+                type="date"
+                value={endDate}
+                min={startDate || undefined}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary transition-colors"
+              />
+            </label>
+            <div className="flex items-center gap-1.5">
+              {DATE_PRESETS.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => { const r = p.range(); setStartDate(r.start); setEndDate(r.end); }}
+                  className="text-[11px] px-2 py-1 rounded-md border border-border bg-background text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex gap-2">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(activePrompt ? `${activePrompt.prompt} for ${activePrompt.kpi}` : input); } }}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); ask(activePrompt ? `${activePrompt.prompt} for ${activePrompt.kpi}` : input); } }}
               placeholder={activePrompt ? "Press Enter to run this prompt, or type a custom question..." : "E.g. Why did revenue per visit drop in June?"}
               className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary transition-colors"
             />
