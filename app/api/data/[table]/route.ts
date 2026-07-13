@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import schemaConfig from "@/lib/config/schemaConfig.json";
-import { isDbConfigured } from "@/lib/services/db";
+import { isDbConfigured, BackendUnreachableError } from "@/lib/services/db";
 
 const ALLOWED_TABLES = Object.keys(schemaConfig);
 
@@ -233,7 +233,61 @@ export async function GET(
       source:     "live_db",
     });
   } catch (err) {
+    // If the DB is configured but unreachable (VPN/firewall/wrong host), don't
+    // hard-fail with a blank 500. Only the statically-known tables can be
+    // reconstructed as demo data; unknown live-only tables return 503.
+    const unreachable =
+      err instanceof BackendUnreachableError ||
+      ["ENOTFOUND", "ECONNREFUSED", "ETIMEDOUT", "ESOCKET", "EAI_AGAIN"].includes(
+        (err as { code?: string })?.code ?? ""
+      );
+
+    if (unreachable && ALLOWED_TABLES.includes(decodedTable)) {
+      console.warn(`[db] /api/data: DB unreachable, serving demo data for ${decodedTable}`);
+      const TOTAL_DEMO =
+        decodedTable === "BRANCHES" ? BRANCH_CODES.length
+        : decodedTable === "SERVICE_LINES" ? SERVICE_LINES.length
+        : decodedTable === "CARE_TYPES" ? CARE_TYPES.length
+        : 500;
+      let rows = generateRows(decodedTable, TOTAL_DEMO);
+      for (const [col, val] of Object.entries(filters)) {
+        if (!val) continue;
+        const lower = val.toLowerCase();
+        rows = rows.filter((r) => String(r[col] ?? "").toLowerCase().includes(lower));
+      }
+      if (sortCol) {
+        rows.sort((a, b) => {
+          const av = a[sortCol]; const bv = b[sortCol];
+          if (av == null) return 1;
+          if (bv == null) return -1;
+          const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+          return sortDir === "asc" ? cmp : -cmp;
+        });
+      }
+      const total = rows.length;
+      const offset = (page - 1) * pageSize;
+      const slice = rows.slice(offset, offset + pageSize);
+      const cols = slice.length > 0 ? Object.keys(slice[0]) : [];
+      return NextResponse.json({
+        table: decodedTable,
+        columns: cols,
+        rows: slice,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+        source: "demo_fallback",
+        warning: "Database unreachable — showing sample data.",
+      });
+    }
+
     console.error("[db] /api/data error:", err);
+    if (unreachable) {
+      return NextResponse.json(
+        { error: "Database is currently unreachable. Please try again shortly." },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: "Query failed" }, { status: 500 });
   }
 }

@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "node --env-file-if-exists=.env.development.local tests/e2e/run-endpoints.mjs"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.211",

@@ -17,16 +17,20 @@ import { getModel, getModelId } from "@/lib/ai/gateway";
 import type { BusinessInsights } from "@/app/api/kpi/interpret/route";
 
 export async function POST(req: NextRequest) {
+  // Parse the body once, up front, so the request stream is never read twice
+  // (reading req again in the catch block below would throw and mask the real
+  // error, producing a 500 instead of the graceful fallback).
+  let question = "";
   try {
     const body = await req.json();
-    const { question, insights, report_name, kpi, start_date, end_date } = body as {
-      question: string;
+    const { insights, report_name, kpi, start_date, end_date } = body as {
       insights: BusinessInsights;
       report_name: string;
       kpi: string;
       start_date?: string;
       end_date?: string;
     };
+    question = typeof body.question === "string" ? body.question : "";
 
     if (!question?.trim()) {
       return NextResponse.json({ error: "question is required" }, { status: 400 });
@@ -75,10 +79,11 @@ Follow-up question: ${question}`;
   } catch (err) {
     console.error("[v0] /api/kpi/followup error:", err);
 
-    // Graceful fallback
-    const { question } = await req.clone().json().catch(() => ({ question: "" }));
+    // Graceful fallback — `question` was captured above, so we never re-read
+    // the (already-consumed) request body here.
+    const q = question ? ` Your question was: "${question}".` : "";
     return NextResponse.json({
-      answer: `I'm unable to process your follow-up question right now (AI service unavailable). Your question was: "${question}". Please ensure AI Gateway is configured and try again.`,
+      answer: `I'm unable to generate an AI answer right now (the AI service is unavailable or not configured).${q} You can still review the generated insights above, or configure the AI Gateway and try again.`,
       meta: {
         model: "demo-fallback",
         generated_at: new Date().toISOString(),
