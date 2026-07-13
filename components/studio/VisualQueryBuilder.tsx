@@ -422,6 +422,27 @@ export function VisualQueryBuilder({
   async function generate() {
     if (!startDate || !endDate) return;
     setGenerating(true);
+
+    // The Visual Builder is fully deterministic — previewSQL is always the
+    // source of truth. The API call only enriches the explanation/cost metadata,
+    // so the report must still generate even if that call fails or AI is down.
+    const baseExplanation = `Visual Builder query: ${kpi.label} grouped by ${state.groupBy
+      .map((g) => GROUPING_LABELS[g] ?? g)
+      .join(", ")}.`;
+    const filtersApplied = [
+      `Date: ${startDate} → ${endDate}`,
+      `KPI: ${kpi.label}`,
+      `Group by: ${state.groupBy.map((g) => GROUPING_LABELS[g] ?? g).join(", ")}`,
+      ...state.filters.filter((f) => f.field && f.value).map((f) => `${f.field} ${f.operator} ${f.value}`),
+    ];
+    const tablesUsed = [
+      kpi.fact_table,
+      "BRANCHES",
+      ...(state.groupBy.includes("care_type") ? ["CARE_TYPES"] : []),
+      ...(state.groupBy.includes("service_line") ? ["SERVICE_LINES"] : []),
+    ];
+
+    let enrich: Partial<QueryPlan> = {};
     try {
       const res = await fetch("/api/generate-query", {
         method: "POST",
@@ -441,25 +462,30 @@ export function VisualQueryBuilder({
           },
         }),
       });
-      const json = await res.json();
-      if (!res.ok) return;
-
-      // Use our previewSQL as the definitive SQL — the API explanation is supplementary
+      if (res.ok) {
+        const json = await res.json();
+        enrich = {
+          explanation: json.explanation,
+          cost_warning: json.cost_warning ?? null,
+          optimized_suggestion: null, // never override the builder's SQL
+        };
+      }
+    } catch {
+      // Ignore — fall back to the locally-built plan below.
+    } finally {
+      // Always build the plan from previewSQL so the report generates regardless.
       const plan: QueryPlan = {
-        ...json,
         sql: previewSQL,
-        tables_used: [kpi.fact_table, "BRANCHES", ...(state.groupBy.includes("care_type") ? ["CARE_TYPES"] : []), ...(state.groupBy.includes("service_line") ? ["SERVICE_LINES"] : [])],
-        filters_applied: [
-          `Date: ${startDate} → ${endDate}`,
-          `KPI: ${kpi.label}`,
-          `Group by: ${state.groupBy.map((g) => GROUPING_LABELS[g] ?? g).join(", ")}`,
-          ...state.filters.filter((f) => f.field && f.value).map((f) => `${f.field} ${f.operator} ${f.value}`),
-        ],
+        explanation: enrich.explanation ?? baseExplanation,
+        tables_used: tablesUsed,
+        filters_applied: filtersApplied,
         kpi_detected: state.kpi,
         strategy: "sql",
+        api_fallback_reason: null,
+        cost_warning: enrich.cost_warning ?? null,
+        optimized_suggestion: null,
       };
       onPlanReady(plan, startDate, endDate);
-    } finally {
       setGenerating(false);
     }
   }

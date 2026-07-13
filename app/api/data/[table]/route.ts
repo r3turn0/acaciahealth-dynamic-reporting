@@ -108,7 +108,28 @@ export async function GET(
   const { table } = await params;
 
   const decodedTable = decodeURIComponent(table);
-  if (!ALLOWED_TABLES.includes(decodedTable)) {
+
+  // In demo mode only the statically-known tables are servable. In live mode we
+  // additionally allow any base table present in the live schema so the
+  // dropdown can browse the whole database. Names are still strictly sanitized
+  // before they reach the query builder below.
+  let allowed = ALLOWED_TABLES.includes(decodedTable);
+  if (!allowed && isDbConfigured()) {
+    try {
+      const { getSchemaIntelligence } = await import("@/lib/agents/schemaAgent");
+      const schema = await getSchemaIntelligence();
+      allowed = schema.tables.some((t) => {
+        const full =
+          t.table_name.includes(".") || !t.table_schema || t.table_schema === "dbo"
+            ? t.table_name
+            : `${t.table_schema}.${t.table_name}`;
+        return full === decodedTable || t.table_name === decodedTable;
+      });
+    } catch {
+      allowed = false;
+    }
+  }
+  if (!allowed) {
     return NextResponse.json(
       { error: `Table "${decodedTable}" is not in the allowed list.` },
       { status: 400 }

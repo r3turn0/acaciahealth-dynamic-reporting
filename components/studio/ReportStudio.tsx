@@ -107,8 +107,9 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
     setExecError(null);
   }
 
-  async function executeSQL() {
-    if (!sql.trim()) return;
+  async function executeSQL(overrideSql?: string, sd?: string, ed?: string) {
+    const runSql = (overrideSql ?? sql).trim();
+    if (!runSql) return;
     setExecuting(true);
     setExecError(null);
     setResult(null);
@@ -119,9 +120,9 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sql,
-          start_date: startDate,
-          end_date: endDate,
+          sql: runSql,
+          start_date: sd ?? startDate,
+          end_date: ed ?? endDate,
           report_name: currentPlan?.kpi_detected
             ? `${currentPlan.kpi_detected} Report`
             : "Custom Query",
@@ -259,7 +260,7 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
               <SQLEditor
                 sql={sql}
                 onChange={setSql}
-                onRun={executeSQL}
+                onRun={() => executeSQL()}
                 loading={executing}
                 startDate={startDate}
                 endDate={endDate}
@@ -412,6 +413,9 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
             onPlanReady={(plan, sd, ed) => {
               handlePlanReady(plan, sd, ed);
               setTab("ask");
+              // Immediately generate the report so the builder produces results,
+              // not just a query sitting in the editor.
+              void executeSQL(plan.sql, sd, ed);
             }}
             loading={executing}
           />

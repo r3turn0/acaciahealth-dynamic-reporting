@@ -66,8 +66,21 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { report_name, kpi, start_date, end_date, data, columns } = body;
 
+    // When there is no data to analyse (e.g. the underlying query returned no
+    // rows or the DB is unreachable), still return demo insights so the UI
+    // always renders something instead of silently failing to generate.
     if (!data || !Array.isArray(data) || data.length === 0) {
-      return NextResponse.json({ error: "data array is required and must not be empty" }, { status: 400 });
+      const fallback = await buildDemoInsights(req);
+      return NextResponse.json({
+        insights: fallback,
+        meta: {
+          model: "demo-fallback",
+          row_count: 0,
+          sample_count: 0,
+          generated_at: new Date().toISOString(),
+          fallback: true,
+        },
+      });
     }
 
     // Cap rows sent to the model to avoid token limits

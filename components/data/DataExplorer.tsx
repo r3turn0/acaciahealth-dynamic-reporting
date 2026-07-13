@@ -17,6 +17,7 @@ import {
   AlertCircle,
   Boxes,
   Check,
+  Lock,
 } from "lucide-react";
 import schemaConfig from "@/lib/config/schemaConfig.json";
 import {
@@ -113,6 +114,10 @@ function ColumnFilter({ col, value, onChange }: {
 export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) {
   const staged = useDatasetDraft();
   const [selectedTable, setSelectedTable] = useState<string>(TABLES[0]);
+  // Full list of tables in the database — populated from /api/schema (live or
+  // static). Falls back to the statically-known schemaConfig tables.
+  const [tableList, setTableList] = useState<string[]>(TABLES as string[]);
+  const [tableSource, setTableSource] = useState<"live_db" | "static_config">("static_config");
 
   function handleAddToDataset() {
     addTableToDraft(selectedTable);
@@ -176,6 +181,34 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
+  // Load the complete table list from the Schema Intelligence API so the
+  // dropdown reflects every table in the database (live) or the known config.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/schema");
+        if (!res.ok) return;
+        const json = await res.json();
+        const tables: string[] = Array.isArray(json?.tables)
+          ? json.tables.map((t: { table_name: string; table_schema?: string }) =>
+              t.table_name.includes(".") || !t.table_schema || t.table_schema === "dbo"
+                ? t.table_name
+                : `${t.table_schema}.${t.table_name}`
+            )
+          : [];
+        if (cancelled) return;
+        // Union with the statically-known tables, de-duped and sorted.
+        const merged = Array.from(new Set([...(TABLES as string[]), ...tables])).sort();
+        if (merged.length > 0) setTableList(merged);
+        if (json?.source === "live_db") setTableSource("live_db");
+      } catch {
+        // Keep the static fallback list.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   function handleTableChange(t: string) {
     setSelectedTable(t);
     setPage(1);
@@ -235,29 +268,37 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
     <div className="flex flex-col gap-4">
       {/* Header row */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        {/* Table picker */}
+        {/* Table picker — dropdown of all tables in the database */}
         <div className="flex items-center gap-2 flex-wrap">
           <Database className="w-4 h-4 text-muted-foreground shrink-0" />
-          <div className="flex flex-wrap gap-1.5">
-            {TABLES.map((t) => {
-              const tableStaged = staged.some((s) => s.toLowerCase() === t.toLowerCase());
-              return (
-                <button
-                  key={t}
-                  onClick={() => handleTableChange(t)}
-                  className={cn(
-                    "flex items-center gap-1 text-xs px-2.5 py-1 rounded-md border transition-colors font-mono",
-                    selectedTable === t
-                      ? "bg-primary/15 border-primary/40 text-primary font-semibold"
-                      : "border-border text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-accent/30"
-                  )}
-                >
-                  {tableStaged && <Check className="w-3 h-3 text-chart-3 shrink-0" />}
-                  {t}
-                </button>
-              );
-            })}
+          <div className="relative">
+            <select
+              value={selectedTable}
+              onChange={(e) => handleTableChange(e.target.value)}
+              aria-label="Select a table to preview"
+              className="appearance-none min-w-[220px] bg-muted border border-border rounded-md pl-3 pr-8 py-1.5 text-xs font-mono text-foreground focus:outline-none focus:border-primary transition-colors cursor-pointer"
+            >
+              {tableList.map((t) => {
+                const tableStaged = staged.some((s) => s.toLowerCase() === t.toLowerCase());
+                return (
+                  <option key={t} value={t}>
+                    {tableStaged ? "✓ " : ""}{t}
+                  </option>
+                );
+              })}
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
           </div>
+          <span className="text-[10px] text-muted-foreground tabular-nums">
+            {tableList.length} table{tableList.length !== 1 ? "s" : ""}
+          </span>
+          <span
+            className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium bg-muted text-muted-foreground border border-border"
+            title="Tables are read-only in Discover Data"
+          >
+            <Lock className="w-2.5 h-2.5" />
+            Read-only
+          </span>
         </div>
 
         {/* Actions */}

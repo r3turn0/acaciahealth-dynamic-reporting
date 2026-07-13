@@ -19,11 +19,13 @@ import type { BusinessInsights } from "@/app/api/kpi/interpret/route";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { question, insights, report_name, kpi } = body as {
+    const { question, insights, report_name, kpi, start_date, end_date } = body as {
       question: string;
       insights: BusinessInsights;
       report_name: string;
       kpi: string;
+      start_date?: string;
+      end_date?: string;
     };
 
     if (!question?.trim()) {
@@ -43,7 +45,12 @@ Rules:
 - If you cannot answer from the provided context, say so clearly and suggest what additional data would help.
 - Do not repeat the full insights back — only reference the relevant parts.`;
 
-    const userMessage = `Report: "${report_name}" (KPI: ${kpi})
+    const dateContext =
+      start_date && end_date
+        ? `\nDate range in focus: ${start_date} to ${end_date}. Scope your answer to this period; if the insights above cover a different period, note that explicitly.`
+        : "";
+
+    const userMessage = `Report: "${report_name}" (KPI: ${kpi})${dateContext}
 
 Previously generated insights:
 ${JSON.stringify(insights, null, 2)}

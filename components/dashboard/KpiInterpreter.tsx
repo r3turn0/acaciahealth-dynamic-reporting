@@ -8,6 +8,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   BookOpen,
+  Calendar,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -178,10 +179,18 @@ function FollowUpThread({
   insights,
   reportName,
   kpi,
+  startDate,
+  endDate,
+  onStartDateChange,
+  onEndDateChange,
 }: {
   insights: BusinessInsights;
   reportName: string;
   kpi: string;
+  startDate: string;
+  endDate: string;
+  onStartDateChange: (d: string) => void;
+  onEndDateChange: (d: string) => void;
 }) {
   const [messages, setMessages] = useState<FollowUpMessage[]>([]);
   const [input, setInput] = useState("");
@@ -202,6 +211,7 @@ function FollowUpThread({
 
   async function ask(question: string) {
     if (!question.trim() || loading) return;
+    if (startDate && endDate && startDate > endDate) return;
     const userMsg: FollowUpMessage = { id: Date.now().toString(), role: "user", content: question };
     const placeholder: FollowUpMessage = { id: `${Date.now()}-loading`, role: "assistant", content: "", loading: true };
     setMessages((prev) => [...prev, userMsg, placeholder]);
@@ -212,7 +222,14 @@ function FollowUpThread({
       const res = await fetch("/api/kpi/followup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, insights, report_name: reportName, kpi }),
+        body: JSON.stringify({
+          question,
+          insights,
+          report_name: reportName,
+          kpi,
+          start_date: startDate,
+          end_date: endDate,
+        }),
       });
       const data = await res.json();
       const answer = data.answer ?? "Sorry, I could not generate an answer.";
@@ -243,6 +260,33 @@ function FollowUpThread({
             {Math.ceil(messages.filter((m) => m.role === "user").length)} question{messages.filter((m) => m.role === "user").length !== 1 ? "s" : ""} asked
           </span>
         )}
+      </div>
+
+      {/* Date range filter — scopes follow-up answers to a period */}
+      <div className="flex flex-wrap items-end gap-3 px-4 py-2.5 border-b border-border bg-muted/10">
+        <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <Calendar className="w-3.5 h-3.5 text-primary" /> Date range
+        </span>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">From</span>
+          <input
+            type="date"
+            value={startDate}
+            max={endDate || undefined}
+            onChange={(e) => onStartDateChange(e.target.value)}
+            className="bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary transition-colors"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">To</span>
+          <input
+            type="date"
+            value={endDate}
+            min={startDate || undefined}
+            onChange={(e) => onEndDateChange(e.target.value)}
+            className="bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary transition-colors"
+          />
+        </label>
       </div>
 
       <div className="p-4 flex flex-col gap-3">
@@ -419,7 +463,7 @@ export function KpiInterpreter() {
     }
   }
 
-  // ── Empty state ────────────────────────────────────────────────────────────
+  // ── Empty state ─────────���──────────────────────────────────────────────────
 
   if (!reports) {
     return (
@@ -446,7 +490,7 @@ export function KpiInterpreter() {
     );
   }
 
-  // ── Main view ──────────────────────────────────────────────────────────────
+  // ── Main view ──────────────────────────────────────────────────────���───────
 
   return (
     <div className="flex flex-col gap-5">
@@ -721,6 +765,10 @@ export function KpiInterpreter() {
             insights={insights}
             reportName={selectedReport?.name ?? ""}
             kpi={selectedReport?.kpi ?? ""}
+            startDate={dateRange.start}
+            endDate={dateRange.end}
+            onStartDateChange={(d) => setDateRange((r) => ({ ...r, start: d }))}
+            onEndDateChange={(d) => setDateRange((r) => ({ ...r, end: d }))}
           />
         </div>
       )}

@@ -50,40 +50,38 @@ export async function POST(req: NextRequest) {
     // Determine whether AI is available
     const aiAvailable = isAiConfigured();
 
+    // Structured builder state (sent by the Visual Query Builder) lets the
+    // rule-based fallback honor the chosen KPI, grouping, and ordering.
+    const builder = body.builder as
+      | { kpi?: string; group_by?: string[]; order_by?: string; order_dir?: "ASC" | "DESC"; limit?: number }
+      | undefined;
+
     let plan: QueryPlan;
+    let aiUsed = false;
 
+    // Try the AI Query Planner Agent first, but NEVER let an AI failure
+    // (missing/invalid key, gateway/network error, timeout) break the endpoint.
+    // Any failure gracefully degrades to the deterministic rule-based generator.
     if (aiAvailable) {
-      // Use the AI Query Planner Agent
-      plan = await planQuery({
-        prompt,
-        startDate: start_date,
-        endDate: end_date,
-        branchCode: branch_code,
-        role: role ?? "analyst",
-      });
+      try {
+        plan = await planQuery({
+          prompt,
+          startDate: start_date,
+          endDate: end_date,
+          branchCode: branch_code,
+          role: role ?? "analyst",
+        });
+        // Guard against an empty/invalid model response.
+        if (!plan || (plan.strategy === "sql" && !plan.sql?.trim())) {
+          throw new Error("AI planner returned an empty plan");
+        }
+        aiUsed = true;
+      } catch (aiErr) {
+        console.error("[v0] AI planner failed, falling back to rule-based:", aiErr);
+        plan = ruleBasedPlan(prompt, start_date, end_date, branch_code, builder);
+      }
     } else {
-      // Rule-based fallback — wraps existing queryGenerator
-      const generated = generateSQL(prompt, {
-        date_range: { start_date, end_date },
-        branch_code,
-      });
-
-      plan = {
-        sql: generated.sql,
-        explanation: `Rule-based query for KPI: ${generated.kpi}. Detects keywords in your prompt and selects from the matching fact table.`,
-        tables_used: [
-          generated.sql.match(/FROM\s+([\w.]+)/i)?.[1] ?? "CLIENT_EPISODES_ALL",
-        ],
-        filters_applied: [
-          `Date range: ${start_date} to ${end_date}`,
-          ...(branch_code ? [`Branch: ${branch_code}`] : []),
-        ],
-        kpi_detected: generated.kpi,
-        strategy: "sql",
-        api_fallback_reason: null,
-        cost_warning: null,
-        optimized_suggestion: null,
-      };
+      plan = ruleBasedPlan(prompt, start_date, end_date, branch_code, builder);
     }
 
     // Normalize any hardcoded date literals to @StartDate / @EndDate so the
@@ -116,10 +114,48 @@ export async function POST(req: NextRequest) {
       ...plan,
       cache_hit: false,
       elapsed_ms: Date.now() - start,
-      ai_powered: aiAvailable,
+      ai_powered: aiUsed,
     });
   } catch (err) {
     console.error("[db] generate-query error:", err);
     return NextResponse.json({ error: "Query generation failed" }, { status: 500 });
   }
+}
+
+// ── Rule-based fallback ─────────────────────────────────────────────────────
+// Deterministic query plan used when AI is unavailable or errors out. Wraps the
+// existing queryGenerator so the endpoint always returns a usable plan.
+function ruleBasedPlan(
+  prompt: string,
+  start_date: string,
+  end_date: string,
+  branch_code: string | undefined,
+  builder?: { kpi?: string; group_by?: string[]; order_by?: string; order_dir?: "ASC" | "DESC"; limit?: number }
+): QueryPlan {
+  const generated = generateSQL(prompt, {
+    date_range: { start_date, end_date },
+    branch_code,
+    group_by: builder?.group_by,
+    order_by: builder?.order_by,
+    order_dir: builder?.order_dir,
+    limit: builder?.limit,
+  });
+
+  return {
+    sql: generated.sql,
+    explanation: `Rule-based query for KPI: ${generated.kpi}. Detects keywords in your prompt and selects from the matching fact table.`,
+    tables_used:
+      generated.tables_used?.length > 0
+        ? generated.tables_used
+        : [generated.sql.match(/FROM\s+([\w.]+)/i)?.[1] ?? "CLIENT_EPISODES_ALL"],
+    filters_applied: generated.filters_applied ?? [
+      `Date range: ${start_date} to ${end_date}`,
+      ...(branch_code ? [`Branch: ${branch_code}`] : []),
+    ],
+    kpi_detected: generated.kpi,
+    strategy: "sql",
+    api_fallback_reason: null,
+    cost_warning: null,
+    optimized_suggestion: null,
+  };
 }
