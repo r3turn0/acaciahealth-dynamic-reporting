@@ -8,6 +8,7 @@
 
 import * as XLSX from "xlsx";
 import type { DataRow, DatasetField, FieldType } from "./types";
+import { parseScorecard, type ScorecardResult } from "./scorecard";
 
 export interface ParsedSheet {
   name: string;
@@ -17,6 +18,8 @@ export interface ParsedSheet {
 
 export interface ParsedWorkbook {
   sheets: ParsedSheet[];
+  /** Present when the workbook is a pivoted KPI scorecard (see scorecard.ts). */
+  scorecard?: ScorecardResult;
 }
 
 const BOOL_TRUE = new Set(["true", "yes", "y", "1"]);
@@ -105,6 +108,18 @@ export function inferSchemaFromRecords(records: Record<string, unknown>[]): {
 /** Parse a CSV or XLSX file into one or more typed sheets. */
 export async function parseFile(file: File): Promise<ParsedWorkbook> {
   const buf = await file.arrayBuffer();
+
+  // First try the scorecard shape (wide/pivoted KPI layout). If it matches we
+  // return a single tidy long-format sheet plus the structured report index.
+  const isSpreadsheet = /\.xlsx?$/i.test(file.name);
+  if (isSpreadsheet) {
+    const datasetBase = file.name.replace(/\.[^.]+$/, "").trim() || "Scorecard";
+    const scorecard = parseScorecard(buf, datasetBase);
+    if (scorecard.isScorecard) {
+      return { sheets: [scorecard.tidy], scorecard };
+    }
+  }
+
   const wb = XLSX.read(buf, { type: "array", cellDates: false });
 
   const sheets: ParsedSheet[] = wb.SheetNames.map((name) => {

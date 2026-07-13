@@ -9,6 +9,7 @@ import {
   BarChart3,
   BookOpen,
   Brain,
+  Calendar,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
