@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { validateQuery } from "@/lib/services/queryGuard";
 import { executeQuery, isDbConfigured, BackendUnreachableError } from "@/lib/services/db";
 import { formatReport } from "@/lib/services/formatter";
+import { parameterizeDates } from "@/lib/services/dateParams";
 import { buildCacheKey, getCache, setCache } from "@/lib/services/cache";
 import type { ReportOutput } from "@/lib/services/formatter";
 
@@ -33,8 +34,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Link the date pickers to the query: rewrite any hardcoded date-range
+    // literals (e.g. BETWEEN CONVERT(date, '2017-03-02') AND ...) back into the
+    // @StartDate / @EndDate parameters that are bound below. Without this the
+    // date filters are silently ignored whenever the SQL embeds literal dates.
+    const { sql: paramSql, replaced: dateParamsApplied } = parameterizeDates(sql);
+
     // Security validation — enforced unconditionally
-    const validation = validateQuery(sql);
+    const validation = validateQuery(paramSql);
     if (!validation.valid) {
       return NextResponse.json(
         {
@@ -46,9 +53,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Inject TOP guard if not already present
-    const safeSql = /^\s*SELECT\s+TOP\s+\d+/i.test(sql)
-      ? sql
-      : sql.replace(/^\s*SELECT\s+/i, `SELECT TOP ${MAX_ROWS} `);
+    const safeSql = /^\s*SELECT\s+TOP\s+\d+/i.test(paramSql)
+      ? paramSql
+      : paramSql.replace(/^\s*SELECT\s+/i, `SELECT TOP ${MAX_ROWS} `);
 
     // Cache check
     const cacheKey = buildCacheKey(`run-sql:${safeSql}`, { start_date, end_date });
@@ -58,6 +65,8 @@ export async function POST(req: NextRequest) {
         ...cached,
         cache_hit: true,
         execution_ms: Date.now() - start,
+        date_params_applied: dateParamsApplied,
+        executed_sql: paramSql,
       });
     }
 
@@ -69,6 +78,8 @@ export async function POST(req: NextRequest) {
         demo_mode: true,
         cache_hit: false,
         execution_ms: Date.now() - start,
+        date_params_applied: dateParamsApplied,
+        executed_sql: paramSql,
       });
     }
 
@@ -92,6 +103,8 @@ export async function POST(req: NextRequest) {
       cache_hit: false,
       execution_ms: Date.now() - start,
       report_id: report_id ?? null,
+      date_params_applied: dateParamsApplied,
+      executed_sql: paramSql,
     });
   } catch (err) {
     console.error("[db] /api/run-sql error:", err);

@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { planQuery } from "@/lib/agents/queryPlanner";
 import { generateSQL } from "@/lib/services/queryGenerator";
 import { validateQuery } from "@/lib/services/queryGuard";
+import { parameterizeDates } from "@/lib/services/dateParams";
 import { buildCacheKey, getCache, setCache } from "@/lib/services/cache";
 import { isAiConfigured, getModelId } from "@/lib/ai/gateway";
 import type { QueryPlan } from "@/lib/agents/queryPlanner";
@@ -83,6 +84,15 @@ export async function POST(req: NextRequest) {
         cost_warning: null,
         optimized_suggestion: null,
       };
+    }
+
+    // Normalize any hardcoded date literals to @StartDate / @EndDate so the
+    // SQL Editor shows a query the date pickers actually control.
+    if (plan.strategy === "sql") {
+      plan.sql = parameterizeDates(plan.sql).sql;
+      if (plan.optimized_suggestion) {
+        plan.optimized_suggestion = parameterizeDates(plan.optimized_suggestion).sql;
+      }
     }
 
     // Always validate the generated SQL

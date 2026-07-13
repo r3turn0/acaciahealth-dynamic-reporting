@@ -59,6 +59,8 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
   const [executing, setExecuting] = useState(false);
   const [result, setResult] = useState<ReportResult | null>(null);
   const [execError, setExecError] = useState<string | null>(null);
+  // Set when the server rewrote hardcoded date literals to @StartDate/@EndDate
+  const [dateLinkNote, setDateLinkNote] = useState(false);
 
   // Save state
   const [pendingSave, setPendingSave] = useState<{
@@ -110,6 +112,7 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
     setExecuting(true);
     setExecError(null);
     setResult(null);
+    setDateLinkNote(false);
 
     try {
       const res = await fetch("/api/run-sql", {
@@ -128,6 +131,12 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
       if (!res.ok) {
         setExecError(json.error ?? "Execution failed");
         return;
+      }
+      // If the server linked hardcoded dates to the pickers, reflect the
+      // rewritten SQL in the editor and let the user know.
+      if (json.date_params_applied && typeof json.executed_sql === "string") {
+        setSql(json.executed_sql);
+        setDateLinkNote(true);
       }
       setResult(json);
     } catch (e) {
@@ -255,6 +264,17 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
                 startDate={startDate}
                 endDate={endDate}
               />
+              {dateLinkNote && (
+                <p className="mt-3 text-[11px] text-muted-foreground flex items-start gap-1.5">
+                  <Check className="w-3.5 h-3.5 text-chart-1 mt-px shrink-0" />
+                  <span>
+                    Linked the hardcoded dates in this query to your date pickers — they now use{" "}
+                    <code className="font-mono text-primary">@StartDate</code> and{" "}
+                    <code className="font-mono text-primary">@EndDate</code>, so changing the range
+                    above updates the results.
+                  </span>
+                </p>
+              )}
             </div>
           )}
 
