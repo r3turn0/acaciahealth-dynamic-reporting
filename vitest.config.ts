@@ -1,13 +1,17 @@
 import { defineConfig } from "vitest/config";
-import tsconfigPaths from "vite-tsconfig-paths";
+import path from "node:path";
 
 export default defineConfig({
-  plugins: [tsconfigPaths()],
+  resolve: {
+    // Mirror the single path alias in tsconfig.json: @/* → project root
+    alias: {
+      "@": path.resolve(__dirname, "."),
+    },
+  },
   test: {
     environment: "node",
     globals: true,
     include: ["tests/**/*.test.ts"],
-    // API-route tests import server modules; keep them isolated per file.
     testTimeout: 20000,
     hookTimeout: 20000,
   },
