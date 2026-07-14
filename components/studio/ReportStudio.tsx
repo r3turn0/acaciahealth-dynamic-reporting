@@ -45,6 +45,7 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
   const [sqlLocked, setSqlLocked] = useState(false);  // editor is locked — AI cannot overwrite
   // When the AI wants to overwrite a user-edited query, we surface this banner instead
   const [pendingOverwrite, setPendingOverwrite] = useState<string | null>(null);
+  const sqlEditorRef = useRef<HTMLDivElement>(null);
   const [currentPlan, setCurrentPlan] = useState<QueryPlan | null>(
     initialReport
       ? {
@@ -119,6 +120,8 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
     setSql(plan.sql);
     setSqlDirty(false);
     setPendingOverwrite(null);
+    // Scroll the SQL editor into view so the lock button and generated query are visible
+    setTimeout(() => sqlEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
   }
 
   function handleSqlChange(newSql: string) {
@@ -290,7 +293,7 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
 
           {/* SQL Editor — always visible once a plan exists */}
           {(sql || currentPlan) && (
-            <div className="bg-card border border-border rounded-lg p-5 flex flex-col gap-3">
+            <div ref={sqlEditorRef} className="bg-card border border-border rounded-lg p-5 flex flex-col gap-3">
               {/* AI overwrite pending banner */}
               {pendingOverwrite && (
                 <div className="flex items-start gap-3 p-3 rounded-lg bg-chart-4/10 border border-chart-4/30">
