@@ -54,6 +54,17 @@ import {
 } from "@/lib/schema/engine";
 import { parseMetadata } from "@/lib/schema/parser";
 import { transformToSchemaModel } from "@/lib/schema/transformer";
+import {
+  tagAllTables,
+  addUserTag,
+  removeUserTag,
+  TAG_CATEGORIES,
+  type TagStore,
+  type TableTag,
+  type TagColor,
+} from "@/lib/agents/tableTagger";
+import { setTagStoreForSearch } from "@/lib/schema/engine";
+import { recordQuery, predictTags, getTopTags } from "@/lib/agents/queryLearner";
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -112,13 +123,14 @@ function IdentityBadge() {
 
 export function MetadataReportEngine() {
   const [model, setModel] = useState<SchemaModel | null>(() => getCachedModel());
-  const [activePanel, setActivePanel] = useState<"datasets" | "fields" | "joins" | "builder" | "suggestions">("datasets");
+  const [activePanel, setActivePanel] = useState<"datasets" | "fields" | "joins" | "builder" | "suggestions" | "tags">("datasets");
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [selectedMeasures, setSelectedMeasures] = useState<{ table: string; column: string }[]>([]);
   const [selectedDimensions, setSelectedDimensions] = useState<{ table: string; column: string }[]>([]);
   const [activeFilters, setActiveFilters] = useState<ReportFilter[]>([]);
   const [reportPlan, setReportPlan] = useState<ReportPlan | null>(null);
   const [planCopied, setPlanCopied] = useState(false);
+  const [tagStore, setTagStore] = useState<TagStore>({});
 
   function handleModelReady(m: SchemaModel) {
     setCachedModel(m);
@@ -129,6 +141,26 @@ export function MetadataReportEngine() {
     setActiveFilters([]);
     setReportPlan(null);
     setActivePanel("datasets");
+    // Auto-tag all tables and wire into the TF-IDF search engine
+    const store = tagAllTables(Object.values(m.tables));
+    setTagStore(store);
+    setTagStoreForSearch(store);
+  }
+
+  function handleTagOverride(tableId: string, action: "add" | "remove", tag: string) {
+    setTagStore((prev) => {
+      const next = action === "add"
+        ? addUserTag(prev, tableId, tag)
+        : removeUserTag(prev, tableId, tag);
+      setTagStoreForSearch(next);
+      return next;
+    });
+  }
+
+  function handleRetag(m: SchemaModel) {
+    const store = tagAllTables(Object.values(m.tables));
+    setTagStore(store);
+    setTagStoreForSearch(store);
   }
 
   function handleReset() {
@@ -192,6 +224,7 @@ export function MetadataReportEngine() {
     { id: "joins",       label: "Joins",       icon: GitBranch },
     { id: "builder",     label: "Builder",     icon: Sliders },
     { id: "suggestions", label: "Suggestions", icon: Lightbulb },
+    { id: "tags",        label: "Tags",        icon: Zap },
   ] as const;
 
   if (!model) {
@@ -282,6 +315,14 @@ export function MetadataReportEngine() {
               setSelectedTableIds(s.tables);
               setActivePanel("fields");
             }}
+          />
+        )}
+        {activePanel === "tags" && (
+          <TagsPanel
+            model={model}
+            tagStore={tagStore}
+            onTagOverride={handleTagOverride}
+            onRetag={() => handleRetag(model)}
           />
         )}
       </div>
@@ -1370,6 +1411,318 @@ function SuggestionsPanel({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── 6. Tags Panel ─────────────────────────────────────────────────────────────
+
+// Tailwind colour map for each tag category
+const TAG_COLOR_CLASSES: Record<string, { bg: string; text: string; border: string; dot: string }> = {
+  admissions:    { bg: "bg-blue-500/10",   text: "text-blue-600",   border: "border-blue-500/30",   dot: "bg-blue-500"   },
+  service_lines: { bg: "bg-purple-500/10", text: "text-purple-600", border: "border-purple-500/30", dot: "bg-purple-500" },
+  kpi:           { bg: "bg-green-500/10",  text: "text-green-700",  border: "border-green-500/30",  dot: "bg-green-500"  },
+  care_types:    { bg: "bg-orange-500/10", text: "text-orange-600", border: "border-orange-500/30", dot: "bg-orange-500" },
+  patient_notes: { bg: "bg-teal-500/10",   text: "text-teal-600",   border: "border-teal-500/30",   dot: "bg-teal-500"   },
+  billing:       { bg: "bg-yellow-500/10", text: "text-yellow-700", border: "border-yellow-500/30", dot: "bg-yellow-500" },
+  clinical:      { bg: "bg-red-500/10",    text: "text-red-600",    border: "border-red-500/30",    dot: "bg-red-500"    },
+  quality:       { bg: "bg-indigo-500/10", text: "text-indigo-600", border: "border-indigo-500/30", dot: "bg-indigo-500" },
+  referrals:     { bg: "bg-pink-500/10",   text: "text-pink-600",   border: "border-pink-500/30",   dot: "bg-pink-500"   },
+  staff:         { bg: "bg-cyan-500/10",   text: "text-cyan-700",   border: "border-cyan-500/30",   dot: "bg-cyan-500"   },
+  pharmacy:      { bg: "bg-amber-500/10",  text: "text-amber-700",  border: "border-amber-500/30",  dot: "bg-amber-500"  },
+  compliance:    { bg: "bg-slate-500/10",  text: "text-slate-600",  border: "border-slate-500/30",  dot: "bg-slate-500"  },
+};
+
+function TagBadge({
+  tagId,
+  removable = false,
+  onRemove,
+  small = false,
+}: {
+  tagId: string;
+  removable?: boolean;
+  onRemove?: () => void;
+  small?: boolean;
+}) {
+  const cat = TAG_CATEGORIES.find((c) => c.id === tagId);
+  const cls = TAG_COLOR_CLASSES[tagId] ?? {
+    bg: "bg-muted", text: "text-muted-foreground", border: "border-border", dot: "bg-muted-foreground",
+  };
+  const label = cat?.label ?? tagId;
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border font-medium",
+        small ? "text-[10px] px-1.5 py-0" : "text-[11px] px-2 py-0.5",
+        cls.bg, cls.text, cls.border
+      )}
+    >
+      <span className={cn("rounded-full shrink-0", small ? "w-1 h-1" : "w-1.5 h-1.5", cls.dot)} />
+      {label}
+      {removable && onRemove && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity"
+          aria-label={`Remove ${label} tag`}
+        >
+          <X className="w-2.5 h-2.5" />
+        </button>
+      )}
+    </span>
+  );
+}
+
+function TableTagEditor({
+  tableId,
+  tableName,
+  entry,
+  onAdd,
+  onRemove,
+}: {
+  tableId: string;
+  tableName: string;
+  entry: import("@/lib/agents/tableTagger").TableTag | undefined;
+  onAdd: (tag: string) => void;
+  onRemove: (tag: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const activeTags = entry?.tags ?? [];
+  const availableToAdd = TAG_CATEGORIES.filter((c) => !activeTags.includes(c.id));
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="text-xs font-mono text-foreground truncate">{tableName}</span>
+          <span className="text-[10px] text-muted-foreground font-mono truncate">{tableId}</span>
+        </div>
+        {/* Confidence dots */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          {TAG_CATEGORIES.slice(0, 6).map((cat) => {
+            const conf = entry?.confidence[cat.id] ?? 0;
+            const cls = TAG_COLOR_CLASSES[cat.id];
+            return (
+              <span
+                key={cat.id}
+                title={`${cat.label}: ${(conf * 100).toFixed(0)}%`}
+                className={cn("w-1.5 h-1.5 rounded-full transition-opacity", cls.dot)}
+                style={{ opacity: Math.max(0.1, conf * 8) }}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Active tags */}
+      <div className="flex flex-wrap gap-1">
+        {activeTags.length === 0 ? (
+          <span className="text-[10px] text-muted-foreground italic">No tags</span>
+        ) : (
+          activeTags.map((tag) => (
+            <TagBadge
+              key={tag}
+              tagId={tag}
+              removable
+              onRemove={() => onRemove(tag)}
+              small
+            />
+          ))
+        )}
+        {/* Add tag button */}
+        <button
+          onClick={() => setOpen((p) => !p)}
+          className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground border border-dashed border-border rounded-full px-1.5 py-0 transition-colors"
+        >
+          <Plus className="w-2.5 h-2.5" />
+          Add
+        </button>
+      </div>
+
+      {/* Tag picker dropdown */}
+      {open && (
+        <div className="flex flex-wrap gap-1 p-2 bg-muted/50 border border-border rounded-md">
+          {availableToAdd.length === 0 ? (
+            <span className="text-[10px] text-muted-foreground italic">All tags applied</span>
+          ) : (
+            availableToAdd.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => { onAdd(cat.id); setOpen(false); }}
+                className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-border bg-card hover:bg-accent transition-colors"
+              >
+                <span className={cn("w-1.5 h-1.5 rounded-full", TAG_COLOR_CLASSES[cat.id]?.dot ?? "bg-muted-foreground")} />
+                {cat.label}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TagsPanel({
+  model,
+  tagStore,
+  onTagOverride,
+  onRetag,
+}: {
+  model: SchemaModel;
+  tagStore: TagStore;
+  onTagOverride: (tableId: string, action: "add" | "remove", tag: string) => void;
+  onRetag: () => void;
+}) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterTag, setFilterTag] = useState<string | null>(null);
+  const [retagging, setRetagging] = useState(false);
+
+  const tables = useMemo(() => Object.values(model.tables), [model]);
+
+  const filtered = useMemo(() => {
+    let list = tables;
+    if (filterTag) {
+      list = list.filter((t) => tagStore[t.id]?.tags.includes(filterTag));
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (t) =>
+          t.name.toLowerCase().includes(q) ||
+          t.id.toLowerCase().includes(q) ||
+          (tagStore[t.id]?.tags ?? []).some((tag) =>
+            TAG_CATEGORIES.find((c) => c.id === tag)?.label.toLowerCase().includes(q)
+          )
+      );
+    }
+    return list;
+  }, [tables, filterTag, searchQuery, tagStore]);
+
+  // Tag distribution summary
+  const tagCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const entry of Object.values(tagStore)) {
+      for (const tag of entry.tags) {
+        counts[tag] = (counts[tag] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [tagStore]);
+
+  async function handleRetag() {
+    setRetagging(true);
+    try { onRetag(); } finally {
+      setTimeout(() => setRetagging(false), 600);
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-semibold text-foreground">Healthcare Tag Index</span>
+          <span className="text-[11px] text-muted-foreground">
+            {tables.length} tables &middot; {Object.values(tagStore).filter((e) => e.tags.length > 0).length} tagged
+          </span>
+        </div>
+        <button
+          onClick={handleRetag}
+          disabled={retagging}
+          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-border bg-card hover:bg-accent disabled:opacity-50 transition-colors"
+        >
+          {retagging ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          Re-tag All
+        </button>
+      </div>
+
+      {/* Tag category summary strip */}
+      <div className="flex flex-wrap gap-1.5 px-4 py-2.5 border-b border-border bg-muted/30">
+        <button
+          onClick={() => setFilterTag(null)}
+          className={cn(
+            "text-[10px] px-2 py-0.5 rounded-full border font-medium transition-colors",
+            filterTag === null
+              ? "bg-primary text-primary-foreground border-primary"
+              : "bg-card text-muted-foreground border-border hover:bg-accent"
+          )}
+        >
+          All ({tables.length})
+        </button>
+        {TAG_CATEGORIES.map((cat) => {
+          const count = tagCounts[cat.id] ?? 0;
+          if (count === 0) return null;
+          const cls = TAG_COLOR_CLASSES[cat.id];
+          return (
+            <button
+              key={cat.id}
+              onClick={() => setFilterTag(filterTag === cat.id ? null : cat.id)}
+              className={cn(
+                "inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-medium transition-colors",
+                filterTag === cat.id
+                  ? cn(cls.bg, cls.text, cls.border, "ring-1 ring-current")
+                  : "bg-card text-muted-foreground border-border hover:bg-accent"
+              )}
+            >
+              <span className={cn("w-1.5 h-1.5 rounded-full", cls.dot)} />
+              {cat.label} ({count})
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Search */}
+      <div className="px-4 py-2 border-b border-border">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search tables or tags..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-8 pr-3 py-1.5 text-xs bg-muted border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Table list */}
+      <div className="flex-1 overflow-y-auto divide-y divide-border">
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+            <Search className="w-8 h-8 mb-2 opacity-30" />
+            <span className="text-sm">No tables match your filter</span>
+          </div>
+        ) : (
+          filtered.map((table) => (
+            <div key={table.id} className="px-4 py-3 hover:bg-muted/30 transition-colors">
+              <TableTagEditor
+                tableId={table.id}
+                tableName={table.name}
+                entry={tagStore[table.id]}
+                onAdd={(tag) => onTagOverride(table.id, "add", tag)}
+                onRemove={(tag) => onTagOverride(table.id, "remove", tag)}
+              />
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Legend */}
+      <div className="px-4 py-2.5 border-t border-border bg-muted/20">
+        <p className="text-[10px] text-muted-foreground leading-relaxed">
+          Tags are inferred automatically from column names, FK relationships, and the healthcare thesaurus. 
+          Use the <strong>+&nbsp;Add</strong> button to apply custom tags or click &times; to remove one.
+          The TF-IDF search engine re-indexes with tag terms when tags change.
+        </p>
+      </div>
     </div>
   );
 }

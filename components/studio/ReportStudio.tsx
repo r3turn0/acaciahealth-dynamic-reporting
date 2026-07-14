@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Bookmark, Check, Loader2, X } from "lucide-react";
+import { Bookmark, Check, Loader2, X, AlertTriangle, GitMerge } from "lucide-react";
 import { AskAI } from "./AskAI";
 import { SQLEditor } from "./SQLEditor";
 import { QueryExplanation } from "./QueryExplanation";
@@ -41,6 +41,10 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
 
   // SQL Editor state — pre-populate from initialReport if provided
   const [sql, setSql] = useState(initialReport?.sql ?? "");
+  const [sqlDirty, setSqlDirty] = useState(false);   // user has edited beyond the AI-generated version
+  const [sqlLocked, setSqlLocked] = useState(false);  // editor is locked — AI cannot overwrite
+  // When the AI wants to overwrite a user-edited query, we surface this banner instead
+  const [pendingOverwrite, setPendingOverwrite] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<QueryPlan | null>(
     initialReport
       ? {
@@ -82,6 +86,8 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
   useEffect(() => {
     if (!initialReport) return;
     setSql(initialReport.sql);
+    setSqlDirty(false);
+    setPendingOverwrite(null);
     setCurrentPlan({
       sql: initialReport.sql,
       explanation: `Loaded: "${initialReport.name}". Prompt: "${initialReport.prompt}"`,
@@ -100,11 +106,37 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
 
   function handlePlanReady(plan: QueryPlan, sd: string, ed: string) {
     setCurrentPlan(plan);
-    setSql(plan.sql);
     setStartDate(sd);
     setEndDate(ed);
     setResult(null);
     setExecError(null);
+
+    // If editor is locked or user has made edits, show the overwrite banner instead
+    if ((sqlLocked || sqlDirty) && sql.trim() && sql.trim() !== plan.sql.trim()) {
+      setPendingOverwrite(plan.sql);
+      return;
+    }
+    setSql(plan.sql);
+    setSqlDirty(false);
+    setPendingOverwrite(null);
+  }
+
+  function handleSqlChange(newSql: string) {
+    setSql(newSql);
+    setSqlDirty(true);
+  }
+
+  function acceptOverwrite() {
+    if (pendingOverwrite) {
+      setSql(pendingOverwrite);
+      setSqlDirty(false);
+    }
+    setPendingOverwrite(null);
+    setSqlLocked(false);
+  }
+
+  function rejectOverwrite() {
+    setPendingOverwrite(null);
   }
 
   async function executeSQL(overrideSql?: string, sd?: string, ed?: string) {
@@ -149,6 +181,8 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
 
   function handleLoadSaved(report: { sql: string; prompt: string; kpi: string; name: string }) {
     setSql(report.sql);
+    setSqlDirty(false);
+    setPendingOverwrite(null);
     setCurrentPlan({
       sql: report.sql,
       explanation: `Loaded saved report: ${report.name}. Prompt: "${report.prompt}"`,
@@ -256,14 +290,46 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
 
           {/* SQL Editor — always visible once a plan exists */}
           {(sql || currentPlan) && (
-            <div className="bg-card border border-border rounded-lg p-5">
+            <div className="bg-card border border-border rounded-lg p-5 flex flex-col gap-3">
+              {/* AI overwrite pending banner */}
+              {pendingOverwrite && (
+                <div className="flex items-start gap-3 p-3 rounded-lg bg-chart-4/10 border border-chart-4/30">
+                  <AlertTriangle className="w-4 h-4 text-chart-4 mt-0.5 shrink-0" />
+                  <div className="flex-1 flex flex-col gap-1">
+                    <p className="text-xs font-semibold text-foreground">
+                      AI generated a new query
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Your current SQL has edits. Accept the AI&apos;s version or keep yours.
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <button
+                        onClick={acceptOverwrite}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                      >
+                        <GitMerge className="w-3 h-3" />
+                        Accept AI version
+                      </button>
+                      <button
+                        onClick={rejectOverwrite}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1 rounded-md border border-border hover:bg-muted transition-colors"
+                      >
+                        Keep mine
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               <SQLEditor
                 sql={sql}
-                onChange={setSql}
+                onChange={handleSqlChange}
                 onRun={() => executeSQL()}
                 loading={executing}
                 startDate={startDate}
                 endDate={endDate}
+                locked={sqlLocked}
+                onToggleLock={setSqlLocked}
+                dirty={sqlDirty}
               />
               {dateLinkNote && (
                 <p className="mt-3 text-[11px] text-muted-foreground flex items-start gap-1.5">
