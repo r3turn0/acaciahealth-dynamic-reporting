@@ -9,6 +9,7 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { planQuery } from "@/lib/agents/queryPlanner";
+import { generateAiQuery } from "@/lib/services/aiQueryService";
 import { generateSQL } from "@/lib/services/queryGenerator";
 import { validateQuery } from "@/lib/services/queryGuard";
 import { parameterizeDates } from "@/lib/services/dateParams";
@@ -64,21 +65,42 @@ export async function POST(req: NextRequest) {
     // Any failure gracefully degrades to the deterministic rule-based generator.
     if (aiAvailable) {
       try {
-        plan = await planQuery({
-          prompt,
+        // Try the schema-aware aiQueryService first (GPT-4o + confidence score).
+        // Falls back to the legacy planQuery if it errors.
+        const aiResult = await generateAiQuery({
+          userPrompt: prompt,
           startDate: start_date,
           endDate: end_date,
           branchCode: branch_code,
           role: role ?? "analyst",
         });
-        // Guard against an empty/invalid model response.
-        if (!plan || (plan.strategy === "sql" && !plan.sql?.trim())) {
-          throw new Error("AI planner returned an empty plan");
+        if (!aiResult.plan || (aiResult.plan.strategy === "sql" && !aiResult.plan.sql?.trim())) {
+          throw new Error("AI service returned an empty plan");
         }
+        plan = {
+          ...aiResult.plan,
+          // Surface confidence score in the response payload
+          confidence_score: aiResult.plan.confidenceScore,
+        } as QueryPlan & { confidence_score: number };
         aiUsed = true;
       } catch (aiErr) {
-        console.error("[v0] AI planner failed, falling back to rule-based:", aiErr);
-        plan = ruleBasedPlan(prompt, start_date, end_date, branch_code, builder);
+        console.error("[v0] aiQueryService failed, trying legacy planQuery:", aiErr);
+        try {
+          plan = await planQuery({
+            prompt,
+            startDate: start_date,
+            endDate: end_date,
+            branchCode: branch_code,
+            role: role ?? "analyst",
+          });
+          if (!plan || (plan.strategy === "sql" && !plan.sql?.trim())) {
+            throw new Error("AI planner returned an empty plan");
+          }
+          aiUsed = true;
+        } catch (legacyErr) {
+          console.error("[v0] Legacy planner also failed, using rule-based:", legacyErr);
+          plan = ruleBasedPlan(prompt, start_date, end_date, branch_code, builder);
+        }
       }
     } else {
       plan = ruleBasedPlan(prompt, start_date, end_date, branch_code, builder);

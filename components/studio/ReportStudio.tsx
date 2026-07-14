@@ -161,6 +161,8 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
           report_name: currentPlan?.kpi_detected
             ? `${currentPlan.kpi_detected} Report`
             : "Custom Query",
+          // Pass the original prompt so the correction loop has context
+          original_prompt: currentPlan?.explanation ?? "",
         }),
       });
       const json = await res.json();
@@ -173,6 +175,23 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
       if (json.date_params_applied && typeof json.executed_sql === "string") {
         setSql(json.executed_sql);
         setDateLinkNote(true);
+      }
+      // If the self-healing correction loop was used, surface it in the plan meta
+      if (json.correction_applied && currentPlan) {
+        setCurrentPlan((prev) =>
+          prev
+            ? {
+                ...prev,
+                correction_applied: true,
+                correction_attempts: json.correction_attempts ?? 1,
+                // Update SQL to the corrected version
+                sql: json.executed_sql ?? prev.sql,
+              }
+            : prev
+        );
+        if (typeof json.executed_sql === "string") {
+          setSql(json.executed_sql);
+        }
       }
       setResult(json);
     } catch (e) {

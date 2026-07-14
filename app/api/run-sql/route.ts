@@ -13,6 +13,8 @@ import { executeQuery, isDbConfigured, BackendUnreachableError } from "@/lib/ser
 import { formatReport } from "@/lib/services/formatter";
 import { parameterizeDates } from "@/lib/services/dateParams";
 import { buildCacheKey, getCache, setCache } from "@/lib/services/cache";
+import { correctQueryOnce } from "@/lib/services/queryCorrectionService";
+import { isAiConfigured } from "@/lib/ai/gateway";
 import type { ReportOutput } from "@/lib/services/formatter";
 
 const MAX_ROWS = 10_000;
@@ -83,17 +85,54 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const data = await executeQuery(safeSql, {
-      StartDate: start_date,
-      EndDate: end_date,
-    });
+    let finalSql = safeSql;
+    let correctionApplied = false;
+    let correctionAttempts: number | undefined;
+
+    let data: unknown[];
+    try {
+      data = await executeQuery(finalSql, {
+        StartDate: start_date,
+        EndDate: end_date,
+      });
+    } catch (execErr) {
+      // Self-healing: if execution fails and AI is available, attempt correction
+      const execErrMsg = execErr instanceof Error ? execErr.message : String(execErr);
+
+      if (isAiConfigured() && body.original_prompt) {
+        console.error("[v0] Execution error — attempting AI correction:", execErrMsg);
+        const correction = await correctQueryOnce({
+          originalPrompt: body.original_prompt,
+          failedSQL: finalSql,
+          errorMessage: execErrMsg,
+          startDate: start_date,
+          endDate: end_date,
+          branchCode: body.branch_code,
+        });
+
+        if (correction.plan && correction.plan.sql) {
+          finalSql = correction.plan.sql;
+          correctionApplied = true;
+          correctionAttempts = 1;
+          // Retry execution with corrected SQL
+          data = await executeQuery(finalSql, {
+            StartDate: start_date,
+            EndDate: end_date,
+          });
+        } else {
+          throw execErr; // Correction failed — propagate original error
+        }
+      } else {
+        throw execErr;
+      }
+    }
 
     const report = formatReport(
       report_name ?? "Custom Query",
       { date_range: { start_date, end_date } },
       data as Record<string, unknown>[],
       "custom",
-      safeSql
+      finalSql
     );
 
     setCache(cacheKey, report);
@@ -104,7 +143,9 @@ export async function POST(req: NextRequest) {
       execution_ms: Date.now() - start,
       report_id: report_id ?? null,
       date_params_applied: dateParamsApplied,
-      executed_sql: paramSql,
+      executed_sql: correctionApplied ? finalSql : paramSql,
+      correction_applied: correctionApplied,
+      correction_attempts: correctionAttempts ?? 0,
     });
   } catch (err) {
     console.error("[db] /api/run-sql error:", err);

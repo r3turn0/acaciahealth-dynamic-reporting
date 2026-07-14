@@ -9,6 +9,9 @@ import {
   ChevronRight,
   Zap,
   AlertTriangle,
+  RefreshCw,
+  ShieldCheck,
+  Database,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FileUploadButton } from "@/components/ui/FileUpload";
@@ -27,6 +30,11 @@ export interface QueryPlan {
   cache_hit?: boolean;
   ai_powered?: boolean;
   elapsed_ms?: number;
+  /** Confidence score 0–1 from the AI query service */
+  confidence_score?: number;
+  /** Whether the self-healing correction loop was triggered */
+  correction_applied?: boolean;
+  correction_attempts?: number;
 }
 
 const EXAMPLE_PROMPTS = [
@@ -210,36 +218,111 @@ export function AskAI({
 
       {/* Plan meta */}
       {lastPlan && !loading && (
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          {lastPlan.ai_powered ? (
-            <span className="flex items-center gap-1 text-[11px] text-primary">
-              <Zap className="w-3 h-3" /> AI-powered
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              <Lightbulb className="w-3 h-3" /> Rule-based fallback
-            </span>
+        <div className="flex flex-col gap-2 pt-1">
+          {/* Primary status row */}
+          <div className="flex flex-wrap items-center gap-2">
+            {lastPlan.ai_powered ? (
+              <span className="flex items-center gap-1 text-[11px] text-primary font-medium">
+                <Zap className="w-3 h-3" /> AI-powered
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Lightbulb className="w-3 h-3" /> Rule-based fallback
+              </span>
+            )}
+            {lastPlan.cache_hit && (
+              <span className="text-[11px] text-muted-foreground">· Cached</span>
+            )}
+            {lastPlan.elapsed_ms != null && (
+              <span className="text-[11px] text-muted-foreground">
+                · {lastPlan.elapsed_ms}ms
+              </span>
+            )}
+            {lastPlan.kpi_detected && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 capitalize">
+                {lastPlan.kpi_detected}
+              </span>
+            )}
+            {lastPlan.strategy === "api_fallback" && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-chart-5/15 text-chart-5 border border-chart-5/25">
+                API Fallback
+              </span>
+            )}
+            <ChevronRight className="w-3 h-3 text-muted-foreground/50 ml-auto" />
+            <span className="text-[11px] text-muted-foreground">See SQL Editor below</span>
+          </div>
+
+          {/* Confidence score bar */}
+          {lastPlan.confidence_score != null && (
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <span className="text-[11px] text-muted-foreground shrink-0">Confidence</span>
+              <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    lastPlan.confidence_score >= 0.8
+                      ? "bg-chart-1"
+                      : lastPlan.confidence_score >= 0.5
+                      ? "bg-chart-4"
+                      : "bg-destructive"
+                  }`}
+                  style={{ width: `${Math.round(lastPlan.confidence_score * 100)}%` }}
+                />
+              </div>
+              <span
+                className={`text-[11px] font-mono font-semibold shrink-0 ${
+                  lastPlan.confidence_score >= 0.8
+                    ? "text-chart-1"
+                    : lastPlan.confidence_score >= 0.5
+                    ? "text-chart-4"
+                    : "text-destructive"
+                }`}
+              >
+                {Math.round(lastPlan.confidence_score * 100)}%
+              </span>
+              <span className="text-[10px] text-muted-foreground/70 shrink-0">
+                {lastPlan.confidence_score >= 0.8
+                  ? "High"
+                  : lastPlan.confidence_score >= 0.5
+                  ? "Medium"
+                  : "Low — review SQL"}
+              </span>
+            </div>
           )}
-          {lastPlan.cache_hit && (
-            <span className="text-[11px] text-muted-foreground">· Cached</span>
+
+          {/* Tables used */}
+          {lastPlan.tables_used?.length > 0 && (
+            <div className="flex items-start gap-2">
+              <Database className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+              <div className="flex flex-wrap gap-1">
+                {lastPlan.tables_used.map((t) => (
+                  <span
+                    key={t}
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-muted-foreground"
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
-          {lastPlan.elapsed_ms && (
-            <span className="text-[11px] text-muted-foreground">
-              · {lastPlan.elapsed_ms}ms
-            </span>
+
+          {/* Correction loop notice */}
+          {lastPlan.correction_applied && (
+            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-chart-1/10 border border-chart-1/25">
+              <RefreshCw className="w-3.5 h-3.5 text-chart-1 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-[11px] font-medium text-chart-1">
+                  Self-healing applied
+                </p>
+                <p className="text-[11px] text-chart-1/80">
+                  The AI correction loop fixed a query error in{" "}
+                  {lastPlan.correction_attempts ?? 1} attempt
+                  {(lastPlan.correction_attempts ?? 1) > 1 ? "s" : ""}.
+                </p>
+              </div>
+            </div>
           )}
-          {lastPlan.kpi_detected && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 capitalize">
-              {lastPlan.kpi_detected}
-            </span>
-          )}
-          {lastPlan.strategy === "api_fallback" && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-chart-5/15 text-chart-5 border border-chart-5/25">
-              API Fallback
-            </span>
-          )}
-          <ChevronRight className="w-3 h-3 text-muted-foreground/50 ml-auto" />
-          <span className="text-[11px] text-muted-foreground">See SQL Editor below</span>
         </div>
       )}
 
