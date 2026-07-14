@@ -82,7 +82,7 @@ export async function isAppDbConfigured(): Promise<boolean> {
 /**
  * Insert a row into `table`.  The record must include an "id" field.
  */
-export async function insert<T extends AppRecord>(
+export async function insert<T extends object>(
   table: string,
   record: T
 ): Promise<T> {
@@ -97,14 +97,15 @@ export async function insert<T extends AppRecord>(
     return res.rows[0] as T;
   }
   // In-memory fallback
-  getTable(table).set(String(record.id), record);
+  const rec = record as AppRecord;
+  getTable(table).set(String(rec["id"]), rec);
   return record;
 }
 
 /**
  * Update a row in `table` by id.  Merges `patch` into the existing record.
  */
-export async function update<T extends AppRecord>(
+export async function update<T extends object>(
   table: string,
   id: string,
   patch: Partial<T>
@@ -124,7 +125,7 @@ export async function update<T extends AppRecord>(
   const existing = tbl.get(id);
   if (!existing) return null;
   const merged = { ...existing, ...patch } as T;
-  tbl.set(id, merged);
+  tbl.set(id, merged as AppRecord);
   return merged;
 }
 
@@ -143,7 +144,7 @@ export async function remove(table: string, id: string): Promise<boolean> {
 /**
  * Fetch a single row from `table` by id.
  */
-export async function findById<T extends AppRecord>(
+export async function findById<T extends object>(
   table: string,
   id: string
 ): Promise<T | null> {
@@ -159,7 +160,7 @@ export async function findById<T extends AppRecord>(
  * List all rows from `table`, optionally filtered by a single equality condition.
  * Ordered by `orderBy` descending (default: "created_date").
  */
-export async function list<T extends AppRecord>(
+export async function list<T extends object>(
   table: string,
   options?: {
     where?: { column: string; value: unknown };
@@ -182,23 +183,24 @@ export async function list<T extends AppRecord>(
   }
 
   // In-memory fallback
-  let rows = Array.from(getTable(table).values()) as T[];
+  let rows = Array.from(getTable(table).values());
   if (options?.where) {
-    rows = rows.filter((r) => r[options.where!.column] === options.where!.value);
+    const { column, value } = options.where;
+    rows = rows.filter((r) => (r as AppRecord)[column] === value);
   }
   const orderKey = options?.orderBy ?? "created_date";
   rows.sort((a, b) =>
-    String(b[orderKey] ?? "").localeCompare(String(a[orderKey] ?? ""))
+    String((b as AppRecord)[orderKey] ?? "").localeCompare(String((a as AppRecord)[orderKey] ?? ""))
   );
   if (options?.limit) rows = rows.slice(0, options.limit);
-  return rows;
+  return rows as T[];
 }
 
 /**
  * Run a raw SQL query against the app DB (Postgres only).
  * Falls back to an empty result when using in-memory mode.
  */
-export async function rawQuery<T = AppRecord>(
+export async function rawQuery<T = object>(
   sql: string,
   values: unknown[] = []
 ): Promise<QueryResult<T>> {

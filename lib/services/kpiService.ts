@@ -166,7 +166,7 @@ export async function defineKpi(input: DefineKpiInput): Promise<KpiDefinition> {
   };
 
   try {
-    await AppDB.insert(KPI_TABLE, kpi as AppDB.AppRecord);
+    await AppDB.insert(KPI_TABLE, kpi);
   } catch {
     kpiStore.set(id, kpi);
   }
@@ -257,7 +257,7 @@ export async function storeKpiResult(
   };
 
   try {
-    await AppDB.insert(KPI_RESULT_TABLE, result as AppDB.AppRecord);
+    await AppDB.insert(KPI_RESULT_TABLE, result);
   } catch { /* fall through */ }
   kpiResultStore.set(id, result);
   return result;
