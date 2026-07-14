@@ -104,7 +104,11 @@ function escapeRe(s: string) {
 
 // ── Tag confidence threshold ───────────────────────────────────────────────────
 
-const CONFIDENCE_THRESHOLD = 0.04; // ~4% of max-possible score before a tag fires
+// 2% of max-possible score.  Billing/pharmacy tables have large term sets (40+
+// terms) so the normalised score is inherently lower than for admissions even
+// when the table name literally contains "billing".  A 2% floor fires correctly
+// on real Acacia tables without producing false-positive noise.
+const CONFIDENCE_THRESHOLD = 0.02;
 
 // ── Main auto-tagger ──────────────────────────────────────────────────────────
 
