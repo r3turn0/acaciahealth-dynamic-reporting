@@ -146,11 +146,13 @@ export function BiStudio() {
         </div>
       )}
 
-      {/* Panels */}
-      {tab === "datasets" && <DatasetBuilder onOpenInExplorer={openInExplorer} />}
+      {/* Panels — all mounted simultaneously, hidden with CSS to preserve in-memory state */}
+      <div className={tab === "datasets" ? undefined : "hidden"}>
+        <DatasetBuilder onOpenInExplorer={openInExplorer} />
+      </div>
 
-      {tab === "explorer" &&
-        (activeDataset ? (
+      <div className={tab === "explorer" ? undefined : "hidden"}>
+        {activeDataset ? (
           <KpiExplorerCanvas
             key={activeDataset.id}
             dataset={activeDataset}
@@ -158,21 +160,29 @@ export function BiStudio() {
             onSaved={() => undefined}
           />
         ) : (
-          <EmptyDataset onGo={() => setTab("datasets")} />
-        ))}
+          tab === "explorer" && <EmptyDataset onGo={() => setTab("datasets")} />
+        )}
+      </div>
 
-      {tab === "copilot" &&
-        (activeDataset ? (
+      <div className={tab === "copilot" ? undefined : "hidden"}>
+        {activeDataset ? (
           <AiCopilot key={activeDataset.id} dataset={activeDataset} />
         ) : (
-          <EmptyDataset onGo={() => setTab("datasets")} />
-        ))}
+          tab === "copilot" && <EmptyDataset onGo={() => setTab("datasets")} />
+        )}
+      </div>
 
-      {tab === "query" && <WorkspacePage />}
+      <div className={tab === "query" ? undefined : "hidden"}>
+        <WorkspacePage />
+      </div>
 
-      {tab === "reports" && <ReportManager onOpen={openReport} />}
+      <div className={tab === "reports" ? undefined : "hidden"}>
+        <ReportManager onOpen={openReport} />
+      </div>
 
-      {tab === "import" && <ExcelImport onDone={(d) => onImported(d.id)} />}
+      <div className={tab === "import" ? undefined : "hidden"}>
+        <ExcelImport onDone={(d) => onImported(d.id)} />
+      </div>
     </div>
   );
 }

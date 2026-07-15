@@ -45,6 +45,7 @@ import type { WorkspaceTab, SavedQueryReport } from "@/lib/store/useWorkspaceSto
 import { WorkspaceTabBar } from "./WorkspaceTabBar";
 import { FeedbackModal, type FixResult } from "./FeedbackModal";
 import { AiFixPanel } from "./AiFixPanel";
+import { useQueryFeedbackLog } from "@/lib/hooks/useQueryFeedbackLog";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -580,7 +581,7 @@ function TabPanel({ tab, onToast }: TabPanelProps) {
   );
 }
 
-// ── Saved Reports Sidebar ─────────────────────────────────────────────────────
+// ── Saved Reports Sidebar ───────────────────────────────────────────��─────────
 
 interface ReportsSidebarProps {
   reports: SavedQueryReport[];
@@ -882,12 +883,6 @@ export function WorkspacePage() {
     </div>
   );
 }
-
-// ── Small shim for feedback log ───────────────────────────────────────────────
-// Re-uses the existing useQueryFeedbackLog hook without importing it at the
-// top level to keep the component self-contained.
-
-import { useQueryFeedbackLog } from "@/lib/hooks/useQueryFeedbackLog";
 
 function _useFeedbackLog() {
   return useQueryFeedbackLog();

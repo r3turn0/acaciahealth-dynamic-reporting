@@ -8,6 +8,7 @@ import {
   Save,
   CornerDownLeft,
   Cpu,
+  MessageSquareDiff,
 } from "lucide-react";
 import { ChartRenderer } from "./ChartRenderer";
 import { computeAggregation } from "@/lib/bi/kpiService";
@@ -20,6 +21,8 @@ import {
   type Metric,
 } from "@/lib/bi/types";
 import { createReport } from "@/lib/hooks/useBiStore";
+import { FeedbackModal, type FixResult } from "./FeedbackModal";
+import { AiFixPanel } from "./AiFixPanel";
 
 interface CopilotConfig {
   metrics: Metric[];
@@ -50,6 +53,9 @@ export function AiCopilot({ dataset, onSaved }: Props) {
   const [reportName, setReportName] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [fixResult, setFixResult] = useState<FixResult | null>(null);
+  const [fixRetrying, setFixRetrying] = useState(false);
 
   async function ask(q?: string) {
     const text = (q ?? prompt).trim();
@@ -76,6 +82,26 @@ export function AiCopilot({ dataset, onSaved }: Props) {
       setError("Request failed. Please try again.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleFixRetry(fixedSQL: string) {
+    // In the copilot context, the "fixedSQL" from the repair AI is a revised
+    // natural-language prompt that we re-submit to /api/bi/copilot.
+    setFixRetrying(true);
+    setFixResult(null);
+    try {
+      await ask(fixedSQL);
+    } finally {
+      setFixRetrying(false);
+    }
+  }
+
+  function handleFixResult(result: FixResult) {
+    setFixResult(result);
+    // If high confidence, auto-retry immediately
+    if (result.autoRetry) {
+      void handleFixRetry(result.fixedSQL);
     }
   }
 
@@ -158,9 +184,26 @@ export function AiCopilot({ dataset, onSaved }: Props) {
       </div>
 
       {error && (
-        <p className="text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2">
-          {error}
-        </p>
+        <div className="flex items-center justify-between gap-3 flex-wrap bg-destructive/10 border border-destructive/30 rounded-md px-4 py-3">
+          <p className="text-xs text-destructive">{error}</p>
+          <button
+            onClick={() => setFeedbackOpen(true)}
+            className="flex items-center gap-1.5 text-xs font-medium text-destructive hover:text-destructive/80 border border-destructive/30 px-3 py-1.5 rounded-md hover:bg-destructive/15 transition-colors shrink-0"
+          >
+            <MessageSquareDiff className="w-3.5 h-3.5" />
+            Fix with AI
+          </button>
+        </div>
+      )}
+
+      {fixResult && !fixRetrying && (
+        <AiFixPanel
+          result={fixResult}
+          originalSQL={prompt}
+          retrying={fixRetrying}
+          onRetry={handleFixRetry}
+          onDismiss={() => setFixResult(null)}
+        />
       )}
 
       {/* Result */}
@@ -236,6 +279,16 @@ export function AiCopilot({ dataset, onSaved }: Props) {
           instantly.
         </p>
       )}
+
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        userQuery={prompt}
+        generatedSQL=""
+        apiError={error ?? ""}
+        dbErrorLogs=""
+        onFixResult={handleFixResult}
+      />
     </div>
   );
 }
