@@ -8,6 +8,7 @@ import {
   FileSpreadsheet,
   Sparkles,
   ChevronDown,
+  Terminal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBiStore } from "@/lib/hooks/useBiStore";
@@ -16,14 +17,16 @@ import { KpiExplorerCanvas, type ExplorerSeed } from "./KpiExplorerCanvas";
 import { ReportManager } from "./ReportManager";
 import { ExcelImport } from "./ExcelImport";
 import { AiCopilot } from "./AiCopilot";
+import { QueryPage } from "./QueryPage";
 import type { KpiReport } from "@/lib/bi/types";
 
-type BiTab = "datasets" | "explorer" | "reports" | "import" | "copilot";
+type BiTab = "datasets" | "explorer" | "reports" | "import" | "copilot" | "query";
 
 const TABS: { id: BiTab; label: string; icon: React.ElementType }[] = [
   { id: "datasets", label: "Datasets", icon: Boxes },
   { id: "explorer", label: "KPI Explorer", icon: LayoutDashboard },
   { id: "copilot", label: "AI Copilot", icon: Sparkles },
+  { id: "query", label: "SQL Query", icon: Terminal },
   { id: "reports", label: "Reports", icon: BookMarked },
   { id: "import", label: "Excel Import", icon: FileSpreadsheet },
 ];
@@ -164,6 +167,8 @@ export function BiStudio() {
         ) : (
           <EmptyDataset onGo={() => setTab("datasets")} />
         ))}
+
+      {tab === "query" && <QueryPage />}
 
       {tab === "reports" && <ReportManager onOpen={openReport} />}
 
