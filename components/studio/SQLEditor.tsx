@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Code2, Play, Loader2, ShieldCheck, ShieldX, Copy, Check } from "lucide-react";
+import { Code2, Play, Loader2, ShieldCheck, ShieldX, Copy, Check, Lock, Unlock, PenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { copyToClipboard } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 interface ValidationResult {
   valid: boolean;
@@ -17,9 +18,25 @@ interface SQLEditorProps {
   loading: boolean;
   startDate: string;
   endDate: string;
+  /** When true the textarea is locked; user cannot type */
+  locked?: boolean;
+  /** Called when the user toggles the lock button */
+  onToggleLock?: (locked: boolean) => void;
+  /** When true, shows a dirty indicator showing user has edited beyond the AI version */
+  dirty?: boolean;
 }
 
-export function SQLEditor({ sql, onChange, onRun, loading, startDate, endDate }: SQLEditorProps) {
+export function SQLEditor({
+  sql,
+  onChange,
+  onRun,
+  loading,
+  startDate,
+  endDate,
+  locked = false,
+  onToggleLock,
+  dirty = false,
+}: SQLEditorProps) {
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [validating, setValidating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -57,6 +74,10 @@ export function SQLEditor({ sql, onChange, onRun, loading, startDate, endDate }:
     setTimeout(() => setCopied(false), 1500);
   }
 
+  function toggleLock() {
+    onToggleLock?.(!locked);
+  }
+
   const lineCount = sql.split("\n").length;
 
   return (
@@ -69,6 +90,25 @@ export function SQLEditor({ sql, onChange, onRun, loading, startDate, endDate }:
           <span className="text-[10px] text-muted-foreground">
             {lineCount} line{lineCount !== 1 ? "s" : ""}
           </span>
+          {/* Dirty indicator */}
+          {dirty && !locked && (
+            <span className="flex items-center gap-1 text-[10px] text-chart-4 font-medium">
+              <PenLine className="w-3 h-3" />
+              Edited
+            </span>
+          )}
+          {/* Lock state pill */}
+          {locked ? (
+            <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-destructive/10 text-destructive border border-destructive/20 font-medium">
+              <Lock className="w-2.5 h-2.5" />
+              Locked
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-chart-3/10 text-chart-3 border border-chart-3/20 font-medium">
+              <Unlock className="w-2.5 h-2.5" />
+              Editable
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {/* Validation indicator */}
@@ -92,6 +132,7 @@ export function SQLEditor({ sql, onChange, onRun, loading, startDate, endDate }:
               )}
             </div>
           )}
+          {/* Copy */}
           <button
             onClick={copySQL}
             className="p-1.5 rounded hover:bg-muted transition-colors"
@@ -103,11 +144,33 @@ export function SQLEditor({ sql, onChange, onRun, loading, startDate, endDate }:
               <Copy className="w-3.5 h-3.5 text-muted-foreground" />
             )}
           </button>
+          {/* Lock toggle */}
+          {onToggleLock && (
+            <button
+              onClick={toggleLock}
+              title={locked ? "Unlock editor — allow editing" : "Lock editor — prevent AI from overwriting"}
+              className={cn(
+                "p-1.5 rounded transition-colors",
+                locked
+                  ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
+                  : "hover:bg-muted text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+            </button>
+          )}
         </div>
       </div>
 
       {/* Editor */}
-      <div className="relative rounded-lg border border-border overflow-hidden bg-muted/40">
+      <div className={cn(
+        "relative rounded-lg border overflow-hidden",
+        locked
+          ? "border-destructive/30 bg-destructive/5"
+          : dirty
+            ? "border-chart-4/40 bg-muted/40"
+            : "border-border bg-muted/40"
+      )}>
         {/* Line numbers */}
         <div className="flex">
           <div
@@ -120,13 +183,24 @@ export function SQLEditor({ sql, onChange, onRun, loading, startDate, endDate }:
           </div>
           <textarea
             value={sql}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => { if (!locked) onChange(e.target.value); }}
+            readOnly={locked}
             spellCheck={false}
-            className="flex-1 font-mono text-[12px] text-primary/90 bg-transparent px-4 py-3 resize-none focus:outline-none leading-5 min-h-[200px]"
+            className={cn(
+              "flex-1 font-mono text-[12px] bg-transparent px-4 py-3 resize-none focus:outline-none leading-5 min-h-[200px]",
+              locked ? "text-muted-foreground cursor-not-allowed" : "text-primary/90"
+            )}
             style={{ tabSize: 2 }}
             placeholder="-- SQL will appear here after AI generation, or type your own query..."
           />
         </div>
+
+        {/* Locked overlay hint */}
+        {locked && (
+          <div className="absolute inset-0 pointer-events-none flex items-start justify-end p-2">
+            <span className="text-[10px] text-destructive/50 font-medium select-none">read-only</span>
+          </div>
+        )}
       </div>
 
       {/* Validation errors */}

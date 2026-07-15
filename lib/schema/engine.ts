@@ -200,12 +200,79 @@ export function generateFilterDefinitions(
   return filters;
 }
 
-// ── 5. Keyword Search ─────────────────────────────────────────────────────────
+// ── 5. Keyword Search (TF-IDF + adaptive learner) ────────────────────────────
+//
+// This function is isomorphic — safe to call on the server (returns the legacy
+// index-based results) or on the client (uses the in-memory TF-IDF index and
+// applies learner boosts).  The TF-IDF index is built lazily on first call.
+
+let _tfidfModule: typeof import("@/lib/agents/tfidfEngine") | null = null;
+let _learnerModule: typeof import("@/lib/agents/queryLearner") | null = null;
+let _tagStore: import("@/lib/agents/tableTagger").TagStore | null = null;
+
+/** Call this once after loading the tag store to enable tag-boosted TF-IDF. */
+export function setTagStoreForSearch(store: import("@/lib/agents/tableTagger").TagStore) {
+  _tagStore = store;
+  // Invalidate the TF-IDF index so it rebuilds with tag terms on next search
+  if (_tfidfModule) _tfidfModule.invalidateIndex();
+}
 
 export function searchByKeywords(
   model: SchemaModel,
   query: string
 ): string[] {
+  // ── Server-side: use legacy inverted index (TF-IDF requires dynamic imports) ─
+  if (typeof window === "undefined") {
+    return _legacySearch(model, query);
+  }
+
+  // ── Client-side: use TF-IDF with learner boosts ───────────────────────────
+  // Modules are loaded synchronously because they are already bundled.
+  if (!_tfidfModule) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      _tfidfModule = require("@/lib/agents/tfidfEngine");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      _learnerModule = require("@/lib/agents/queryLearner");
+    } catch {
+      return _legacySearch(model, query);
+    }
+  }
+
+  const tfidf = _tfidfModule!;
+  const learner = _learnerModule;
+
+  const index = tfidf.getOrBuildIndex(model, _tagStore ?? undefined);
+  const results = tfidf.semanticSearch(query, index, 30);
+
+  // Apply learner frequency boosts
+  const boosts = learner?.getTableBoosts(results.map((r) => r.tableId)) ?? {};
+  const boosted = results.map((r) => ({
+    tableId: r.tableId,
+    finalScore: r.score * (boosts[r.tableId] ?? 1),
+  }));
+
+  // Merge with legacy index hits to catch tables the TF-IDF missed
+  const legacyHits = _legacySearch(model, query);
+  const legacySet = new Set(legacyHits);
+  const tfidfIds = new Set(boosted.map((r) => r.tableId));
+
+  const merged = [
+    ...boosted.sort((a, b) => b.finalScore - a.finalScore).map((r) => r.tableId),
+    ...legacyHits.filter((id) => !tfidfIds.has(id)),
+  ];
+
+  // Surface learner top-tables if the query is empty or very short
+  if (query.trim().length < 3 && learner) {
+    const top = learner.getTopTables(5);
+    return Array.from(new Set([...top, ...merged]));
+  }
+
+  return merged;
+}
+
+/** Legacy inverted-index search — always available, used as server fallback. */
+function _legacySearch(model: SchemaModel, query: string): string[] {
   const keywords = query.toLowerCase().split(/\s+/).filter((w) => w.length > 1);
   const scores: Record<string, number> = {};
 
@@ -228,7 +295,7 @@ export function searchByKeywords(
     .map(([id]) => id);
 }
 
-// ── 6. Report Plan Builder ────────────────────────────────────────────────────
+// ���─ 6. Report Plan Builder ────────────────────────────────────────────────────
 
 export interface ReportPlanInput {
   tableIds: string[];

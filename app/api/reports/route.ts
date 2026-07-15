@@ -1,14 +1,17 @@
 /**
  * GET  /api/reports       — list all saved reports
  * POST /api/reports       — create a new saved report
+ *
+ * Delegates to reportService (AppDataClient / PostgreSQL).
+ * The analytics data source (MSSQL) is never touched here.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { listReports, saveReport } from "@/lib/agents/reportRegistry";
+import { listReports, createReport } from "@/lib/services/reportService";
 
 export async function GET() {
   try {
-    const reports = listReports();
+    const reports = await listReports();
     return NextResponse.json({ reports, count: reports.length });
   } catch (err) {
     console.error("[v0] GET /api/reports error:", err);
@@ -19,7 +22,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, description, prompt, sql, kpi, tags, created_by } = body;
+    const { name, description, prompt, sql, kpi, tags, visibility, created_by } = body;
 
     if (!name || !sql) {
       return NextResponse.json(
@@ -28,13 +31,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const report = saveReport({
+    const report = await createReport({
       name,
       description: description ?? "",
       prompt: prompt ?? "",
       sql,
       kpi: kpi ?? "custom",
       tags: Array.isArray(tags) ? tags : [],
+      visibility: visibility ?? "team",
       created_by: created_by ?? "analyst",
     });
 

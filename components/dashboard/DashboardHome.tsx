@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Pin,
   X,
@@ -10,7 +10,17 @@ import {
   Loader2,
   LayoutGrid,
   ArrowRight,
+  Download,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  Tooltip as RechartsTooltip,
+} from "recharts";
 import { KpiCards } from "./KpiCards";
 import { HealthStatus } from "./HealthStatus";
 import {
@@ -19,6 +29,7 @@ import {
   unpinItem,
   type DashboardPin,
 } from "@/lib/hooks/useDashboardPins";
+import { downloadDataset } from "@/lib/utils/download";
 
 export interface OpenReportPayload {
   sql: string;
@@ -117,6 +128,66 @@ export function DashboardHome({ onNavigate, onOpenReport }: DashboardHomeProps) 
   );
 }
 
+// ── Sparkline preview ────────────────────────────────────────────────────────
+
+function MiniSparkline({ kpi }: { kpi: string }) {
+  const data = useMemo(() => {
+    const base =
+      kpi === "revenue" ? 65000 :
+      kpi === "census"  ? 80 :
+      kpi === "admissions" ? 22 : 40;
+    return Array.from({ length: 7 }, (_, i) => ({
+      i,
+      v: Math.max(0, Math.round(base + (Math.random() - 0.45) * base * 0.3)),
+    }));
+  }, [kpi]);
+
+  const last = data[data.length - 1].v;
+  const prev = data[data.length - 2].v;
+  const trend = last > prev ? "up" : last < prev ? "down" : "flat";
+
+  const color =
+    kpi === "revenue" ? "var(--color-chart-2)" :
+    kpi === "census"  ? "var(--color-chart-3)" :
+    kpi === "admissions" ? "var(--color-chart-1)" : "var(--color-primary)";
+
+  return (
+    <div className="flex items-end gap-2">
+      <div className="h-10 flex-1">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id={`sg-${kpi}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+                <stop offset="95%" stopColor={color} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <Area
+              type="monotone"
+              dataKey="v"
+              stroke={color}
+              strokeWidth={1.5}
+              fill={`url(#sg-${kpi})`}
+              dot={false}
+              isAnimationActive={false}
+            />
+            <RechartsTooltip
+              content={() => null}
+              cursor={{ stroke: color, strokeWidth: 1, strokeDasharray: "3 3" }}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      <span className={`text-[10px] font-medium flex items-center gap-0.5 shrink-0 ${
+        trend === "up" ? "text-chart-2" : trend === "down" ? "text-destructive" : "text-muted-foreground"
+      }`}>
+        {trend === "up" ? <TrendingUp className="w-2.5 h-2.5" /> : trend === "down" ? <TrendingDown className="w-2.5 h-2.5" /> : <Minus className="w-2.5 h-2.5" />}
+        {trend === "up" ? "↑" : trend === "down" ? "↓" : "—"}
+      </span>
+    </div>
+  );
+}
+
 // ── Pinned board ────────────────────────────────────────────────────────────
 
 function PinnedBoard({
@@ -130,6 +201,17 @@ function PinnedBoard({
   onUnpin: (id: string) => void;
   onNavigate: (id: string) => void;
 }) {
+  function handleDownload(pin: DashboardPin) {
+    const stub: Record<string, unknown>[] = [{
+      title: pin.title,
+      type: pin.type,
+      kpi: pin.kpi,
+      pinned_date: pin.pinned_date,
+      sql: pin.meta.sql ?? "",
+    }];
+    downloadDataset(stub, pin.title + "_definition", "csv");
+  }
+
   return (
     <div className="bg-card border border-border rounded-lg p-5">
       <div className="flex items-center justify-between mb-4">
@@ -138,6 +220,14 @@ function PinnedBoard({
           <h2 className="text-sm font-semibold text-foreground">Pinned to Dashboard</h2>
           <span className="text-[11px] text-muted-foreground">({pins.length})</span>
         </div>
+        {pins.length > 0 && (
+          <button
+            onClick={() => onNavigate("saved")}
+            className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+          >
+            View all reports <ArrowRight className="w-3 h-3" />
+          </button>
+        )}
       </div>
 
       {pins.length === 0 ? (
@@ -171,18 +261,20 @@ function PinnedBoard({
           {pins.map((pin) => (
             <div
               key={pin.id}
-              className="relative border border-border rounded-lg p-4 hover:border-primary/40 transition-colors flex flex-col gap-2"
+              className="relative border border-border rounded-xl p-4 hover:border-primary/40 transition-colors flex flex-col gap-3 bg-background"
             >
+              {/* Unpin */}
               <button
                 onClick={() => onUnpin(pin.id)}
-                className="absolute top-2 right-2 p-1 rounded hover:bg-destructive/15 text-muted-foreground hover:text-destructive transition-colors"
+                className="absolute top-2.5 right-2.5 p-1 rounded hover:bg-destructive/15 text-muted-foreground hover:text-destructive transition-colors"
                 title="Unpin"
                 aria-label="Unpin from dashboard"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-3 h-3" />
               </button>
 
-              <div className="flex items-center gap-1.5">
+              {/* Type + KPI badges */}
+              <div className="flex items-center gap-1.5 flex-wrap pr-6">
                 <span
                   className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border capitalize ${
                     pin.type === "kpi"
@@ -193,34 +285,57 @@ function PinnedBoard({
                   {pin.type === "kpi" ? <BarChart3 className="w-2.5 h-2.5" /> : <Play className="w-2.5 h-2.5" />}
                   {pin.type}
                 </span>
-                {pin.kpi && pin.kpi !== "custom" && pin.type !== "kpi" && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground capitalize">
+                {pin.kpi && pin.kpi !== "custom" && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full border capitalize ${
+                    pin.kpi === "admissions" ? "bg-chart-1/10 text-chart-1 border-chart-1/20" :
+                    pin.kpi === "revenue"    ? "bg-chart-2/10 text-chart-2 border-chart-2/20" :
+                    pin.kpi === "census"     ? "bg-chart-3/10 text-chart-3 border-chart-3/20" :
+                    "bg-muted text-muted-foreground border-border"
+                  }`}>
                     {pin.kpi}
                   </span>
                 )}
               </div>
 
-              <div className="min-w-0 pr-4">
-                <p className="text-sm font-medium text-foreground truncate">{pin.title}</p>
+              {/* Title + subtitle */}
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground truncate leading-tight">{pin.title}</p>
                 {pin.subtitle && (
-                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1 leading-relaxed">
                     {pin.subtitle}
                   </p>
                 )}
               </div>
 
-              <div className="flex items-center justify-between mt-auto pt-1">
+              {/* Sparkline preview for report pins */}
+              {pin.type === "report" && pin.kpi && (
+                <MiniSparkline kpi={pin.kpi} />
+              )}
+
+              {/* Footer */}
+              <div className="flex items-center justify-between pt-1 border-t border-border/50 mt-auto">
                 <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                   <Clock className="w-2.5 h-2.5" />
                   {formatRelative(pin.pinned_date)}
                 </span>
-                <button
-                  onClick={() => onOpen(pin)}
-                  className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors font-medium"
-                >
-                  {pin.type === "report" ? "Open" : "View"}
-                  <ArrowRight className="w-3 h-3" />
-                </button>
+                <div className="flex items-center gap-1">
+                  {pin.type === "report" && (
+                    <button
+                      onClick={() => handleDownload(pin)}
+                      className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      title="Download definition"
+                    >
+                      <Download className="w-3 h-3" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => onOpen(pin)}
+                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors font-medium"
+                  >
+                    {pin.type === "report" ? "Open" : "View"}
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
             </div>
           ))}

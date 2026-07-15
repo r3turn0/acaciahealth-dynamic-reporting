@@ -1,0 +1,216 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "description": "Healthcare thesaurus for semantic tagging of database tables. Covers hospice, home health, and palliative care domains.",
+    "categories": ["admissions","service_lines","kpi","care_types","patient_notes","billing","clinical","quality","referrals","staff","pharmacy","compliance"]
+  },
+  "tags": {
+    "admissions": {
+      "label": "Admissions",
+      "color": "blue",
+      "description": "Patient intake, enrollment, and episode start",
+      "terms": [
+        "admission","admissions","admit","admitted","soc","start of care","start-of-care","enrollment","enroll","enrolled",
+        "intake","referral intake","referral","referrals","census","census count","new patient","new admission",
+        "episode","episodes","certification","certifications","cert period","certification period",
+        "recertification","recert","recertifications","soc date","admit date","admission date","episode start",
+        "preadmission","pre-admission","triage","eligibility","eligible","hospice election","election",
+        "noc","notice of change","discharge","discharges","discharged","discharge date","discharge reason",
+        "revocation","revoke","revoked","transfer","transferred","live discharge","expired","death",
+        "client episodes","epi","episodes all","client_episodes","episode id","episode lifecycle"
+      ]
+    },
+    "service_lines": {
+      "label": "Service Lines",
+      "color": "purple",
+      "description": "Care delivery service categories and disciplines",
+      "terms": [
+        "service line","service lines","service_line","discipline","disciplines","specialty","specialties",
+        "skilled nursing","sn","rn","lpn","home health aide","hha","hhaide","physical therapy","pt",
+        "occupational therapy","ot","speech therapy","st","slp","speech language pathology",
+        "medical social work","msw","social work","chaplaincy","chaplain","bereavement","volunteer",
+        "infusion","iv therapy","wound care","wound","telemed","telemedicine","telehealth",
+        "palliative care","hospice care","home health","home care","adult day","personal care",
+        "private duty","shift care","continuous care","continuous home care","chc","general inpatient","gip",
+        "inpatient respite","ipr","respite","routine home care","rhc","care level","level of care",
+        "care type","care types","caretype","modality","service type"
+      ]
+    },
+    "kpi": {
+      "label": "KPI / Metrics",
+      "color": "green",
+      "description": "Key performance indicators and operational metrics",
+      "terms": [
+        "kpi","kpis","metric","metrics","measure","measures","performance","indicator","indicators",
+        "benchmark","benchmarks","target","targets","goal","goals","scorecard","dashboard","report",
+        "revenue","revenue per visit","rpv","revenue per patient","avg revenue","average revenue",
+        "visit count","visits per patient","visit frequency","utilization","utilization rate",
+        "length of stay","los","average length","mean length","median los","days",
+        "admission rate","discharge rate","census count","daily census","average daily census","adc",
+        "readmission","readmit","readmission rate","30 day","60 day","90 day","return","returnrate",
+        "cost per visit","cost","expense","expenditure","margin","profit","net revenue",
+        "diagnosis","diagnoses","diagnosis code","icd","icd-10","primary diagnosis","secondary diagnosis",
+        "productivity","efficiency","throughput","capacity","volume","case mix","case mix index","cmi",
+        "satisfaction","patient satisfaction","cahps","quality score","star rating","stars",
+        "hospice item set","his","oasis","oasis-e","functional status","outcome","outcomes"
+      ]
+    },
+    "care_types": {
+      "label": "Care Types",
+      "color": "orange",
+      "description": "Clinical care modality classifications",
+      "terms": [
+        "care type","care types","care_types","caretype","modality","level","level of care",
+        "hospice","hospice care","palliative","palliative care","comfort care","end of life","eol",
+        "home health","homehealth","home care","skilled home care","community health",
+        "continuous home care","chc","general inpatient","gip","routine home care","rhc",
+        "inpatient respite","ipr","respite care","acute","acute care","post acute","post-acute",
+        "curative","curative care","supportive","supportive care","transitional","transitional care",
+        "long term","long-term care","ltc","nursing home","snf","skilled nursing facility",
+        "assisted living","al","memory care","dementia care","pediatric","pediatric palliative",
+        "adult","geriatric","oncology","cardiac","pulmonary","neurological","wound","pain management"
+      ]
+    },
+    "patient_notes": {
+      "label": "Patient Notes",
+      "color": "teal",
+      "description": "Clinical documentation, notes, and narratives",
+      "terms": [
+        "note","notes","patient note","clinical note","progress note","visit note","encounter note",
+        "narrative","documentation","document","clinical documentation","chart","charting",
+        "assessment","assessments","care plan","care plans","plan of care","poc",
+        "oasis","oasis assessment","start of care oasis","discharge oasis","follow-up oasis",
+        "physician order","order","orders","verbal order","telephone order","to",
+        "medication record","mar","medication administration","med","meds","medication",
+        "wound assessment","skin assessment","fall risk","pain assessment","pain scale",
+        "vital signs","vitals","bp","blood pressure","heart rate","temperature","oxygen saturation","spo2",
+        "nursing narrative","nurse note","aide note","therapy note","social work note","chaplain note",
+        "idg","interdisciplinary group","team meeting","care conference","family meeting",
+        "advance directive","acp","advance care planning","dnr","dnr order","code status",
+        "hospice diagnosis","terminal diagnosis","prognosis","six month","6 month"
+      ]
+    },
+    "billing": {
+      "label": "Billing / Revenue",
+      "color": "yellow",
+      "description": "Financial, billing, and reimbursement data",
+      "terms": [
+        "billing","bill","billed","invoice","invoiced","claim","claims","claim id","claim number",
+        "revenue","revenues","revenue code","service code","procedure code","cpt","hcpcs",
+        "npi","national provider","tax id","tin","ein",
+        "payer","payers","insurance","insurer","medicare","medicaid","tricare","commercial","private pay",
+        "reimbursement","reimbursed","payment","paid","remittance","eob","explanation of benefits",
+        "rate","rates","contract rate","per diem","per visit","cap","annual cap","aggregate cap",
+        "hospice cap","cap amount","cap year","cap period","benchmark period",
+        "cost report","cost reporting","pps","prospective payment","pdgm","home health pdgm",
+        "raf","risk adjustment","hcc","hierarchical condition","encounter data",
+        "deposit","cash deposit","cash deposits","check","ach","eft","lockbox",
+        "accounts receivable","ar","days in ar","write off","adjustment","contractual","denial",
+        "appeal","prior authorization","auth","authorization","precertification"
+      ]
+    },
+    "clinical": {
+      "label": "Clinical",
+      "color": "red",
+      "description": "Clinical conditions, diagnoses, and procedures",
+      "terms": [
+        "clinical","diagnosis","diagnoses","icd","icd-10","icd10","dx","primary dx","secondary dx",
+        "condition","conditions","disease","disorder","syndrome","illness","comorbidity","comorbidities",
+        "cancer","oncology","tumor","malignancy","carcinoma","sarcoma","lymphoma","leukemia",
+        "heart failure","chf","cardiac","cardiovascular","hypertension","htn","coronary artery","cad",
+        "copd","pulmonary","respiratory","lung","emphysema","asthma","pneumonia","oxygen",
+        "stroke","cva","cerebrovascular","neurological","parkinson","dementia","alzheimer","als",
+        "renal","kidney","ckd","esrd","dialysis","liver","hepatic","cirrhosis",
+        "diabetes","diabetic","endocrine","metabolic","obesity",
+        "orthopedic","fracture","hip fracture","amputation","wound","ulcer","pressure ulcer",
+        "surgery","surgical","post-surgical","post-op","procedure","intervention",
+        "medication","drug","antibiotic","anticoagulant","opioid","pain","analgesic",
+        "hospice diagnosis","terminal","prognosis","life limiting","life expectancy",
+        "labs","lab results","laboratory","blood work","specimen","pathology",
+        "imaging","radiology","xray","ct","mri","ultrasound"
+      ]
+    },
+    "quality": {
+      "label": "Quality",
+      "color": "indigo",
+      "description": "Quality measures, outcomes, and compliance",
+      "terms": [
+        "quality","quality measure","quality measures","qm","outcome measure","outcome measures",
+        "star rating","star","stars","cahps","hospice cahps","home health cahps","hhcahps",
+        "his","hospice item set","oasis","oasis-e","functional","functional status","adl","iadl",
+        "improvement","improved","stabilized","declined","goal achievement","goal met",
+        "adverse event","incident","fall","falls","infection","wound infection","hospital acquired",
+        "hospitalizations","hospitalization rate","avoid hospitalization","unnecessary hospitalization",
+        "ed visit","emergency room","er","emergency","avoidable","avoidable hospitalization",
+        "symptom management","pain control","dyspnea","symptom","comfort","comfort measures",
+        "patient safety","safety","medication error","near miss","sentinel event",
+        "survey","inspection","deficiency","citation","complaint","investigation",
+        "corrective action","cap","plan of correction","poc","accreditation","joint commission",
+        "cms","cms quality","qapi","quality assurance","quality improvement","qi","pi","performance improvement"
+      ]
+    },
+    "referrals": {
+      "label": "Referrals",
+      "color": "pink",
+      "description": "Referral sources, intake, and marketing",
+      "terms": [
+        "referral","referrals","refer","referred","referral source","referral sources","source of referral",
+        "sor","marketing","marketing source","lead","leads","inquiry","inquiries","intake",
+        "physician referral","hospital referral","facility referral","snf referral","alf referral",
+        "discharge planner","discharge planning","case manager","social worker referral",
+        "self referral","family referral","community referral","community liaison","liaison",
+        "acp","account","accounts","territory","territory manager","sales","census development",
+        "conversion","conversion rate","referral to admission","accept","accepted","declined referral",
+        "pending","pending referral","hold","awaiting","eval","evaluation","pre-admission evaluation"
+      ]
+    },
+    "staff": {
+      "label": "Staff",
+      "color": "cyan",
+      "description": "Employees, clinicians, and workforce data",
+      "terms": [
+        "staff","employee","employees","clinician","clinicians","caregiver","caregivers","nurse","nurses",
+        "physician","doctor","md","do","np","nurse practitioner","pa","physician assistant",
+        "aide","home health aide","hhaide","cna","certified nursing assistant","therapist",
+        "social worker","msw","chaplain","volunteer","coordinator","scheduler","scheduler",
+        "case manager","director","administrator","manager","supervisor","clinical manager",
+        "productivity","staff productivity","visits per day","vpd","visits per clinician","vpdc",
+        "utilization","staff utilization","overtime","ot","on call","call","per diem",
+        "hire","hired","orientation","training","credential","license","certification","expiration",
+        "turnover","retention","vacancy","open position","headcount","fte","full time equivalent"
+      ]
+    },
+    "pharmacy": {
+      "label": "Pharmacy",
+      "color": "amber",
+      "description": "Medication, pharmacy, and drug utilization data",
+      "terms": [
+        "pharmacy","pharmacist","medication","medications","med","meds","drug","drugs","prescription",
+        "controlled substance","narcotic","opioid","morphine","dilaudid","hydromorphone","fentanyl","oxycodone",
+        "antibiotic","anticoagulant","antiemetic","anxiolytic","antipsychotic",
+        "formulary","preferred drug","non formulary","prior auth","prior authorization",
+        "dme","durable medical equipment","equipment","supply","supplies","medical supply",
+        "infusion","iv","intravenous","antibiotic infusion","total parenteral","tpn",
+        "dispense","dispensed","fill","filled","refill","quantity","days supply",
+        "medication review","med reconciliation","drug interaction","contraindication","allergy"
+      ]
+    },
+    "compliance": {
+      "label": "Compliance",
+      "color": "slate",
+      "description": "Regulatory, legal, and compliance tracking",
+      "terms": [
+        "compliance","compliant","non compliant","noncompliant","regulation","regulatory","requirement",
+        "cms","centers for medicare","condition of participation","cop","conditions of participation",
+        "survey","state survey","federal survey","surveyors","licensure","license","accreditation",
+        "hipaa","phi","protected health information","privacy","security","breach","data breach",
+        "audit","internal audit","external audit","rac","recovery audit","post payment review",
+        "medical necessity","necessity","medical review","coverage","coverage determination",
+        "fraud","waste","abuse","fwa","integrity","program integrity","oig","exclusion",
+        "incident","incident report","adverse event","grievance","complaint","resolution",
+        "consent","informed consent","election","hospice election","benefit period",
+        "npp","notice of privacy practices","abn","advance beneficiary notice"
+      ]
+    }
+  }
+}
