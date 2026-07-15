@@ -17,7 +17,7 @@ import { KpiExplorerCanvas, type ExplorerSeed } from "./KpiExplorerCanvas";
 import { ReportManager } from "./ReportManager";
 import { ExcelImport } from "./ExcelImport";
 import { AiCopilot } from "./AiCopilot";
-import { QueryPage } from "./QueryPage";
+import { WorkspacePage } from "./WorkspacePage";
 import type { KpiReport } from "@/lib/bi/types";
 
 type BiTab = "datasets" | "explorer" | "reports" | "import" | "copilot" | "query";
@@ -26,7 +26,7 @@ const TABS: { id: BiTab; label: string; icon: React.ElementType }[] = [
   { id: "datasets", label: "Datasets", icon: Boxes },
   { id: "explorer", label: "KPI Explorer", icon: LayoutDashboard },
   { id: "copilot", label: "AI Copilot", icon: Sparkles },
-  { id: "query", label: "SQL Query", icon: Terminal },
+  { id: "query", label: "SQL Workspace", icon: Terminal },
   { id: "reports", label: "Reports", icon: BookMarked },
   { id: "import", label: "Excel Import", icon: FileSpreadsheet },
 ];
@@ -168,7 +168,7 @@ export function BiStudio() {
           <EmptyDataset onGo={() => setTab("datasets")} />
         ))}
 
-      {tab === "query" && <QueryPage />}
+      {tab === "query" && <WorkspacePage />}
 
       {tab === "reports" && <ReportManager onOpen={openReport} />}
 
