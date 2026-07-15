@@ -10,7 +10,7 @@
 
 "use client";
 
-import { create } from "zustand";
+import { create } from "zustand/react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
