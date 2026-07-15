@@ -6,6 +6,7 @@ settings:
 
 overrides:
   hono: 4.12.25
+  enhanced-resolve: ^5.18.1
 
 importers:
 
@@ -100,7 +101,7 @@ importers:
         specifier: ^19
         version: 19.2.3(@types/react@19.2.14)
       enhanced-resolve:
-        specifier: ^5.19.0
+        specifier: ^5.18.1
         version: 5.19.0
       postcss:
         specifier: ^8.5
