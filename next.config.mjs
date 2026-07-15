@@ -11,9 +11,31 @@ const nextConfig = {
   },
   // Ensure mssql (native Node modules) only runs server-side
   serverExternalPackages: ["mssql"],
-  // Expose env vars to server-side runtime
+  // Expose all database + auth env vars to the server-side runtime.
+  // These are server-only (no NEXT_PUBLIC_ prefix) — never sent to the browser.
   env: {
-    SQL_CONNECTION_STRING: process.env.SQL_CONNECTION_STRING,
+    // Database — individual vars (recommended for on-prem SQL Server)
+    DB_HOST:                process.env.DB_HOST,
+    DB_PORT:                process.env.DB_PORT,
+    DB_NAME:                process.env.DB_NAME,
+    DB_USER:                process.env.DB_USER,
+    DB_PASS:                process.env.DB_PASS,
+    DB_ENCRYPT:             process.env.DB_ENCRYPT,
+    DB_TRUST_CERT:          process.env.DB_TRUST_CERT,
+    // Database — connection string alternative
+    DATABASE_URL:           process.env.DATABASE_URL,
+    SQL_CONNECTION_STRING:  process.env.SQL_CONNECTION_STRING,
+    // AI
+    AI_GATEWAY_API_KEY:     process.env.AI_GATEWAY_API_KEY,
+    AZURE_OPENAI_API_KEY:   process.env.AZURE_OPENAI_API_KEY,
+    AZURE_OPENAI_ENDPOINT:  process.env.AZURE_OPENAI_ENDPOINT,
+    AZURE_OPENAI_DEPLOYMENT:process.env.AZURE_OPENAI_DEPLOYMENT,
+    // Auth
+    NEXTAUTH_URL:           process.env.NEXTAUTH_URL,
+    NEXTAUTH_SECRET:        process.env.NEXTAUTH_SECRET,
+    AZURE_AD_CLIENT_ID:     process.env.AZURE_AD_CLIENT_ID,
+    AZURE_AD_CLIENT_SECRET: process.env.AZURE_AD_CLIENT_SECRET,
+    AZURE_AD_TENANT_ID:     process.env.AZURE_AD_TENANT_ID,
   },
 }
 
