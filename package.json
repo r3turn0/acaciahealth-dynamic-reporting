@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "node --env-file-if-exists=.env.development.local tests/e2e/run-endpoints.mjs"
+    "test:e2e": "node --env-file-if-exists=.env.development.local tests/e2e/run-endpoints.mjs",
+    "setup:vectors": "node --env-file-if-exists=.env.local -r ts-node/register lib/db/setupVectors.ts"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.211",
