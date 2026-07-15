@@ -21,7 +21,11 @@ import {
   Boxes,
   Plus,
   Sparkles,
+  Download,
+  FileSpreadsheet,
+  FileJson,
 } from "lucide-react";
+import { downloadDataset } from "@/lib/utils/download";
 import { useDatasetDraft, clearDatasetDraft } from "@/lib/access/datasetDraft";
 
 // ── Types (mirror the access-proxy API shapes) ─────────────────────────────────
@@ -204,16 +208,22 @@ export function DataContractWorkspace() {
 
   // ── Suggested related tables (metadata-driven relationship insight) ───────────
   const suggestedTables = useMemo(() => {
-    if (selection.size === 0) return [] as { table: RegistryTable; via: string }[];
+    if (selection.size === 0)
+      return [] as { table: RegistryTable; via: string; direction: "outbound" | "inbound"; condition: string }[];
     const selectedIds = new Set([...selection.keys()].map((k) => k.toLowerCase()));
-    const out = new Map<string, { table: RegistryTable; via: string }>();
+    const out = new Map<string, { table: RegistryTable; via: string; direction: "outbound" | "inbound"; condition: string }>();
     for (const t of allTables) {
       // outbound FKs from selected tables → suggest their targets
       if (selection.has(t.id)) {
         for (const r of t.relationships ?? []) {
           const target = allTables.find((x) => x.id.toLowerCase() === r.toTable.toLowerCase());
           if (target && !selectedIds.has(target.id.toLowerCase()) && !out.has(target.id)) {
-            out.set(target.id, { table: target, via: t.name });
+            out.set(target.id, {
+              table: target,
+              via: t.name,
+              direction: "outbound",
+              condition: r.condition ?? `${t.name} → ${target.name}`,
+            });
           }
         }
         continue;
@@ -222,7 +232,12 @@ export function DataContractWorkspace() {
       for (const r of t.relationships ?? []) {
         if (selectedIds.has(r.toTable.toLowerCase()) && !out.has(t.id)) {
           const viaTbl = allTables.find((x) => x.id.toLowerCase() === r.toTable.toLowerCase());
-          out.set(t.id, { table: t, via: viaTbl?.name ?? r.toTable.split(".").pop()! });
+          out.set(t.id, {
+            table: t,
+            via: viaTbl?.name ?? r.toTable.split(".").pop()!,
+            direction: "inbound",
+            condition: r.condition ?? `${t.name} → ${viaTbl?.name ?? r.toTable.split(".").pop()!}`,
+          });
         }
       }
     }
@@ -470,23 +485,42 @@ export function DataContractWorkspace() {
               )}
             </div>
 
-            {/* Suggested related tables (relationship insight) */}
+            {/* Smart inference — suggested related tables */}
             {suggestedTables.length > 0 && (
               <div className="flex flex-col gap-1.5 border-t border-border pt-3">
                 <div className="flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-primary" />
-                  <span className="text-[11px] font-semibold text-foreground">Suggested related tables</span>
-                  <span className="text-[10px] text-muted-foreground ml-auto">from relationships</span>
+                  <span className="text-[11px] font-semibold text-foreground">Smart inference</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-medium ml-1">
+                    {suggestedTables.length} suggested
+                  </span>
                 </div>
-                {suggestedTables.map(({ table, via }) => (
+                {suggestedTables.map(({ table, via, direction, condition }) => (
                   <button
                     key={table.id}
                     onClick={() => toggleTable(table)}
-                    className="flex items-center gap-1.5 text-[11px] rounded border border-dashed border-primary/40 px-2 py-1.5 transition-colors text-left hover:bg-primary/5"
+                    className="flex flex-col gap-0.5 text-[11px] rounded border border-dashed border-primary/40 px-2 py-1.5 transition-colors text-left hover:bg-primary/5"
                   >
-                    <Plus className="w-3 h-3 text-primary shrink-0" />
-                    <span className="text-foreground truncate">{table.name}</span>
-                    <span className="text-muted-foreground truncate">· related to {via}</span>
+                    <div className="flex items-center gap-1.5">
+                      <Plus className="w-3 h-3 text-primary shrink-0" />
+                      <span className="text-foreground font-medium truncate">{table.name}</span>
+                      <span
+                        className={cn(
+                          "text-[9px] px-1 py-0.5 rounded uppercase tracking-wide font-semibold ml-auto shrink-0",
+                          direction === "outbound"
+                            ? "bg-chart-1/15 text-chart-1"
+                            : "bg-chart-4/15 text-chart-4"
+                        )}
+                      >
+                        {direction === "outbound" ? "FK →" : "← ref"}
+                      </span>
+                    </div>
+                    <div className="pl-4.5 text-[10px] text-muted-foreground truncate">
+                      via <span className="text-foreground/70">{via}</span>
+                      {condition && condition !== `${table.name} → ${via}` && (
+                        <> · <span className="font-mono">{condition}</span></>
+                      )}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -507,22 +541,34 @@ export function DataContractWorkspace() {
                 ) : (
                   availableJoins.map((j) => {
                     const on = selectedJoins.has(j.key);
+                    // Find the condition from the registry relationships
+                    const fromTbl = allTables.find((t) => t.id === j.fromId);
+                    const rel = fromTbl?.relationships?.find(
+                      (r) => r.toTable.toLowerCase() === j.toId.toLowerCase()
+                    );
                     return (
                       <button
                         key={j.key}
                         onClick={() => toggleJoin(j.key)}
                         className={cn(
-                          "flex items-center gap-1.5 text-[11px] rounded border px-2 py-1.5 transition-colors text-left",
+                          "flex flex-col gap-0.5 text-[11px] rounded border px-2 py-1.5 transition-colors text-left",
                           on
                             ? "bg-chart-2/15 border-chart-2/40 text-foreground"
                             : "border-border text-muted-foreground hover:text-foreground"
                         )}
                       >
-                        <Link2 className={cn("w-3 h-3 shrink-0", on ? "text-chart-2" : "")} />
-                        <span className="truncate">
-                          {j.fromShort} <span className="text-muted-foreground">⋈</span> {j.toShort}
-                        </span>
-                        {on && <Check className="w-3 h-3 text-chart-2 ml-auto shrink-0" />}
+                        <div className="flex items-center gap-1.5">
+                          <Link2 className={cn("w-3 h-3 shrink-0", on ? "text-chart-2" : "")} />
+                          <span className="truncate font-medium">
+                            {j.fromShort} <span className="text-muted-foreground">⋈</span> {j.toShort}
+                          </span>
+                          {on && <Check className="w-3 h-3 text-chart-2 ml-auto shrink-0" />}
+                        </div>
+                        {rel?.condition && (
+                          <span className="pl-4.5 text-[10px] font-mono text-muted-foreground truncate">
+                            {rel.condition}
+                          </span>
+                        )}
                       </button>
                     );
                   })
@@ -571,6 +617,36 @@ export function DataContractWorkspace() {
               >
                 {data.source === "live_db" ? "Live DB" : "Demo data"}
               </span>
+            )}
+            {/* Download current page data */}
+            {data && data.rows.length > 0 && (
+              <div className="flex items-center gap-0.5 border border-border rounded-md overflow-hidden">
+                <span className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground">
+                  <Download className="w-3 h-3" /> Export
+                </span>
+                <button
+                  onClick={() => {
+                    const name = previewTable?.split(".").pop() ?? "dataset";
+                    const label = previewJoin ? `${name}_joined` : name;
+                    downloadDataset(data.rows, label, "csv");
+                  }}
+                  className="px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted border-l border-border transition-colors"
+                  title="Download current page as CSV"
+                >
+                  <FileSpreadsheet className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={() => {
+                    const name = previewTable?.split(".").pop() ?? "dataset";
+                    const label = previewJoin ? `${name}_joined` : name;
+                    downloadDataset(data.rows, label, "json");
+                  }}
+                  className="px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted border-l border-border transition-colors"
+                  title="Download current page as JSON"
+                >
+                  <FileJson className="w-3 h-3" />
+                </button>
+              </div>
             )}
             <div className="flex items-center gap-1 ml-auto flex-wrap">
               {contractTables.map((tid) => {

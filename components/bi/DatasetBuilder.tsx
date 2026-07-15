@@ -9,17 +9,23 @@ import {
   ChevronDown,
   ChevronRight,
   Database,
+  Download,
+  FileJson,
   FileSpreadsheet,
   History,
   Link2,
+  Lightbulb,
   Plus,
   Sliders,
+  Table2,
   Trash2,
   Upload,
   X,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { parseFile } from "@/lib/bi/inference";
+import { parseFile, inferRelationships } from "@/lib/bi/inference";
+import { downloadDataset } from "@/lib/utils/download";
 import type {
   DataRow,
   DatasetField,
@@ -72,9 +78,54 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
   const [bumpVersion, setBumpVersion] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
 
   const editingExisting = draft.id !== null;
+
+  // ── Relationship inference ──────────────────────────────────────────────────
+  const suggestedRelationships = useMemo(() => {
+    const namedFields = draft.fields.filter((f) => f.name.trim());
+    if (namedFields.length === 0) return [];
+    const others = datasets
+      .filter((ds) => ds.id !== draft.id)
+      .map((ds) => ({ id: ds.id, name: ds.name, fields: ds.fields }));
+    if (others.length === 0) return [];
+    return inferRelationships(namedFields, others).filter((s) => {
+      const key = `${s.fromField}→${s.toDataset}:${s.toField}`;
+      if (dismissedSuggestions.has(key)) return false;
+      // Don't suggest something already explicitly linked
+      return !draft.relationships.some(
+        (r) => r.fromField === s.fromField && r.toDataset === s.toDataset && r.toField === s.toField
+      );
+    });
+  }, [draft.fields, draft.id, draft.relationships, datasets, dismissedSuggestions]);
+
+  // ── Download ────────────────────────────────────────────────────────────────
+  function downloadDraft(format: "csv" | "json") {
+    if (draft.sampleData.length === 0) return;
+    const name = draft.name.trim() || "dataset";
+    downloadDataset(draft.sampleData as Record<string, unknown>[], name, format);
+  }
+
+  function downloadSaved(ds: DatasetSchema, format: "csv" | "json") {
+    if (ds.sampleData.length === 0) return;
+    downloadDataset(ds.sampleData as Record<string, unknown>[], ds.name, format);
+  }
+
+  // ── Suggestion accept / dismiss ─────────────────────────────────────────────
+  function acceptSuggestion(fromField: string, toDataset: string, toField: string) {
+    setDraft((d) => ({
+      ...d,
+      relationships: [...d.relationships, { fromField, toDataset, toField }],
+    }));
+  }
+
+  function dismissSuggestion(fromField: string, toDataset: string, toField: string) {
+    const key = `${fromField}→${toDataset}:${toField}`;
+    setDismissedSuggestions((prev) => new Set(prev).add(key));
+  }
 
   // ── Validation warnings ─────────────────────────────────────────────────────
   const warnings = useMemo(() => {
@@ -225,9 +276,8 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
             Your datasets ({datasets.length})
           </p>
           {datasets.map((ds) => (
-            <button
+            <div
               key={ds.id}
-              onClick={() => loadForEdit(ds)}
               className={cn(
                 "flex flex-col gap-1 text-left p-3 rounded-lg border transition-colors",
                 draft.id === ds.id
@@ -235,18 +285,45 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
                   : "border-border bg-card hover:border-primary/40"
               )}
             >
-              <div className="flex items-center gap-2">
+              <button
+                onClick={() => loadForEdit(ds)}
+                className="flex items-center gap-2 w-full text-left"
+              >
                 <Database className="w-3.5 h-3.5 text-primary shrink-0" />
                 <span className="text-sm font-medium text-foreground truncate">{ds.name}</span>
+              </button>
+              <div className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <span>{ds.fields.length} fields</span>
+                  <span>·</span>
+                  <span>v{ds.version}</span>
+                  {ds.sampleData.length > 0 && (
+                    <>
+                      <span>·</span>
+                      <span>{ds.sampleData.length} rows</span>
+                    </>
+                  )}
+                </div>
+                {ds.sampleData.length > 0 && (
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); downloadSaved(ds, "csv"); }}
+                      title="Download CSV"
+                      className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    >
+                      <FileSpreadsheet className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); downloadSaved(ds, "json"); }}
+                      title="Download JSON"
+                      className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    >
+                      <FileJson className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                <span>{ds.fields.length} fields</span>
-                <span>·</span>
-                <span>v{ds.version}</span>
-                <span>·</span>
-                <span className="capitalize">{ds.source}</span>
-              </div>
-            </button>
+            </div>
           ))}
           {datasets.length === 0 && (
             <p className="text-xs text-muted-foreground px-1 py-4 text-center">
@@ -328,9 +405,148 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
           </div>
         )}
         {draft.sampleData.length > 0 && (
-          <div className="flex items-center gap-2 text-xs text-chart-3">
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            Loaded {draft.sampleData.length} sample rows — types inferred automatically.
+          <div className="flex flex-col gap-2">
+            {/* Row count + download bar */}
+            <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-chart-3/10 border border-chart-3/25">
+              <span className="flex items-center gap-2 text-xs text-chart-3 font-medium">
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                {draft.sampleData.length} sample rows loaded — types inferred automatically
+              </span>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => setShowPreview((v) => !v)}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  <Table2 className="w-3 h-3" />
+                  {showPreview ? "Hide" : "Preview"}
+                </button>
+                <button
+                  onClick={() => downloadDraft("csv")}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  title="Download as CSV"
+                >
+                  <FileSpreadsheet className="w-3 h-3" />
+                  CSV
+                </button>
+                <button
+                  onClick={() => downloadDraft("json")}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  title="Download as JSON"
+                >
+                  <FileJson className="w-3 h-3" />
+                  JSON
+                </button>
+              </div>
+            </div>
+
+            {/* Inline preview table (first 8 rows) */}
+            {showPreview && (
+              <div className="overflow-auto rounded-lg border border-border max-h-52">
+                <table className="w-full text-[11px] border-collapse">
+                  <thead>
+                    <tr className="bg-muted/60 sticky top-0">
+                      {Object.keys(draft.sampleData[0]).map((col) => (
+                        <th
+                          key={col}
+                          className="px-3 py-2 text-left font-semibold text-muted-foreground border-b border-border whitespace-nowrap font-mono"
+                        >
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {draft.sampleData.slice(0, 8).map((row, ri) => (
+                      <tr key={ri} className={ri % 2 === 0 ? "bg-background" : "bg-muted/20"}>
+                        {Object.keys(draft.sampleData[0]).map((col) => (
+                          <td
+                            key={col}
+                            className="px-3 py-1.5 text-foreground border-b border-border/40 whitespace-nowrap max-w-[140px] truncate"
+                          >
+                            {row[col] === null || row[col] === undefined ? (
+                              <span className="text-muted-foreground/50 italic">null</span>
+                            ) : (
+                              String(row[col])
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Suggested relationships from inference engine */}
+        {suggestedRelationships.length > 0 && (
+          <div className="flex flex-col gap-2 rounded-lg border border-primary/25 bg-primary/5 p-3">
+            <div className="flex items-center gap-2">
+              <Zap className="w-3.5 h-3.5 text-primary" />
+              <span className="text-xs font-semibold text-primary">
+                Smart inference — suggested joins
+              </span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-medium">
+                {suggestedRelationships.length}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {suggestedRelationships.map((s) => {
+                const confColor =
+                  s.confidence === "high"
+                    ? "text-chart-1 bg-chart-1/10 border-chart-1/25"
+                    : s.confidence === "medium"
+                    ? "text-chart-4 bg-chart-4/10 border-chart-4/25"
+                    : "text-muted-foreground bg-muted border-border";
+                return (
+                  <div
+                    key={`${s.fromField}→${s.toDataset}:${s.toField}`}
+                    className="flex items-center gap-2 flex-wrap rounded-md bg-background border border-border px-3 py-2"
+                  >
+                    <code className="text-[11px] font-mono text-foreground bg-muted px-1.5 py-0.5 rounded">
+                      {s.fromField}
+                    </code>
+                    <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                    <span className="text-[11px] text-muted-foreground">
+                      <span className="font-medium text-foreground">{s.toDataset}</span>
+                      {"."}
+                      <code className="font-mono">{s.toField}</code>
+                    </span>
+                    <span
+                      className={cn(
+                        "text-[10px] px-1.5 py-0.5 rounded-full border capitalize ml-auto shrink-0",
+                        confColor
+                      )}
+                    >
+                      {s.confidence}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/70 hidden sm:block max-w-[180px] truncate">
+                      {s.reason}
+                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => acceptSuggestion(s.fromField, s.toDataset, s.toField)}
+                        className="flex items-center gap-0.5 px-2 py-1 rounded text-[11px] bg-primary/15 text-primary hover:bg-primary/25 transition-colors font-medium"
+                      >
+                        <Check className="w-3 h-3" /> Add
+                      </button>
+                      <button
+                        onClick={() => dismissSuggestion(s.fromField, s.toDataset, s.toField)}
+                        className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        aria-label="Dismiss suggestion"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-muted-foreground/70 flex items-center gap-1">
+              <Lightbulb className="w-3 h-3 shrink-0" />
+              Inferred from field names, types, and FK naming patterns. Review before saving.
+            </p>
           </div>
         )}
 
@@ -485,7 +701,28 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
               Saved separately from your warehouse — nothing is written to the database.
             </span>
           )}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {draft.sampleData.length > 0 && (
+              <div className="flex items-center gap-1 border border-border rounded-md overflow-hidden">
+                <span className="flex items-center gap-1.5 px-2.5 py-2 text-[11px] text-muted-foreground">
+                  <Download className="w-3.5 h-3.5" /> Export
+                </span>
+                <button
+                  onClick={() => downloadDraft("csv")}
+                  className="px-2.5 py-2 text-[11px] font-medium text-foreground hover:bg-muted transition-colors border-l border-border"
+                  title="Download sample data as CSV"
+                >
+                  CSV
+                </button>
+                <button
+                  onClick={() => downloadDraft("json")}
+                  className="px-2.5 py-2 text-[11px] font-medium text-foreground hover:bg-muted transition-colors border-l border-border"
+                  title="Download sample data as JSON"
+                >
+                  JSON
+                </button>
+              </div>
+            )}
             <button
               onClick={() => save(false)}
               disabled={!canSave}
