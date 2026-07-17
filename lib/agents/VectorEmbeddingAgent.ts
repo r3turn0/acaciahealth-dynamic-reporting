@@ -217,6 +217,61 @@ export class VectorEmbeddingAgent implements Agent<VectorSearchInput, ContextPay
     };
   }
 
+  // ── Semantic Join Discovery ─────────────────────────────────────────────────
+
+  /**
+   * Find semantically related relationships for a proposed join between two
+   * columns.  Queries the vector corpus with a natural-language description of
+   * the join so previously-indexed FK relationships and table descriptions can
+   * surface a confidence boost beyond pure name-matching.
+   *
+   * Returns up to `topK` results filtered to "relationship" and "schema" types
+   * so the RelationshipBuilderAgent can use them directly.
+   */
+  async semanticJoinSearch(
+    source: string,   // "schema.table.column"  or  "table.column"
+    target: string,   // same
+    topK = 6,
+  ): Promise<VectorSearchResult[]> {
+    // Build a descriptive query that captures both tables and the intent to join
+    const [sourceTable] = source.split(".").slice(-2, -1);
+    const [targetTable] = target.split(".").slice(-2, -1);
+    const sourceCol  = source.split(".").pop() ?? source;
+    const targetCol  = target.split(".").pop() ?? target;
+
+    const query =
+      `relationship join between ${sourceTable} ${sourceCol} and ${targetTable} ${targetCol} ` +
+      `foreign key ${sourceCol} references ${targetCol}`;
+
+    const results = await vectorSearch({
+      query,
+      topK,
+      types: ["relationship", "schema", "column"],
+      savedReports: [],
+      fixLog: [],
+    });
+
+    return results;
+  }
+
+  /**
+   * Given a set of table names, return the top semantically related tables from
+   * the vector corpus — used by auto-join mode to suggest multi-hop paths.
+   */
+  async suggestRelatedTables(
+    tableNames: string[],
+    topK = 8,
+  ): Promise<VectorSearchResult[]> {
+    const query = `tables related to ${tableNames.join(", ")} joins relationships foreign keys`;
+    return vectorSearch({
+      query,
+      topK,
+      types: ["relationship", "schema"],
+      savedReports: [],
+      fixLog: [],
+    });
+  }
+
   // ── Agent.run ───────────────────────────────────────────────────────────────
 
   /** Main entry point when dispatched via AgentOfAgents. */
