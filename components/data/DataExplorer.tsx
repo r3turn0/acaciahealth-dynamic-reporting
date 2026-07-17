@@ -195,27 +195,40 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
-  // Load the complete table list from /api/tables — a dedicated no-cache route
-  // that always queries sys.objects fresh. Falls back to the static list on error.
+  // Load the complete table list by querying sys.objects via the existing
+  // /api/run-sql endpoint — requires no new route file on the user's machine.
   const loadTableList = useCallback(async () => {
     setTableListLoading(true);
     try {
-      const res = await fetch("/api/schema/tables");
+      const today = new Date().toISOString().slice(0, 10);
+      const res = await fetch("/api/run-sql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sql: `SELECT s.name AS table_schema, o.name AS table_name,
+                  CASE o.type WHEN 'U' THEN 'BASE TABLE' WHEN 'V' THEN 'VIEW' ELSE 'OTHER' END AS table_type
+                FROM sys.objects o
+                JOIN sys.schemas s ON s.schema_id = o.schema_id
+                WHERE o.type IN ('U','V') AND o.is_ms_shipped = 0
+                ORDER BY o.type DESC, o.name`,
+          start_date: today,
+          end_date: today,
+          report_name: "__table_list__",
+        }),
+      });
       if (!res.ok) return;
-      const json = await res.json() as {
-        source: string;
-        tables: { qualified_name: string }[];
-        error?: string;
-      };
-
-      if (json.source === "live_db" && Array.isArray(json.tables) && json.tables.length > 0) {
-        const names = json.tables.map((t) => t.qualified_name).sort();
+      const json = await res.json() as { data?: Record<string, string>[] };
+      const rows = (json.data ?? []) as { table_schema: string; table_name: string }[];
+      if (rows.length > 6) {
+        const names = rows.map((r) =>
+          !r.table_schema || r.table_schema === "dbo"
+            ? r.table_name
+            : `${r.table_schema}.${r.table_name}`
+        ).sort();
         setTableList(names);
         setTableSource("live_db");
-        // Persist to localStorage so the list survives page refresh without a re-fetch
         try { localStorage.setItem("hchb_table_list", JSON.stringify(names)); } catch { /* noop */ }
       }
-      // If source is not live_db or empty, keep whatever is already in state (static fallback)
     } catch {
       // Keep the static fallback list.
     } finally {
