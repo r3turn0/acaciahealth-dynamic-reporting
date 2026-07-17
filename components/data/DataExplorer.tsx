@@ -216,8 +216,9 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
           report_name: "__table_list__",
         }),
       });
+      const json = await res.json() as { data?: Record<string, string>[]; error?: string };
+      console.log("[v0] loadTableList response status:", res.status, "row count:", json.data?.length, "error:", json.error);
       if (!res.ok) return;
-      const json = await res.json() as { data?: Record<string, string>[] };
       const rows = (json.data ?? []) as { table_schema: string; table_name: string }[];
       if (rows.length > 6) {
         const names = rows.map((r) =>
