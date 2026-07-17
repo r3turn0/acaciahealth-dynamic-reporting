@@ -7,7 +7,7 @@
  */
 
 import { embed as aiEmbed, embedMany as aiEmbedMany } from "ai";
-import { gateway } from "ai";
+import type { EmbeddingModel } from "ai";
 
 // Dimension count matches the vector column type in Postgres
 export const EMBEDDING_DIM = 1536;
@@ -62,7 +62,7 @@ async function embedManyViaOpenAI(texts: string[]): Promise<number[][]> {
 
 async function embedViaGateway(text: string): Promise<number[]> {
   const result = await aiEmbed({
-    model: gateway(GATEWAY_EMBEDDING_MODEL),
+    model: GATEWAY_EMBEDDING_MODEL as unknown as EmbeddingModel<string>,
     value: text,
   });
   return result.embedding;
@@ -71,7 +71,7 @@ async function embedViaGateway(text: string): Promise<number[]> {
 async function embedManyViaGateway(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
   const result = await aiEmbedMany({
-    model: gateway(GATEWAY_EMBEDDING_MODEL),
+    model: GATEWAY_EMBEDDING_MODEL as unknown as EmbeddingModel<string>,
     values: texts,
   });
   return result.embeddings;

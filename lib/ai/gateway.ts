@@ -109,15 +109,13 @@ export async function chatJSON<T = unknown>(
     return JSON.parse(json.choices[0].message.content) as T;
   }
 
-  // Fallback to AI SDK (AI Gateway or Azure)
-  const { generateText, Output } = await import("ai");
-  const { z } = await import("zod");
+  // Fallback to AI SDK (AI Gateway or Azure) — use plain text + JSON.parse
+  const { generateText } = await import("ai");
   const result = await generateText({
     model: getModel("capable"),
-    system: systemPrompt,
+    system: systemPrompt + "\n\nRespond with valid JSON only. No markdown, no explanation.",
     prompt: userPrompt,
-    experimental_output: Output.object({ schema: z.record(z.unknown()) }),
     temperature: 0.05,
   });
-  return result.experimental_output as T;
+  return JSON.parse(result.text) as T;
 }
