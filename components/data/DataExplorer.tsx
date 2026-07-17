@@ -25,6 +25,16 @@ import {
   useDatasetDraft,
 } from "@/lib/access/datasetDraft";
 
+// Try to load the seeded full table list; fall back to schemaConfig keys.
+let allTablesJson: string[] = [];
+try {
+  // Dynamic require so a missing file doesn't break the build.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  allTablesJson = require("@/lib/config/allTables.json") as string[];
+} catch {
+  allTablesJson = [];
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface TableRow  { [key: string]: unknown }
@@ -39,7 +49,10 @@ interface DataPage {
   source:     "demo" | "live_db";
 }
 
-const TABLES = Object.keys(schemaConfig) as Array<keyof typeof schemaConfig>;
+const TABLES: string[] =
+  allTablesJson.length > 0
+    ? allTablesJson
+    : (Object.keys(schemaConfig) as string[]);
 const PAGE_SIZES = [25, 50, 100, 200];
 
 // ── Cell renderer ─────────────────────────────────────────────────────────────
@@ -118,6 +131,7 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
   // static). Falls back to the statically-known schemaConfig tables.
   const [tableList, setTableList] = useState<string[]>(TABLES as string[]);
   const [tableSource, setTableSource] = useState<"live_db" | "static_config">("static_config");
+  const [tableListLoading, setTableListLoading] = useState(false);
 
   function handleAddToDataset() {
     addTableToDraft(selectedTable);
@@ -181,33 +195,64 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
-  // Load the complete table list from the Schema Intelligence API so the
-  // dropdown reflects every table in the database (live) or the known config.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/schema");
-        if (!res.ok) return;
-        const json = await res.json();
-        const tables: string[] = Array.isArray(json?.tables)
-          ? json.tables.map((t: { table_name: string; table_schema?: string }) =>
-              t.table_name.includes(".") || !t.table_schema || t.table_schema === "dbo"
-                ? t.table_name
-                : `${t.table_schema}.${t.table_name}`
-            )
-          : [];
-        if (cancelled) return;
-        // Union with the statically-known tables, de-duped and sorted.
-        const merged = Array.from(new Set([...(TABLES as string[]), ...tables])).sort();
-        if (merged.length > 0) setTableList(merged);
-        if (json?.source === "live_db") setTableSource("live_db");
-      } catch {
-        // Keep the static fallback list.
+  // Load the complete table list by querying sys.objects via the existing
+  // /api/run-sql endpoint — requires no new route file on the user's machine.
+  const loadTableList = useCallback(async () => {
+    setTableListLoading(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const res = await fetch("/api/run-sql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sql: `SELECT s.name AS table_schema, o.name AS table_name,
+                  CASE o.type WHEN 'U' THEN 'BASE TABLE' WHEN 'V' THEN 'VIEW' ELSE 'OTHER' END AS table_type
+                FROM sys.objects o
+                JOIN sys.schemas s ON s.schema_id = o.schema_id
+                WHERE o.type IN ('U','V') AND o.is_ms_shipped = 0
+                ORDER BY o.type DESC, o.name`,
+          start_date: today,
+          end_date: today,
+          report_name: "__table_list__",
+        }),
+      });
+      const json = await res.json() as { data?: Record<string, string>[]; error?: string };
+      console.log("[v0] loadTableList response status:", res.status, "row count:", json.data?.length, "error:", json.error);
+      if (!res.ok) return;
+      const rows = (json.data ?? []) as { table_schema: string; table_name: string }[];
+      if (rows.length > 6) {
+        const names = rows.map((r) =>
+          !r.table_schema || r.table_schema === "dbo"
+            ? r.table_name
+            : `${r.table_schema}.${r.table_name}`
+        ).sort();
+        setTableList(names);
+        setTableSource("live_db");
+        try { localStorage.setItem("hchb_table_list", JSON.stringify(names)); } catch { /* noop */ }
       }
-    })();
-    return () => { cancelled = true; };
+    } catch {
+      // Keep the static fallback list.
+    } finally {
+      setTableListLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    // Seed immediately from localStorage (previous session) so dropdown is
+    // populated before the async fetch returns.
+    try {
+      const cached = localStorage.getItem("hchb_table_list");
+      if (cached) {
+        const names: string[] = JSON.parse(cached);
+        if (names.length > 6) {
+          setTableList(names);
+          setTableSource("live_db");
+        }
+      }
+    } catch { /* noop */ }
+    // Always re-fetch fresh from the server
+    loadTableList();
+  }, [loadTableList]);
 
   function handleTableChange(t: string) {
     setSelectedTable(t);
@@ -293,12 +338,33 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
             {tableList.length} table{tableList.length !== 1 ? "s" : ""}
           </span>
           <span
+            className={cn(
+              "flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium border",
+              tableSource === "live_db"
+                ? "bg-chart-3/10 text-chart-3 border-chart-3/25"
+                : "bg-muted text-muted-foreground border-border"
+            )}
+            title={tableSource === "live_db" ? "Tables loaded from live database" : "Using static config — click refresh to load from database"}
+          >
+            <Database className="w-2.5 h-2.5" />
+            {tableSource === "live_db" ? "Live DB" : "Static"}
+          </span>
+          <span
             className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium bg-muted text-muted-foreground border border-border"
             title="Tables are read-only in Discover Data"
           >
             <Lock className="w-2.5 h-2.5" />
             Read-only
           </span>
+          <button
+            onClick={() => loadTableList()}
+            disabled={tableListLoading}
+            title="Reload full table list from database"
+            className="flex items-center gap-1 text-[10px] px-2 py-1 rounded border border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={cn("w-3 h-3", tableListLoading && "animate-spin")} />
+            {tableListLoading ? "Loading…" : "Reload tables"}
+          </button>
         </div>
 
         {/* Actions */}

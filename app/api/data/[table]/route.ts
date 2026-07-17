@@ -17,7 +17,8 @@ import { NextRequest, NextResponse } from "next/server";
 import schemaConfig from "@/lib/config/schemaConfig.json";
 import { isDbConfigured, BackendUnreachableError } from "@/lib/services/db";
 
-const ALLOWED_TABLES = Object.keys(schemaConfig);
+// Static tables used for demo mode only. In live mode ALL tables are allowed.
+const DEMO_TABLES = Object.keys(schemaConfig);
 
 // ── Demo data generators ──────────────────────────────────────────────────────
 
@@ -109,29 +110,12 @@ export async function GET(
 
   const decodedTable = decodeURIComponent(table);
 
-  // In demo mode only the statically-known tables are servable. In live mode we
-  // additionally allow any base table present in the live schema so the
-  // dropdown can browse the whole database. Names are still strictly sanitized
-  // before they reach the query builder below.
-  let allowed = ALLOWED_TABLES.includes(decodedTable);
-  if (!allowed && isDbConfigured()) {
-    try {
-      const { getSchemaIntelligence } = await import("@/lib/agents/schemaAgent");
-      const schema = await getSchemaIntelligence();
-      allowed = schema.tables.some((t) => {
-        const full =
-          t.table_name.includes(".") || !t.table_schema || t.table_schema === "dbo"
-            ? t.table_name
-            : `${t.table_schema}.${t.table_name}`;
-        return full === decodedTable || t.table_name === decodedTable;
-      });
-    } catch {
-      allowed = false;
-    }
-  }
-  if (!allowed) {
+  // In demo mode (no DB) only the 6 static tables are servable.
+  // In live mode every table/view in sys.objects is allowed — the name is
+  // still sanitized before it reaches the query builder.
+  if (!isDbConfigured() && !DEMO_TABLES.includes(decodedTable)) {
     return NextResponse.json(
-      { error: `Table "${decodedTable}" is not in the allowed list.` },
+      { error: `Table "${decodedTable}" is not available in demo mode.` },
       { status: 400 }
     );
   }
@@ -242,7 +226,7 @@ export async function GET(
         (err as { code?: string })?.code ?? ""
       );
 
-    if (unreachable && ALLOWED_TABLES.includes(decodedTable)) {
+    if (unreachable && DEMO_TABLES.includes(decodedTable)) {
       console.warn(`[db] /api/data: DB unreachable, serving demo data for ${decodedTable}`);
       const TOTAL_DEMO =
         decodedTable === "BRANCHES" ? BRANCH_CODES.length
