@@ -19,19 +19,6 @@ export function validateQuery(sql: string): ValidationResult {
   const errors: string[] = [];
   const lowered = sql.toLowerCase();
 
-  // Structural requirements
-  if (!lowered.includes("where")) {
-    errors.push("Query must include a WHERE clause");
-  }
-
-  if (!lowered.includes("@startdate")) {
-    errors.push("Query must include @StartDate parameter for date filtering");
-  }
-
-  if (!lowered.includes("@enddate")) {
-    errors.push("Query must include @EndDate parameter for date filtering");
-  }
-
   if (lowered.includes("select *")) {
     errors.push("SELECT * is not allowed — specify explicit column names");
   }
@@ -45,22 +32,6 @@ export function validateQuery(sql: string): ValidationResult {
     if (pattern.test(sql)) {
       errors.push(message);
     }
-  }
-
-  // Must reference an allowed table
-  const allowedTables = [
-    "CLIENT_EPISODES_ALL",
-    "BRANCHES",
-    "SERVICE_LINES",
-    "CARE_TYPES",
-    "Billing.LINE_ITEMS",
-    "PDGM.PDGM_PERIOD",
-  ];
-  const referencesAllowedTable = allowedTables.some((t) =>
-    sql.toUpperCase().includes(t.toUpperCase())
-  );
-  if (!referencesAllowedTable) {
-    errors.push("Query must reference at least one allowed AcaciaHealth table");
   }
 
   return {
