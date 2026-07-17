@@ -302,16 +302,51 @@ function TabPanel({ tab, onToast }: TabPanelProps) {
       {/* Query input */}
       <div className="bg-card border border-border rounded-xl p-5 flex flex-col gap-3">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-primary shrink-0" />
-          <h2 className="text-sm font-semibold text-foreground">Natural Language Query</h2>
-          {tab.vectorSources && tab.vectorSources.length > 0 && (
-            <span className="ml-auto flex items-center gap-1 text-[10px] text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+          {tab.inputMode === "nl" ? (
+            <Sparkles className="w-4 h-4 text-primary shrink-0" />
+          ) : (
+            <BarChart3 className="w-4 h-4 text-chart-3 shrink-0" />
+          )}
+          <h2 className="text-sm font-semibold text-foreground">
+            {tab.inputMode === "nl" ? "Natural Language Query" : "SQL Editor"}
+          </h2>
+
+          {/* NL / SQL mode toggle */}
+          <div className="ml-auto flex items-center rounded-lg border border-border bg-muted/40 p-0.5">
+            <button
+              onClick={() => updateTab(tab.id, { inputMode: "nl" })}
+              className={cn(
+                "px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors",
+                tab.inputMode === "nl"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              NL
+            </button>
+            <button
+              onClick={() => updateTab(tab.id, { inputMode: "sql" })}
+              className={cn(
+                "px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors",
+                tab.inputMode === "sql"
+                  ? "bg-chart-3 text-white shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              SQL
+            </button>
+          </div>
+
+          {tab.vectorSources && tab.vectorSources.length > 0 && tab.inputMode === "nl" && (
+            <span className="flex items-center gap-1 text-[10px] text-primary bg-primary/10 px-2 py-0.5 rounded-full">
               <Search className="w-2.5 h-2.5" />
               {tab.vectorSources.length} context sources
             </span>
           )}
         </div>
 
+        {/* NL mode: natural language input */}
+        {tab.inputMode === "nl" && (
         <div className="flex gap-2">
           <textarea
             value={tab.userQuery}
@@ -340,6 +375,43 @@ function TabPanel({ tab, onToast }: TabPanelProps) {
             Generate
           </button>
         </div>
+        )}
+
+        {/* SQL mode: direct SQL editor with Run button */}
+        {tab.inputMode === "sql" && (
+        <div className="flex flex-col gap-2">
+          <textarea
+            value={tab.generatedSQL}
+            onChange={(e) => updateTab(tab.id, { generatedSQL: e.target.value })}
+            onKeyDown={(e) => {
+              if (
+                e.key === "Enter" &&
+                (e.ctrlKey || e.metaKey) &&
+                !e.nativeEvent.isComposing &&
+                e.keyCode !== 229
+              ) {
+                e.preventDefault();
+                runSQL();
+              }
+            }}
+            placeholder={"-- Write T-SQL directly\nSELECT TOP 100 ...\nFROM dbo.CLIENT_EPISODES_ALL\nWHERE epi_SocDate >= DATEADD(month, -1, GETDATE())"}
+            rows={6}
+            spellCheck={false}
+            className="w-full px-3 py-2.5 rounded-lg bg-muted/60 border border-border font-mono text-[12px] text-foreground placeholder:text-muted-foreground/60 resize-y focus:outline-none focus:border-chart-3 transition-colors leading-relaxed"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => runSQL()}
+              disabled={isRunning || !tab.generatedSQL.trim()}
+              className="flex items-center gap-2 px-5 py-2 rounded-lg bg-chart-3 text-white text-sm font-medium hover:bg-chart-3/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+              {isRunning ? "Running…" : "Run Query"}
+            </button>
+            <span className="text-[10px] text-muted-foreground">Ctrl + Enter to run</span>
+          </div>
+        </div>
+        )}
 
         {/* AI Explanation */}
         {tab.fixExplanation && tab.generatedSQL && !tab.showFixPanel && (
@@ -407,14 +479,53 @@ function TabPanel({ tab, onToast }: TabPanelProps) {
       {/* Error panel */}
       {tab.status === "error" && tab.apiError && (
         <div className="bg-card border border-destructive/30 rounded-xl p-4 flex flex-col gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-destructive/15 text-destructive shrink-0">
               <AlertTriangle className="w-4 h-4" />
             </span>
             <span className="text-sm font-semibold text-foreground">Query Failed</span>
+
+            {/* Auto-Fix: calls pipeline without opening modal */}
+            <button
+              onClick={async () => {
+                startFixing(tab.id);
+                try {
+                  const res = await fetch("/api/fix-query", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      userQuery: tab.userQuery,
+                      generatedSQL: tab.generatedSQL,
+                      apiError: tab.apiError,
+                      dbErrorLogs: tab.dbErrorLogs,
+                    }),
+                  });
+                  const json = await res.json();
+                  if (res.ok && json.fixedSQL) {
+                    handleFixResult({ ...json, autoRetry: json.autoRetry ?? false });
+                  } else {
+                    updateTab(tab.id, { status: "error" });
+                    onToast("Auto-fix could not produce a repair — try Fix with AI");
+                  }
+                } catch {
+                  updateTab(tab.id, { status: "error" });
+                  onToast("Auto-fix failed — check connection");
+                }
+              }}
+              disabled={tab.status === "fixing"}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-chart-3/40 bg-chart-3/8 text-chart-3 text-xs font-medium hover:bg-chart-3/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {tab.status === "fixing" ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" />
+              )}
+              {tab.status === "fixing" ? "Analyzing…" : "Auto-Fix"}
+            </button>
+
             <button
               onClick={() => updateTab(tab.id, { showFeedbackModal: true })}
-              className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-lg border border-primary/40 bg-primary/8 text-primary text-xs font-medium hover:bg-primary/15 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/40 bg-primary/8 text-primary text-xs font-medium hover:bg-primary/15 transition-colors"
             >
               <MessageSquarePlus className="w-3.5 h-3.5" />
               Fix with AI
@@ -423,7 +534,7 @@ function TabPanel({ tab, onToast }: TabPanelProps) {
           <div className="flex flex-col gap-2">
             <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-destructive/8 border border-destructive/20">
               <XCircle className="w-3.5 h-3.5 text-destructive mt-0.5 shrink-0" />
-              <span className="text-xs text-destructive leading-relaxed">{tab.apiError}</span>
+              <span className="text-xs text-destructive leading-relaxed font-mono">{tab.apiError}</span>
             </div>
             {tab.dbErrorLogs && (
               <pre className="text-[11px] font-mono text-destructive/80 bg-destructive/5 border border-destructive/15 rounded-lg px-3 py-2 overflow-x-auto whitespace-pre-wrap leading-relaxed">
@@ -443,6 +554,7 @@ function TabPanel({ tab, onToast }: TabPanelProps) {
             confidence: tab.fixConfidence ?? 0.5,
             changes: tab.fixChanges ?? [],
             autoRetry: (tab.fixConfidence ?? 0) >= 0.9,
+            tier: tab.fixTier,
           }}
           originalSQL={tab.generatedSQL}
           retrying={tab.status === "fixing"}
@@ -753,7 +865,7 @@ export function WorkspacePage() {
     setTimeout(() => setToastMsg(null), 3000);
   }
 
-  // ── Refresh All ────────────────────────────────────────────────────────────
+  // ── Refresh All ─────────────────────────────────────────��──────────────────
   async function handleRefreshAll() {
     setRefreshingAll(true);
     await refreshAllTabs(async (tabId, sql) => {

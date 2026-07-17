@@ -42,7 +42,7 @@ export type IntentType = (typeof INTENT_TYPES)[number];
 const AggregationSchema = z.object({
   metric: z.string().describe("The measure / column name"),
   function: z.enum(["COUNT", "SUM", "AVG", "MIN", "MAX", "MEASURE"]).describe("Aggregation function"),
-  alias: z.string().optional().describe("Output alias"),
+  alias: z.string().describe("Output alias — empty string if none"),
 });
 
 const FilterSchema = z.object({
@@ -76,10 +76,10 @@ const ClarificationSchema = z.object({
 
 const PresentationSchema = z.object({
   chartType: z.enum(["bar", "line", "pie", "none"]).describe("Recommended chart type"),
-  xAxis: z.string().optional(),
-  yAxis: z.string().optional(),
-  groupBy: z.array(z.string()).optional(),
-  limit: z.number().int().optional(),
+  xAxis: z.string().describe("X axis field — empty string if not applicable"),
+  yAxis: z.string().describe("Y axis field — empty string if not applicable"),
+  groupBy: z.array(z.string()).describe("Group-by fields — empty array if not applicable"),
+  limit: z.number().int().describe("Result limit — 0 if not applicable"),
 });
 
 export const SemanticResponseSchema = z.object({
@@ -87,7 +87,8 @@ export const SemanticResponseSchema = z.object({
 
   intent: z.object({
     type: z.enum(INTENT_TYPES),
-    operation: z.string().optional().describe("Sub-operation, e.g. RANK, FILTER, COMPARE"),
+    // Must be in `required` for OpenAI structured output — use empty string when not applicable
+    operation: z.string().describe("Sub-operation e.g. RANK, FILTER, COMPARE — empty string if none"),
   }),
 
   context: z.object({
@@ -114,7 +115,7 @@ export const SemanticResponseSchema = z.object({
       z.object({
         stage: z.string(),
         status: z.enum(["ok", "ambiguous", "skipped"]),
-        note: z.string().optional(),
+        note: z.string().describe("Stage note — empty string if none"),
       })
     )
     .describe("Trace of each pipeline stage for UI display"),
@@ -122,7 +123,7 @@ export const SemanticResponseSchema = z.object({
   metadata: z.object({
     source: z.literal("powerbi_json"),
     confidence: z.number().min(0).max(1),
-    warnings: z.array(z.string()).optional(),
+    warnings: z.array(z.string()).describe("Warnings — empty array if none"),
   }),
 });
 

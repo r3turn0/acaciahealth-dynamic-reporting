@@ -26,6 +26,7 @@ import { chatJSON } from "@/lib/ai/gateway";
 import { vectorSearch, formatVectorContext } from "@/lib/ai/vectorSearch";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { runSelfHealingPipeline } from "@/lib/sql/pipeline";
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
@@ -90,7 +91,27 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Step 3: build prompt
+  // Run 3-tier self-healing pipeline first (deterministic before AI)
+  const pipelineResult = await runSelfHealingPipeline({
+    sql:      generatedSQL,
+    dbError:  dbErrorLogs || apiError,
+    userQuery,
+  });
+
+  // If deterministic tier fixed it, return immediately without an AI call
+  if (pipelineResult.tier === "deterministic" && pipelineResult.valid) {
+    return NextResponse.json({
+      fixedSQL:    pipelineResult.sql,
+      explanation: pipelineResult.explanation,
+      confidence:  0.85,
+      changes:     pipelineResult.changes,
+      autoRetry:   true,
+      tier:        "deterministic",
+      meta:        { model: "deterministic", fallback: false },
+    });
+  }
+
+  // Tier 3: Step 3: build prompt
   const parts: string[] = [];
   if (userQuery.trim()) parts.push(`USER INTENT:\n${userQuery}`);
   parts.push(`BROKEN SQL:\n${generatedSQL}`);
@@ -115,6 +136,7 @@ export async function POST(req: NextRequest) {
       confidence: fix.confidence ?? 0.5,
       changes: fix.changes ?? [],
       autoRetry: (fix.confidence ?? 0) >= 0.9,
+      tier: "ai_fallback",
       meta: { model: "gpt-4o" },
     });
   } catch (err) {

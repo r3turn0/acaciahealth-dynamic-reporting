@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import type { FixResult } from "./FeedbackModal";
 
 interface Props {
-  result: FixResult;
+  result: FixResult & { tier?: "deterministic" | "ai_fallback" | "failed" };
   originalSQL: string;
   retrying: boolean;
   onRetry: (fixedSQL: string) => void;
@@ -92,7 +92,17 @@ export function AiFixPanel({ result, originalSQL, retrying, onRetry, onDismiss }
           {confidencePct}% confidence
         </span>
 
-        {result.meta?.fallback && (
+        {result.tier === "deterministic" && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-chart-3/15 text-chart-3 border border-chart-3/30 font-medium">
+            deterministic
+          </span>
+        )}
+        {result.tier === "ai_fallback" && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/30 font-medium">
+            ai fallback
+          </span>
+        )}
+        {!result.tier && result.meta?.fallback && (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border">
             heuristic
           </span>
