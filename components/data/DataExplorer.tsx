@@ -25,6 +25,16 @@ import {
   useDatasetDraft,
 } from "@/lib/access/datasetDraft";
 
+// Try to load the seeded full table list; fall back to schemaConfig keys.
+let allTablesJson: string[] = [];
+try {
+  // Dynamic require so a missing file doesn't break the build.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  allTablesJson = require("@/lib/config/allTables.json") as string[];
+} catch {
+  allTablesJson = [];
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface TableRow  { [key: string]: unknown }
@@ -39,7 +49,10 @@ interface DataPage {
   source:     "demo" | "live_db";
 }
 
-const TABLES = Object.keys(schemaConfig) as Array<keyof typeof schemaConfig>;
+const TABLES: string[] =
+  allTablesJson.length > 0
+    ? allTablesJson
+    : (Object.keys(schemaConfig) as string[]);
 const PAGE_SIZES = [25, 50, 100, 200];
 
 // ── Cell renderer ─────────────────────────────────────────────────────────────
