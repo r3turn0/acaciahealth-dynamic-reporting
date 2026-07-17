@@ -8,7 +8,7 @@ import { getCache, setCache } from "../services/cache";
 import schemaConfig from "../config/schemaConfig.json";
 import semanticLayer from "../config/semanticLayer.json";
 
-const SCHEMA_CACHE_KEY = "schema_intelligence_v3";
+const SCHEMA_CACHE_KEY = "schema_intelligence_v4";
 const SCHEMA_TTL_MS = 60 * 60 * 1000; // 60 min
 
 export interface ColumnMeta {
@@ -43,25 +43,34 @@ async function introspectFromDb(): Promise<SchemaIntelligence | null> {
     const { executeRawQuery } = await import("../services/db");
     console.log("[v0] schemaAgent: attempting live DB introspection");
 
+    // Use sys catalog views instead of INFORMATION_SCHEMA.
+    // sys.objects + sys.columns is visible to any user with CONNECT permission;
+    // INFORMATION_SCHEMA only shows objects the user has explicit VIEW DEFINITION
+    // permission on, which is why it returned only 6 rows.
     const columnsSQL = `
       SELECT
-        t.TABLE_SCHEMA,
-        t.TABLE_NAME,
-        t.TABLE_TYPE,
-        c.COLUMN_NAME,
-        c.DATA_TYPE,
-        c.IS_NULLABLE,
-        c.CHARACTER_MAXIMUM_LENGTH
-      FROM INFORMATION_SCHEMA.TABLES t
-      JOIN INFORMATION_SCHEMA.COLUMNS c
-        ON c.TABLE_SCHEMA = t.TABLE_SCHEMA
-       AND c.TABLE_NAME = t.TABLE_NAME
-      WHERE t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')
-      ORDER BY t.TABLE_TYPE DESC, t.TABLE_NAME, c.ORDINAL_POSITION
+        s.name           AS TABLE_SCHEMA,
+        o.name           AS TABLE_NAME,
+        CASE o.type
+          WHEN 'U' THEN 'BASE TABLE'
+          WHEN 'V' THEN 'VIEW'
+          ELSE 'BASE TABLE'
+        END              AS TABLE_TYPE,
+        c.name           AS COLUMN_NAME,
+        tp.name          AS DATA_TYPE,
+        CASE c.is_nullable WHEN 1 THEN 'YES' ELSE 'NO' END AS IS_NULLABLE,
+        c.max_length     AS CHARACTER_MAXIMUM_LENGTH
+      FROM sys.objects o
+      JOIN sys.schemas s   ON s.schema_id = o.schema_id
+      JOIN sys.columns c   ON c.object_id = o.object_id
+      JOIN sys.types   tp  ON tp.user_type_id = c.user_type_id
+      WHERE o.type IN ('U', 'V')
+        AND o.is_ms_shipped = 0
+      ORDER BY o.type DESC, o.name, c.column_id
     `;
 
     const rows = await executeRawQuery(columnsSQL);
-    console.log(`[v0] schemaAgent: INFORMATION_SCHEMA returned ${rows.length} rows`);
+    console.log(`[v0] schemaAgent: sys catalog returned ${rows.length} rows`);
 
     // Group by table
     const tableMap = new Map<string, TableMeta>();

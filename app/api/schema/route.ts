@@ -10,7 +10,7 @@ import type { NextRequest } from "next/server";
 import { getSchemaIntelligence } from "@/lib/agents/schemaAgent";
 import { invalidateCache } from "@/lib/services/cache";
 
-const SCHEMA_CACHE_KEY = "schema_intelligence_v3";
+const SCHEMA_CACHE_KEY = "schema_intelligence_v4";
 
 export async function GET(req: NextRequest) {
   try {
