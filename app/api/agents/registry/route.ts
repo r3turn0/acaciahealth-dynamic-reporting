@@ -16,6 +16,7 @@ import "@/lib/agents/VectorEmbeddingAgent";
 import "@/lib/agents/MetadataNormalizationAgent";
 import "@/lib/agents/KPIEngineAgent";
 import "@/lib/agents/KPIDefinitionAgent";
+import "@/lib/agents/RelationshipBuilderAgent";
 
 const AGENT_META: Record<string, { description: string; domain: string; version: string }> = {
   VectorEmbeddingAgent: {
@@ -36,6 +37,11 @@ const AGENT_META: Record<string, { description: string; domain: string; version:
   KPIDefinitionAgent: {
     description: "Manual KPI registry — create, update, search, and bind reusable KPI definitions.",
     domain:      "KPI Definitions",
+    version:     "1.0.0",
+  },
+  RelationshipBuilderAgent: {
+    description: "Discovers table joins via metadata FKs, column-name heuristics, and vector semantic similarity. Generates validated JOIN SQL.",
+    domain:      "Relationship Engine",
     version:     "1.0.0",
   },
 };
