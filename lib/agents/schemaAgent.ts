@@ -8,7 +8,7 @@ import { getCache, setCache } from "../services/cache";
 import schemaConfig from "../config/schemaConfig.json";
 import semanticLayer from "../config/semanticLayer.json";
 
-const SCHEMA_CACHE_KEY = "schema_intelligence_v2";
+const SCHEMA_CACHE_KEY = "schema_intelligence_v3";
 const SCHEMA_TTL_MS = 60 * 60 * 1000; // 60 min
 
 export interface ColumnMeta {
@@ -41,6 +41,7 @@ async function introspectFromDb(): Promise<SchemaIntelligence | null> {
   try {
     // Dynamic import so mssql is not loaded client-side
     const { executeRawQuery } = await import("../services/db");
+    console.log("[v0] schemaAgent: attempting live DB introspection");
 
     const columnsSQL = `
       SELECT
@@ -60,6 +61,7 @@ async function introspectFromDb(): Promise<SchemaIntelligence | null> {
     `;
 
     const rows = await executeRawQuery(columnsSQL);
+    console.log(`[v0] schemaAgent: INFORMATION_SCHEMA returned ${rows.length} rows`);
 
     // Group by table
     const tableMap = new Map<string, TableMeta>();
@@ -83,14 +85,17 @@ async function introspectFromDb(): Promise<SchemaIntelligence | null> {
       });
     }
 
+    const tables = Array.from(tableMap.values());
+    console.log(`[v0] schemaAgent: returning ${tables.length} tables/views from live DB`);
     return {
-      tables: Array.from(tableMap.values()),
+      tables,
       semantic_layer: semanticLayer,
       schema_config: schemaConfig,
       generated_at: new Date().toISOString(),
       source: "live_db",
     };
-  } catch {
+  } catch (err) {
+    console.error("[v0] schemaAgent: live DB introspection failed:", (err as Error).message);
     return null;
   }
 }
@@ -132,10 +137,20 @@ export async function getSchemaIntelligence(): Promise<SchemaIntelligence> {
 
   let schema: SchemaIntelligence;
 
-  if (process.env.SQL_CONNECTION_STRING) {
+  // Use isDbConfigured() so all three credential paths are honoured:
+  // DATABASE_URL, DB_HOST/DB_NAME/DB_USER/DB_PASS, or SQL_CONNECTION_STRING.
+  const { isDbConfigured } = await import("../services/db");
+  if (isDbConfigured()) {
+    console.log("[v0] schemaAgent: DB is configured, attempting live introspection");
     const live = await introspectFromDb();
-    schema = live ?? buildStaticSchema();
+    if (live) {
+      schema = live;
+    } else {
+      console.warn("[v0] schemaAgent: live introspection failed, falling back to static config");
+      schema = buildStaticSchema();
+    }
   } else {
+    console.warn("[v0] schemaAgent: no DB credentials found, using static config");
     schema = buildStaticSchema();
   }
 
