@@ -148,7 +148,7 @@ function buildConfig(): sql.config | string | null {
       database,
       user,
       password,
-      options: { ...commonOptions(), readOnlyIntent: true },
+      options: { ...commonOptions() },
       pool: poolSettings(),
       requestTimeout: 30_000,
       connectionTimeout: 15_000,

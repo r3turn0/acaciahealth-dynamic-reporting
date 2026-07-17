@@ -8,7 +8,7 @@ import { getCache, setCache } from "../services/cache";
 import schemaConfig from "../config/schemaConfig.json";
 import semanticLayer from "../config/semanticLayer.json";
 
-const SCHEMA_CACHE_KEY = "schema_intelligence_v4";
+const SCHEMA_CACHE_KEY = "schema_intelligence_v5";
 const SCHEMA_TTL_MS = 60 * 60 * 1000; // 60 min
 
 export interface ColumnMeta {
