@@ -8,7 +8,7 @@ import { getCache, setCache } from "../services/cache";
 import schemaConfig from "../config/schemaConfig.json";
 import semanticLayer from "../config/semanticLayer.json";
 
-const SCHEMA_CACHE_KEY = "schema_intelligence_v1";
+const SCHEMA_CACHE_KEY = "schema_intelligence_v2";
 const SCHEMA_TTL_MS = 60 * 60 * 1000; // 60 min
 
 export interface ColumnMeta {
@@ -21,6 +21,7 @@ export interface ColumnMeta {
 export interface TableMeta {
   table_name: string;
   table_schema: string;
+  table_type: "BASE TABLE" | "VIEW";
   columns: ColumnMeta[];
   relationships: Record<string, string>;
   row_estimate?: number;
@@ -45,6 +46,7 @@ async function introspectFromDb(): Promise<SchemaIntelligence | null> {
       SELECT
         t.TABLE_SCHEMA,
         t.TABLE_NAME,
+        t.TABLE_TYPE,
         c.COLUMN_NAME,
         c.DATA_TYPE,
         c.IS_NULLABLE,
@@ -53,9 +55,8 @@ async function introspectFromDb(): Promise<SchemaIntelligence | null> {
       JOIN INFORMATION_SCHEMA.COLUMNS c
         ON c.TABLE_SCHEMA = t.TABLE_SCHEMA
        AND c.TABLE_NAME = t.TABLE_NAME
-      WHERE t.TABLE_TYPE = 'BASE TABLE'
-        AND t.TABLE_SCHEMA IN ('dbo', 'Billing', 'PDGM')
-      ORDER BY t.TABLE_NAME, c.ORDINAL_POSITION
+      WHERE t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')
+      ORDER BY t.TABLE_TYPE DESC, t.TABLE_NAME, c.ORDINAL_POSITION
     `;
 
     const rows = await executeRawQuery(columnsSQL);
@@ -68,6 +69,7 @@ async function introspectFromDb(): Promise<SchemaIntelligence | null> {
         tableMap.set(key, {
           table_name: row.TABLE_NAME as string,
           table_schema: row.TABLE_SCHEMA as string,
+          table_type: (row.TABLE_TYPE as string) === "VIEW" ? "VIEW" : "BASE TABLE",
           columns: [],
           relationships:
             schemaConfig[row.TABLE_NAME as keyof typeof schemaConfig]?.joins ?? {},
@@ -100,6 +102,7 @@ function buildStaticSchema(): SchemaIntelligence {
     ([tableName, config]) => ({
       table_name: tableName,
       table_schema: tableName.includes(".") ? tableName.split(".")[0] : "dbo",
+      table_type: (tableName.toUpperCase().startsWith("VW_") ? "VIEW" : "BASE TABLE") as "VIEW" | "BASE TABLE",
       columns: [
         {
           column_name: config.keys[0],
