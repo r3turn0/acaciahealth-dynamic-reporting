@@ -195,31 +195,27 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
-  // Load the complete table list from the Schema Intelligence API so the
-  // dropdown reflects every table in the database (live) or the known config.
-  const loadTableList = useCallback(async (force = false) => {
+  // Load the complete table list from /api/tables — a dedicated no-cache route
+  // that always queries sys.objects fresh. Falls back to the static list on error.
+  const loadTableList = useCallback(async () => {
     setTableListLoading(true);
     try {
-      const url = force ? "/api/schema?refresh=true" : "/api/schema";
-      const res = await fetch(url);
+      const res = await fetch("/api/tables");
       if (!res.ok) return;
-      const json = await res.json();
-      const tables: string[] = Array.isArray(json?.tables)
-        ? json.tables.map((t: { table_name: string; table_schema?: string }) =>
-            t.table_name.includes(".") || !t.table_schema || t.table_schema === "dbo"
-              ? t.table_name
-              : `${t.table_schema}.${t.table_name}`
-          )
-        : [];
-      // Use live DB tables directly when available; otherwise merge with static fallback.
-      if (json?.source === "live_db" && tables.length > 0) {
-        setTableList([...tables].sort());
+      const json = await res.json() as {
+        source: string;
+        tables: { qualified_name: string }[];
+        error?: string;
+      };
+
+      if (json.source === "live_db" && Array.isArray(json.tables) && json.tables.length > 0) {
+        const names = json.tables.map((t) => t.qualified_name).sort();
+        setTableList(names);
         setTableSource("live_db");
-      } else {
-        const merged = Array.from(new Set([...(TABLES as string[]), ...tables])).sort();
-        if (merged.length > 0) setTableList(merged);
-        if (json?.source === "live_db") setTableSource("live_db");
+        // Persist to localStorage so the list survives page refresh without a re-fetch
+        try { localStorage.setItem("hchb_table_list", JSON.stringify(names)); } catch { /* noop */ }
       }
+      // If source is not live_db or empty, keep whatever is already in state (static fallback)
     } catch {
       // Keep the static fallback list.
     } finally {
@@ -228,7 +224,20 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
   }, []);
 
   useEffect(() => {
-    loadTableList(false);
+    // Seed immediately from localStorage (previous session) so dropdown is
+    // populated before the async fetch returns.
+    try {
+      const cached = localStorage.getItem("hchb_table_list");
+      if (cached) {
+        const names: string[] = JSON.parse(cached);
+        if (names.length > 6) {
+          setTableList(names);
+          setTableSource("live_db");
+        }
+      }
+    } catch { /* noop */ }
+    // Always re-fetch fresh from the server
+    loadTableList();
   }, [loadTableList]);
 
   function handleTableChange(t: string) {
@@ -334,7 +343,7 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
             Read-only
           </span>
           <button
-            onClick={() => loadTableList(true)}
+            onClick={() => loadTableList()}
             disabled={tableListLoading}
             title="Reload full table list from database"
             className="flex items-center gap-1 text-[10px] px-2 py-1 rounded border border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors disabled:opacity-50"
