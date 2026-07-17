@@ -200,7 +200,7 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
   const loadTableList = useCallback(async () => {
     setTableListLoading(true);
     try {
-      const res = await fetch("/api/tables");
+      const res = await fetch("/api/schema?tablesOnly=true");
       if (!res.ok) return;
       const json = await res.json() as {
         source: string;
