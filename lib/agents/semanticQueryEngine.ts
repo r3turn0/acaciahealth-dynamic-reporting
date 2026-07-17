@@ -21,6 +21,7 @@ import schemaConfig from "../config/schemaConfig.json";
 import kpiConfig from "../config/kpiConfig.json";
 import semanticLayer from "../config/semanticLayer.json";
 import { getModel } from "../ai/gateway";
+import { vectorEmbeddingAgent } from "./VectorEmbeddingAgent";
 
 // ── Intent taxonomy ───────────────────────────────────────────────────────────
 
@@ -289,7 +290,7 @@ function fallbackPipeline(input: SemanticPipelineInput): SemanticResponse {
 
   return {
     resolvedQuery: input.query,
-    intent: { type: intentType, operation: isRank ? "RANK" : undefined },
+    intent: { type: intentType, operation: isRank ? "RANK" : ("NONE" as "RANK") },
     context: { table, filters: [], dimensions, metrics },
     logicalPlan: {
       table,
@@ -308,19 +309,20 @@ function fallbackPipeline(input: SemanticPipelineInput): SemanticResponse {
       data: [],
       presentation: {
         chartType: chartType as "bar" | "line" | "pie" | "none",
-        xAxis: dimensions[0],
-        yAxis: metrics[0],
+        xAxis: dimensions[0] ?? "",
+        yAxis: metrics[0] ?? "",
+        groupBy: dimensions,
         limit,
       },
     },
     pipelineStages: [
-      { stage: "interpret_query",        status: "ok" },
-      { stage: "resolve_context",        status: "ok",  note: `table=${table}` },
-      { stage: "classify_intent",        status: "ok",  note: intentType },
-      { stage: "validate_against_schema", status: "ok", note: "rule-based fallback" },
-      { stage: "detect_ambiguity",       status: "ok" },
-      { stage: "generate_logical_plan",  status: "ok" },
-      { stage: "format_response",        status: "ok",  note: `${presentationType}/${chartType}` },
+      { stage: "interpret_query",         status: "ok",  note: "" },
+      { stage: "resolve_context",         status: "ok",  note: `table=${table}` },
+      { stage: "classify_intent",         status: "ok",  note: intentType },
+      { stage: "validate_against_schema", status: "ok",  note: "rule-based fallback" },
+      { stage: "detect_ambiguity",        status: "ok",  note: "" },
+      { stage: "generate_logical_plan",   status: "ok",  note: "" },
+      { stage: "format_response",         status: "ok",  note: `${presentationType}/${chartType}` },
     ],
     metadata: { source: "powerbi_json", confidence: 0.6, warnings: ["AI not configured — rule-based fallback"] },
   };
@@ -339,6 +341,18 @@ export async function runSemanticPipeline(
   );
   if (!aiAvailable) return fallbackPipeline(input);
 
+  // Vector Intelligence — retrieve semantically relevant context before AI call
+  let vectorContextBlock = "";
+  try {
+    const vectorResults = await vectorEmbeddingAgent.search({ query, topK: 6 });
+    const ctx = vectorEmbeddingAgent.buildContext(vectorResults);
+    if (ctx.contextSummary && ctx.contextSummary !== "No prior context found.") {
+      vectorContextBlock = `\n\n## Vector Intelligence Context (semantic similarity)\n${ctx.contextSummary}`;
+    }
+  } catch {
+    // Non-fatal — proceed without vector context
+  }
+
   const userMessage = `
 Run the full 7-stage Semantic Query Engine pipeline on this request.
 
@@ -349,7 +363,7 @@ ${
   clarificationAnswers && Object.keys(clarificationAnswers).length
     ? `Prior clarification answers: ${JSON.stringify(clarificationAnswers)}`
     : ""
-}
+}${vectorContextBlock}
 
 Return a complete SemanticResponse JSON object following the schema exactly.
 `.trim();
