@@ -102,7 +102,8 @@ function buildSearchIndex(
 ): Record<string, string[]> {
   const index: Record<string, string[]> = { ...(providedIndex ?? {}) };
 
-  function add(keyword: string, tableId: string) {
+  function add(keyword: string | null | undefined, tableId: string) {
+    if (!keyword) return;
     const k = keyword.toLowerCase().trim();
     if (!k || k.length < 2) return;
     if (!index[k]) index[k] = [];
@@ -111,7 +112,7 @@ function buildSearchIndex(
 
   for (const table of tables) {
     // Table name words
-    table.name
+    (table.name ?? "")
       .replace(/([a-z])([A-Z])/g, "$1 $2")
       .split(/[_\s]+/)
       .filter(Boolean)
@@ -134,13 +135,13 @@ function buildSearchIndex(
 
     // FK target table names (so searching "branches" surfaces tables that join to BRANCHES)
     for (const fk of table.foreignKeys) {
-      const refTableName = fk.references.table.split(".").pop() ?? "";
+      const refTableName = (fk.references?.table ?? "").split(".").pop() ?? "";
       refTableName.split(/[_\s]+/).filter(Boolean).forEach((w) => add(w, table.id));
     }
 
     // Trigger/index names often contain domain keywords
-    for (const trigger of table.meta.triggers) {
-      trigger.split(/[_\s]+/).filter(Boolean).forEach((w) => add(w.toLowerCase(), table.id));
+    for (const trigger of table.meta?.triggers ?? []) {
+      trigger.split(/[_\s]+/).filter(Boolean).forEach((w) => add(w, table.id));
     }
   }
 
@@ -156,9 +157,10 @@ function buildDomains(
   const domains: Record<string, string[]> = { ...(providedDomains ?? {}) };
 
   for (const table of tables) {
-    if (!domains[table.domain]) domains[table.domain] = [];
-    if (!domains[table.domain].includes(table.id)) {
-      domains[table.domain].push(table.id);
+    const domain = table.domain ?? "uncategorised";
+    if (!domains[domain]) domains[domain] = [];
+    if (!domains[domain].includes(table.id)) {
+      domains[domain].push(table.id);
     }
   }
 
@@ -187,9 +189,9 @@ function buildEntityHints(tables: Table[]): Record<string, EntityHints> {
           commonFilters.push(col.name);
           break;
         case "dimension":
-          dimensions.push(col.name);
+          if (col.name) dimensions.push(col.name);
           {
-            const bare = col.name.toLowerCase();
+            const bare = (col.name ?? "").toLowerCase();
             if (
               bare.includes("status") || bare.includes("type") ||
               bare.includes("code") || bare.includes("branch") ||
