@@ -6,10 +6,18 @@
  */
 
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { getSchemaIntelligence } from "@/lib/agents/schemaAgent";
+import { invalidateCache } from "@/lib/services/cache";
 
-export async function GET() {
+const SCHEMA_CACHE_KEY = "schema_intelligence_v2";
+
+export async function GET(req: NextRequest) {
   try {
+    const refresh = req.nextUrl.searchParams.get("refresh") === "true";
+    if (refresh) {
+      invalidateCache(SCHEMA_CACHE_KEY);
+    }
     const schema = await getSchemaIntelligence();
     return NextResponse.json(schema);
   } catch (err) {

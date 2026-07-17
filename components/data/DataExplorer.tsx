@@ -118,6 +118,7 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
   // static). Falls back to the statically-known schemaConfig tables.
   const [tableList, setTableList] = useState<string[]>(TABLES as string[]);
   const [tableSource, setTableSource] = useState<"live_db" | "static_config">("static_config");
+  const [tableListLoading, setTableListLoading] = useState(false);
 
   function handleAddToDataset() {
     addTableToDraft(selectedTable);
@@ -183,31 +184,39 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
 
   // Load the complete table list from the Schema Intelligence API so the
   // dropdown reflects every table in the database (live) or the known config.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/schema");
-        if (!res.ok) return;
-        const json = await res.json();
-        const tables: string[] = Array.isArray(json?.tables)
-          ? json.tables.map((t: { table_name: string; table_schema?: string }) =>
-              t.table_name.includes(".") || !t.table_schema || t.table_schema === "dbo"
-                ? t.table_name
-                : `${t.table_schema}.${t.table_name}`
-            )
-          : [];
-        if (cancelled) return;
-        // Union with the statically-known tables, de-duped and sorted.
+  const loadTableList = useCallback(async (force = false) => {
+    setTableListLoading(true);
+    try {
+      const url = force ? "/api/schema?refresh=true" : "/api/schema";
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const json = await res.json();
+      const tables: string[] = Array.isArray(json?.tables)
+        ? json.tables.map((t: { table_name: string; table_schema?: string }) =>
+            t.table_name.includes(".") || !t.table_schema || t.table_schema === "dbo"
+              ? t.table_name
+              : `${t.table_schema}.${t.table_name}`
+          )
+        : [];
+      // Use live DB tables directly when available; otherwise merge with static fallback.
+      if (json?.source === "live_db" && tables.length > 0) {
+        setTableList([...tables].sort());
+        setTableSource("live_db");
+      } else {
         const merged = Array.from(new Set([...(TABLES as string[]), ...tables])).sort();
         if (merged.length > 0) setTableList(merged);
         if (json?.source === "live_db") setTableSource("live_db");
-      } catch {
-        // Keep the static fallback list.
       }
-    })();
-    return () => { cancelled = true; };
+    } catch {
+      // Keep the static fallback list.
+    } finally {
+      setTableListLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadTableList(false);
+  }, [loadTableList]);
 
   function handleTableChange(t: string) {
     setSelectedTable(t);
@@ -293,12 +302,33 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
             {tableList.length} table{tableList.length !== 1 ? "s" : ""}
           </span>
           <span
+            className={cn(
+              "flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium border",
+              tableSource === "live_db"
+                ? "bg-chart-3/10 text-chart-3 border-chart-3/25"
+                : "bg-muted text-muted-foreground border-border"
+            )}
+            title={tableSource === "live_db" ? "Tables loaded from live database" : "Using static config — click refresh to load from database"}
+          >
+            <Database className="w-2.5 h-2.5" />
+            {tableSource === "live_db" ? "Live DB" : "Static"}
+          </span>
+          <span
             className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium bg-muted text-muted-foreground border border-border"
             title="Tables are read-only in Discover Data"
           >
             <Lock className="w-2.5 h-2.5" />
             Read-only
           </span>
+          <button
+            onClick={() => loadTableList(true)}
+            disabled={tableListLoading}
+            title="Reload full table list from database"
+            className="flex items-center gap-1 text-[10px] px-2 py-1 rounded border border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={cn("w-3 h-3", tableListLoading && "animate-spin")} />
+            {tableListLoading ? "Loading…" : "Reload tables"}
+          </button>
         </div>
 
         {/* Actions */}
