@@ -18,6 +18,7 @@ import {
   FlaskConical,
   MonitorSmartphone,
   ShieldAlert,
+  Layers,
 } from "lucide-react";
 
 const navItems = [
@@ -29,6 +30,7 @@ const navItems = [
   { icon: Sparkles,        label: "Report Studio",      id: "studio",    group: "tools" },
   { icon: Database,        label: "Schema Intelligence",id: "schema",    group: "tools" },
   { icon: FlaskConical,    label: "Metadata Engine",    id: "metadata",  group: "tools" },
+  { icon: Layers,          label: "Agent Registry",     id: "agents",    group: "tools" },
 
   { icon: Bookmark,        label: "Saved Reports",      id: "saved",     group: "reports" },
   { icon: ShieldCheck,     label: "Audit & Monitoring", id: "audit",     group: "reports" },

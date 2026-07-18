@@ -18,10 +18,11 @@ import type { AuthUser } from "@/components/auth/LoginPage";
 import { SessionManager } from "@/components/security/SessionManager";
 import { SecurityConsole } from "@/components/admin/SecurityConsole";
 import { AuditDashboard } from "@/components/audit/AuditDashboard";
+import { AgentRegistry } from "@/components/agents/AgentRegistry";
 import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 
-type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "metadata" | "bi" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin";
+type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "metadata" | "bi" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin" | "agents";
 
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   dashboard: {
@@ -76,6 +77,10 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   settings: {
     title: "Settings",
     subtitle: "Environment and connection configuration",
+  },
+  agents: {
+    title: "Agent Registry",
+    subtitle: "Registered agents — drag to reorder pipeline execution sequence, inspect status and capabilities",
   },
 };
 
@@ -304,6 +309,11 @@ export default function Home() {
             </div>
           )}
 
+          {view === "agents" && (
+            <div className="max-w-3xl mx-auto w-full">
+              <AgentRegistry />
+            </div>
+          )}
           {view === "audit" && (
             <div className="max-w-6xl mx-auto w-full">
               <AuditDashboard />
