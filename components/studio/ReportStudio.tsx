@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Bookmark, Check, Loader2, X, AlertTriangle, GitMerge } from "lucide-react";
+import { Bookmark, Check, Loader2, X, AlertTriangle, GitMerge, Wand2, MessageSquareWarning } from "lucide-react";
 import { AskAI } from "./AskAI";
 import { SQLEditor } from "./SQLEditor";
 import { QueryExplanation } from "./QueryExplanation";
@@ -64,6 +64,7 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
   const [executing, setExecuting] = useState(false);
   const [result, setResult] = useState<ReportResult | null>(null);
   const [execError, setExecError] = useState<string | null>(null);
+  const [autoFixing, setAutoFixing] = useState(false);
   // Set when the server rewrote hardcoded date literals to @StartDate/@EndDate
   const [dateLinkNote, setDateLinkNote] = useState(false);
 
@@ -198,6 +199,43 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
       setExecError(e instanceof Error ? e.message : "Network error");
     } finally {
       setExecuting(false);
+    }
+  }
+
+  async function autoFixSQL() {
+    if (!sql.trim() || !execError) return;
+    setAutoFixing(true);
+    try {
+      const res = await fetch("/api/generate-query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: `The following SQL query produced an error. Fix the SQL so it runs correctly. 
+Original prompt: ${currentPlan?.explanation ?? ""}
+Failed SQL:
+${sql}
+
+Error message:
+${execError}
+
+Return only the corrected SQL.`,
+          start_date: startDate,
+          end_date: endDate,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.sql) {
+        setSql(json.sql);
+        setSqlDirty(false);
+        setExecError(null);
+        setCurrentPlan((prev) =>
+          prev ? { ...prev, sql: json.sql, correction_applied: true } : prev
+        );
+      }
+    } catch {
+      // Silent — user can still fix manually
+    } finally {
+      setAutoFixing(false);
     }
   }
 
@@ -367,14 +405,45 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
             </div>
           )}
 
-          {/* Execution error */}
+          {/* SQL Feedback dialogue */}
           {execError && (
-            <div className="flex flex-col gap-2 bg-destructive/10 border border-destructive/30 rounded-lg p-4">
-              <p className="text-sm font-medium text-destructive">Execution failed</p>
-              <p className="text-xs text-destructive/80">{execError}</p>
-              {currentPlan && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Tip: Try rephrasing your prompt or check the SQL for syntax errors.
+            <div className="flex flex-col gap-3 bg-destructive/8 border border-destructive/30 rounded-lg p-4">
+              {/* Header */}
+              <div className="flex items-start gap-2.5">
+                <MessageSquareWarning className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-destructive">SQL execution failed</p>
+                  <p className="text-xs text-destructive/80 mt-1 font-mono whitespace-pre-wrap break-words leading-relaxed">
+                    {execError}
+                  </p>
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="h-px bg-destructive/15" />
+
+              {/* Actions */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={autoFixSQL}
+                  disabled={autoFixing}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed font-medium"
+                >
+                  {autoFixing ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Wand2 className="w-3 h-3" />
+                  )}
+                  {autoFixing ? "Fixing..." : "Fix with AI"}
+                </button>
+                <p className="text-[11px] text-muted-foreground">
+                  AI will rewrite the query to correct this error automatically.
+                </p>
+              </div>
+
+              {currentPlan && !autoFixing && (
+                <p className="text-[11px] text-muted-foreground/70">
+                  Tip: You can also edit the SQL directly above or rephrase your prompt to regenerate.
                 </p>
               )}
             </div>

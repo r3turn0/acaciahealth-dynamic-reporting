@@ -438,7 +438,12 @@ function FollowUpThread({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function KpiInterpreter() {
+interface KpiInterpreterProps {
+  /** When set, auto-loads reports and pre-selects the first report matching this KPI key */
+  preselectedKpi?: string | null;
+}
+
+export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
   const [reports, setReports] = useState<SavedReport[] | null>(null);
   const [loadingReports, setLoadingReports] = useState(false);
   const [selectedReport, setSelectedReport] = useState<SavedReport | null>(null);
@@ -459,20 +464,47 @@ export function KpiInterpreter() {
   const [showJson, setShowJson] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadReports = useCallback(async () => {
+  const loadReports = useCallback(async (autoSelectKpi?: string) => {
     setLoadingReports(true);
     try {
       // Idempotent seed: populates SQL library reports if not yet present.
       await fetch("/api/kpi/seed-reports", { method: "POST" }).catch(() => {});
       const res = await fetch("/api/reports");
       const json = await res.json();
-      setReports(json.reports ?? []);
+      const loaded: SavedReport[] = json.reports ?? [];
+      setReports(loaded);
+      // Auto-select first matching report when a KPI is pre-selected
+      const kpiToMatch = autoSelectKpi;
+      if (kpiToMatch) {
+        const match = loaded.find((r) => r.kpi === kpiToMatch);
+        if (match) {
+          setSelectedReport(match);
+          setInsights(null);
+        }
+      }
     } catch {
       setError("Failed to load saved reports.");
     } finally {
       setLoadingReports(false);
     }
   }, []);
+
+  // When preselectedKpi changes (user clicked a KPI card in another tab),
+  // auto-load reports and highlight the matching report.
+  useEffect(() => {
+    if (!preselectedKpi) return;
+    if (reports) {
+      // Reports already loaded — just update selection
+      const match = reports.find((r) => r.kpi === preselectedKpi);
+      if (match) {
+        setSelectedReport(match);
+        setInsights(null);
+      }
+    } else {
+      // Trigger a load with auto-selection
+      loadReports(preselectedKpi);
+    }
+  }, [preselectedKpi]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Derived filter
   const allKpis = reports

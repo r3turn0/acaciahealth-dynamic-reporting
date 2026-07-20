@@ -50,7 +50,9 @@ const FilterSchema = z.object({
   table: z.string(),
   column: z.string(),
   operator: z.enum(["=", "!=", ">", "<", ">=", "<=", "IN", "BETWEEN", "LIKE"]),
-  value: z.unknown(),
+  // z.unknown() generates an OpenAI-incompatible schema (no 'type' key).
+  // Use an explicit union of primitive types so response_format validation passes.
+  value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
 });
 
 const OrderBySchema = z.object({

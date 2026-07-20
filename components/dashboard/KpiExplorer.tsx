@@ -275,6 +275,9 @@ export function KpiExplorer() {
   const [search, setSearch]       = useState("");
   const [filterCat, setFilterCat] = useState<string>("all");
 
+  // KPI key selected in Definitions/Scorecard tabs, forwarded to KpiInterpreter
+  const [interpreterKpi, setInterpreterKpi] = useState<string | null>(null);
+
   // Subscribe so pin/unpin re-renders
   useDashboardPins();
 
@@ -325,6 +328,7 @@ export function KpiExplorer() {
 
   async function fetchKpi(kpi: KpiKey) {
     setSelected(kpi);
+    setInterpreterKpi(kpi);
     setLoading(true);
     try {
       const res = await fetch(`/api/kpi/${kpi}`);
@@ -651,7 +655,7 @@ export function KpiExplorer() {
       {tab === "intelligence" && <KpiIntelligence />}
 
       {/* Interpreter tab */}
-      {tab === "interpreter" && <KpiInterpreter />}
+      {tab === "interpreter" && <KpiInterpreter preselectedKpi={interpreterKpi} />}
     </div>
   );
 }
