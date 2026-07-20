@@ -100,6 +100,25 @@
       }
     },
 
+    "pdgm_periods": {
+      "physical_name": "PDGM_PERIOD",
+      "alias": "pdgm",
+      "synonyms": ["pdgm", "billing periods", "payment periods", "lupa", "bp1"],
+      "description": "PDGM 30-day billing periods for home health. Source for LUPA Rate, Calculated LUPA Exposure, and BP1 compliance KPIs.",
+      "columns": {
+        "period_id":              { "physical": "pdgm.period_id",                  "type": "int",      "description": "PDGM period primary key" },
+        "episode_id":             { "physical": "pdgm.episode_id",                 "type": "int",      "description": "FK to CLIENT_EPISODES_ALL.epi_id" },
+        "period_start_date":      { "physical": "pdgm.period_start_date",          "type": "date",     "description": "Start date of the 30-day PDGM billing period" },
+        "period_end_date":        { "physical": "pdgm.period_end_date",            "type": "date",     "description": "End date of the 30-day PDGM billing period" },
+        "lupa_indicator":         { "physical": "RTRIM(pdgm.lupa_indicator)",      "type": "string",   "description": "LUPA classification code — 'LUPA' or 'L' = low utilization period" },
+        "expected_payment":       { "physical": "pdgm.expected_payment",           "type": "decimal",  "description": "Full PDGM expected payment amount for the period" },
+        "lupa_payment":           { "physical": "pdgm.lupa_payment",              "type": "decimal",  "description": "Reduced LUPA payment amount when period is classified as LUPA" },
+        "bp1_completed_flag":     { "physical": "pdgm.bp1_completed_flag",        "type": "bit",      "description": "1 = first billable visit (BP1) was completed, 0 = not completed" },
+        "bp1_completed_datetime": { "physical": "pdgm.bp1_completed_datetime",    "type": "datetime", "description": "Date and time the BP1 visit was completed" },
+        "visit_count":            { "physical": "pdgm.visit_count",               "type": "int",      "description": "Total visits completed in the period" }
+      }
+    },
+
     "billing_line_items": {
       "physical_name": "Billing.LINE_ITEMS",
       "alias": "li",
@@ -125,7 +144,8 @@
     "episodes_to_servicelines":     "epi.epi_slid = sl.sl_id",
     "episodes_to_caretypes":        "epi.epi_CareTypeID = ct.ct_id",
     "visit_notes_to_episodes":      "vn.vn_episode_id = epi.epi_id",
-    "billing_items_to_episodes":    "li.li_episode_id = epi.epi_id"
+    "billing_items_to_episodes":    "li.li_episode_id = epi.epi_id",
+    "pdgm_periods_to_episodes":     "pdgm.episode_id = epi.epi_id"
   },
 
   "metrics": {
@@ -145,7 +165,18 @@
     "billing_holds":                       { "expression": "COUNT(DISTINCT CASE WHEN li.li_hold_flag = 1 THEN li.li_id END)", "description": "Line items in billing hold" },
     "billing_hold_sla_compliance":         { "expression": "CAST(COUNT(CASE WHEN li.li_hold_flag = 1 AND li.li_hold_days <= 5 THEN 1 END) AS FLOAT) / NULLIF(COUNT(CASE WHEN li.li_hold_flag = 1 THEN 1 END), 0) * 100", "description": "Percent of billing holds resolved within 5-day SLA" },
     "visit_notes_activity":                { "expression": "COUNT(DISTINCT vn.vn_id)", "description": "Total visit notes entered in the reporting period" },
-    "visit_note_documentation_compliance": { "expression": "CAST(COUNT(CASE WHEN vn.vn_completed_flag = 1 AND DATEDIFF(hour, vn.vn_visit_date, vn.vn_signed_datetime) <= 24 THEN 1 END) AS FLOAT) / NULLIF(COUNT(vn.vn_id), 0) * 100", "description": "Percent of visit notes signed within 24 hours of the visit" }
+    "visit_note_documentation_compliance": { "expression": "CAST(COUNT(CASE WHEN vn.vn_completed_flag = 1 AND DATEDIFF(hour, vn.vn_visit_date, vn.vn_signed_datetime) <= 24 THEN 1 END) AS FLOAT) / NULLIF(COUNT(vn.vn_id), 0) * 100", "description": "Percent of visit notes signed within 24 hours of the visit" },
+    "total_discharges":               { "expression": "COUNT(DISTINCT CASE WHEN epi.epi_DischargeDate IS NOT NULL AND epi.epi_DischargeDate BETWEEN @StartDate AND @EndDate THEN epi.epi_id END)", "description": "Total discharges within the reporting period across all classification types" },
+    "live_discharge_rate":            { "expression": "CAST(COUNT(CASE WHEN epi.epi_DischargeClass IN ('LiveDC-PatientInitiated','LiveDC-HospiceInitiated') THEN 1 END) AS FLOAT) / NULLIF(COUNT(DISTINCT epi.epi_id), 0) * 100", "description": "Percentage of discharges that are live (non-death) discharges" },
+    "avg_length_of_stay":             { "expression": "AVG(CAST(DATEDIFF(day, epi.epi_SocDate, ISNULL(epi.epi_DischargeDate, GETDATE())) AS FLOAT))", "description": "Mean episode duration in days from SOC to discharge or today" },
+    "median_length_of_stay":          { "expression": "PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY DATEDIFF(day, epi.epi_SocDate, ISNULL(epi.epi_DischargeDate, GETDATE()))) OVER (PARTITION BY epi.epi_branchcode)", "description": "Median episode duration in days by branch" },
+    "current_active_los":             { "expression": "AVG(CAST(DATEDIFF(day, epi.epi_SocDate, @AsOfDate) AS FLOAT))", "description": "Average days since SOC for currently active (undischarged) patients" },
+    "patient_days":                   { "expression": "SUM(DATEDIFF(day, CASE WHEN epi.epi_SocDate < @StartDate THEN @StartDate ELSE epi.epi_SocDate END, CASE WHEN epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @EndDate THEN DATEADD(day,1,@EndDate) ELSE epi.epi_DischargeDate END))", "description": "Total patient-days within the reporting window" },
+    "implied_adc":                    { "expression": "CAST(SUM(DATEDIFF(day, CASE WHEN epi.epi_SocDate < @StartDate THEN @StartDate ELSE epi.epi_SocDate END, CASE WHEN epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @EndDate THEN DATEADD(day,1,@EndDate) ELSE epi.epi_DischargeDate END)) AS FLOAT) / NULLIF(@ADC_WINDOW_DAYS, 0)", "description": "Patient days divided by the ADC window — implied ADC" },
+    "lupa_rate":                      { "expression": "CAST(COUNT(CASE WHEN pdgm.lupa_indicator IN ('LUPA','L') THEN 1 END) AS FLOAT) / NULLIF(COUNT(pdgm.period_id), 0) * 100", "description": "Percentage of PDGM periods classified as LUPA" },
+    "calculated_lupa_exposure":       { "expression": "SUM(CASE WHEN pdgm.lupa_indicator IN ('LUPA','L') THEN pdgm.expected_payment - pdgm.lupa_payment ELSE 0 END)", "description": "Total revenue at risk from LUPA classifications" },
+    "bp1_compliance_within_48hrs":    { "expression": "CAST(COUNT(CASE WHEN pdgm.bp1_completed_flag = 1 AND DATEDIFF(hour, pdgm.period_start_date, pdgm.bp1_completed_datetime) <= 48 THEN 1 END) AS FLOAT) / NULLIF(COUNT(pdgm.period_id), 0) * 100", "description": "Percent of PDGM periods with BP1 completed within 48 hours" },
+    "bp1_compliance_status":          { "expression": "CASE WHEN (CAST(COUNT(CASE WHEN pdgm.bp1_completed_flag = 1 AND DATEDIFF(hour, pdgm.period_start_date, pdgm.bp1_completed_datetime) <= 48 THEN 1 END) AS FLOAT) / NULLIF(COUNT(pdgm.period_id), 0) * 100) >= 80 THEN 'PASS' ELSE 'FAIL' END", "description": "PASS when BP1 compliance >= 80%, FAIL otherwise" }
   },
 
   "serviceLine": {
