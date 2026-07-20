@@ -12,6 +12,7 @@
 
 import { NextResponse } from "next/server";
 import kpiConfig from "@/lib/config/kpiConfig.json";
+import { SQL_LIBRARY } from "@/lib/config/sqlLibrary";
 import { listReports, createReport } from "@/lib/services/reportService";
 import { addPin, listPins } from "@/lib/agents/pinsRegistry";
 
@@ -169,7 +170,7 @@ export async function POST() {
           name,
           description: def.description,
           prompt:      `Show ${def.label.toLowerCase()} by branch and service line`,
-          sql:         buildSql(kpiKey, def),
+          sql:         SQL_LIBRARY[kpiKey] ?? buildSql(kpiKey, def),
           kpi:         kpiKey,
           tags:        [kpiKey, def.category.toLowerCase().replace(/\s+/g, "_"), "default", "seeded"],
           visibility:  "team",

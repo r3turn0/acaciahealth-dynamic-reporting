@@ -9,6 +9,7 @@ import {
   BarChart3,
   BookOpen,
   Brain,
+  Building2,
   Calendar,
   CheckCircle2,
   ChevronDown,
@@ -37,6 +38,7 @@ import type {
   Recommendation,
   KpiDefinition,
   KpiRelationship,
+  BranchEntry,
 } from "@/app/api/kpi/intelligence/route";
 
 // ── Utility sub-components ────────────────────────────────────────────────────
@@ -288,14 +290,21 @@ function RecommendationsPanel({ recs }: { recs: Recommendation[] }) {
 
 // ── Schema Intelligence panel ─────────────────────────────────────────────────
 
-function SchemaIntelligencePanel({ schema }: { schema: KpiIntelligenceResponse["schemaIntelligence"] }) {
+function SchemaIntelligencePanel({
+  schema,
+  branches,
+}: {
+  schema: KpiIntelligenceResponse["schemaIntelligence"];
+  branches: BranchEntry[];
+}) {
   const [open, setOpen] = useState(true);
-  const [activeSection, setActiveSection] = useState<"definitions" | "fields" | "relationships">("definitions");
+  const [activeSection, setActiveSection] = useState<"definitions" | "fields" | "relationships" | "branches">("definitions");
 
   const sections = [
-    { id: "definitions" as const, label: "KPI Definitions", icon: BookOpen },
-    { id: "fields" as const, label: "Field Mapping", icon: Database },
-    { id: "relationships" as const, label: "Relationships", icon: GitBranch },
+    { id: "definitions"   as const, label: "KPI Definitions", icon: BookOpen  },
+    { id: "fields"        as const, label: "Field Mapping",   icon: Database  },
+    { id: "relationships" as const, label: "Relationships",   icon: GitBranch },
+    { id: "branches"      as const, label: "Branch Codes",    icon: Building2 },
   ];
 
   return (
@@ -402,6 +411,104 @@ function SchemaIntelligencePanel({ schema }: { schema: KpiIntelligenceResponse["
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Branch Codes */}
+          {activeSection === "branches" && (
+            <div className="flex flex-col gap-3">
+              {/* Summary */}
+              <div className="flex gap-3 flex-wrap">
+                {(["HOME HEALTH", "HOSPICE"] as const).map((sl) => {
+                  const slBranches = branches.filter((b) => b.serviceLine === sl);
+                  const slColor = sl === "HOME HEALTH"
+                    ? "bg-chart-1/10 text-chart-1 border-chart-1/20"
+                    : "bg-chart-3/10 text-chart-3 border-chart-3/20";
+                  return (
+                    <div key={sl} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium ${slColor}`}>
+                      <Building2 className="w-3 h-3" />
+                      {sl} — {slBranches.length} branch{slBranches.length !== 1 ? "es" : ""}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Table grouped by service line */}
+              {(["HOME HEALTH", "HOSPICE"] as const).map((sl) => {
+                const slBranches = branches.filter((b) => b.serviceLine === sl);
+                if (!slBranches.length) return null;
+                const headerColor = sl === "HOME HEALTH"
+                  ? "bg-chart-1/8 text-chart-1 border-chart-1/20"
+                  : "bg-chart-3/8 text-chart-3 border-chart-3/20";
+                return (
+                  <div key={sl} className="rounded-lg border border-border overflow-hidden">
+                    <div className={`flex items-center gap-2 px-3 py-2 border-b border-border ${headerColor}`}>
+                      <Building2 className="w-3 h-3" />
+                      <span className="text-xs font-semibold">{sl}</span>
+                      <span className="ml-auto text-[10px] font-mono opacity-70">epi_slid = {slBranches[0].epi_slid}</span>
+                    </div>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-muted/20 border-b border-border">
+                          <th className="text-left px-3 py-2 font-semibold text-muted-foreground">Branch Code</th>
+                          <th className="text-left px-3 py-2 font-semibold text-muted-foreground">Branch Name</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {slBranches.map((b) => (
+                          <tr key={b.branchCode} className="hover:bg-accent/10 transition-colors">
+                            <td className="px-3 py-2 font-mono font-semibold text-primary/80">{b.branchCode}</td>
+                            <td className="px-3 py-2 text-foreground">{b.branchName}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
+
+              {/* DC Class Map */}
+              <div className="rounded-lg border border-border overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/20">
+                  <span className="text-xs font-semibold text-foreground">Discharge Class Map</span>
+                  <span className="ml-auto text-[10px] text-muted-foreground">epi_DcCode → dc_class</span>
+                </div>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-muted/20 border-b border-border">
+                      <th className="text-left px-3 py-2 font-semibold text-muted-foreground">DC Code</th>
+                      <th className="text-left px-3 py-2 font-semibold text-muted-foreground">Class</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {[
+                      { code: "DTH", cls: "Death" },
+                      { code: "EXP", cls: "Death" },
+                      { code: "REV", cls: "LiveDC-PatientInitiated" },
+                      { code: "TRH", cls: "LiveDC-PatientInitiated" },
+                      { code: "EXT", cls: "LiveDC-HospiceInitiated" },
+                      { code: "NLT", cls: "LiveDC-HospiceInitiated" },
+                      { code: "OOA", cls: "LiveDC-HospiceInitiated" },
+                      { code: "DFC", cls: "LiveDC-HospiceInitiated" },
+                      { code: "TXI", cls: "Other" },
+                    ].map(({ code, cls }) => {
+                      const clsColor = cls === "Death"
+                        ? "text-muted-foreground"
+                        : cls.startsWith("LiveDC-Patient")
+                        ? "text-destructive"
+                        : cls.startsWith("LiveDC-Hospice")
+                        ? "text-chart-5"
+                        : "text-muted-foreground/70";
+                      return (
+                        <tr key={code} className="hover:bg-accent/10 transition-colors">
+                          <td className="px-3 py-2 font-mono font-semibold text-primary/80">{code}</td>
+                          <td className={`px-3 py-2 font-medium ${clsColor}`}>{cls}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -814,7 +921,10 @@ export function KpiIntelligence() {
       </div>
 
       {/* Schema Intelligence */}
-      <SchemaIntelligencePanel schema={data.schemaIntelligence} />
+      <SchemaIntelligencePanel
+        schema={data.schemaIntelligence}
+        branches={data.branchDirectory ?? []}
+      />
 
       {/* Power BI Export */}
       <PowerBiExport schema={data.powerBiSchema} />

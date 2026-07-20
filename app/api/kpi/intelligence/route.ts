@@ -70,17 +70,25 @@ export interface DomainSummary {
   coverage:  number; // 0-100
 }
 
+export interface BranchEntry {
+  serviceLine: string;
+  epi_slid:    number;
+  branchCode:  string;
+  branchName:  string;
+}
+
 export interface KpiIntelligenceResponse {
-  generatedAt:       string;
-  invoicePeriod:     string;
-  schemaVersion:     string;
-  totalKpis:         number;
-  domainSummaries:   DomainSummary[];
-  kpiCards:          KpiCard[];
-  recommendations:   Recommendation[];
+  generatedAt:        string;
+  invoicePeriod:      string;
+  schemaVersion:      string;
+  totalKpis:          number;
+  domainSummaries:    DomainSummary[];
+  kpiCards:           KpiCard[];
+  recommendations:    Recommendation[];
   schemaIntelligence: SchemaIntelligence;
-  powerBiSchema:     PowerBiSchema;
-  askContext:        string;
+  powerBiSchema:      PowerBiSchema;
+  branchDirectory:    BranchEntry[];
+  askContext:         string;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -128,28 +136,70 @@ function buildKpiDefinitions(): KpiDefinition[] {
   }));
 }
 
-// ── Field mappings (authoritative from enterprise dimensions) ─────────────────
+// ── Authoritative Branch Directory (extracted from SQL files) ────────────────
+
+const BRANCH_DIRECTORY: BranchEntry[] = (kpiConfig._meta as unknown as { branchMap: BranchEntry[] }).branchMap ?? [];
+
+// ── Field mappings (authoritative from enterprise dimensions + SQL analysis) ──
 
 const FIELD_MAPPINGS: SchemaField[] = [
-  { sourceField: "epi_branchcode",     mappedTo: "Branch Code",      category: "Dimension" },
-  { sourceField: "branch_name",        mappedTo: "Branch Name",      category: "Dimension" },
-  { sourceField: "epi_slid",           mappedTo: "Service Line",     category: "Dimension" },
-  { sourceField: "epi_SocDate",        mappedTo: "Admission Date",   category: "Clinical Date" },
-  { sourceField: "epi_DischargeDate",  mappedTo: "Discharge Date",   category: "Clinical Date" },
-  { sourceField: "epi_ReferralDate",   mappedTo: "Referral Date",    category: "Clinical Date" },
-  { sourceField: "epi_id",             mappedTo: "Episode ID",       category: "Key" },
-  { sourceField: "epi_DischargeClass", mappedTo: "Discharge Class",  category: "Dimension" },
-  { sourceField: "li_amount",          mappedTo: "Billed Amount",    category: "Revenue" },
-  { sourceField: "li_hold_flag",       mappedTo: "Billing Hold Flag",category: "Revenue Cycle" },
-  { sourceField: "li_hold_days",       mappedTo: "Hold Days",        category: "Revenue Cycle" },
-  { sourceField: "pdgm_lupa_indicator",mappedTo: "LUPA Indicator",   category: "Financial" },
-  { sourceField: "pdgm_expected_payment", mappedTo: "Expected Payment", category: "Financial" },
-  { sourceField: "vn_completed_flag",  mappedTo: "Note Completed",   category: "Clinical" },
-  { sourceField: "vn_signed_datetime", mappedTo: "Note Signed Date", category: "Clinical" },
-  { sourceField: "worker_id",          mappedTo: "Worker",           category: "Workforce" },
-  { sourceField: "earned_points",      mappedTo: "Productivity Points", category: "Workforce" },
-  { sourceField: "b_region",           mappedTo: "Region",           category: "Dimension" },
-  { sourceField: "b_state",            mappedTo: "State",            category: "Dimension" },
+  // Episode / Patient Keys
+  { sourceField: "epi_id",                 mappedTo: "Episode ID",              category: "Key" },
+  { sourceField: "epi_PatientID",          mappedTo: "Patient ID",              category: "Key" },
+  // Branch Dimensions
+  { sourceField: "epi_branchcode",         mappedTo: "Branch Code",             category: "Dimension" },
+  { sourceField: "branch_name",            mappedTo: "Branch Name",             category: "Dimension" },
+  { sourceField: "b_region",               mappedTo: "Region",                  category: "Dimension" },
+  { sourceField: "b_state",                mappedTo: "State",                   category: "Dimension" },
+  // Service Line
+  { sourceField: "epi_slid",               mappedTo: "Service Line ID",         category: "Dimension" },
+  { sourceField: "service_line",           mappedTo: "Service Line Name",       category: "Dimension" },
+  // Clinical Dates
+  { sourceField: "epi_SocDate",            mappedTo: "Admission / SOC Date",    category: "Clinical Date" },
+  { sourceField: "epi_DischargeDate",      mappedTo: "Discharge Date",          category: "Clinical Date" },
+  { sourceField: "epi_ReferralDate",       mappedTo: "Referral Date",           category: "Clinical Date" },
+  { sourceField: "epi_RecertDate",         mappedTo: "Recertification Date",    category: "Clinical Date" },
+  // Discharge
+  { sourceField: "epi_DcCode",             mappedTo: "Discharge Code",          category: "Discharge" },
+  { sourceField: "epi_status",             mappedTo: "Episode Status",          category: "Discharge" },
+  { sourceField: "dc_class",               mappedTo: "Discharge Class Group",   category: "Discharge" },
+  // Census / ADC
+  { sourceField: "CensusDate",             mappedTo: "Census Date",             category: "Census" },
+  { sourceField: "DailyCensus",            mappedTo: "Daily Census Count",      category: "Census" },
+  { sourceField: "patient_days",           mappedTo: "Patient Days",            category: "Census" },
+  // Revenue / Billing
+  { sourceField: "li_calculatedamount",    mappedTo: "Calculated Amount",       category: "Revenue" },
+  { sourceField: "li_servicedate",         mappedTo: "Service Date",            category: "Revenue" },
+  { sourceField: "li_deleted",             mappedTo: "Line Item Deleted Flag",  category: "Revenue" },
+  { sourceField: "li_void",               mappedTo: "Line Item Void Flag",     category: "Revenue" },
+  { sourceField: "li_includeonclaim",      mappedTo: "Include on Claim Flag",   category: "Revenue" },
+  { sourceField: "li_epiid",              mappedTo: "Episode ID (Billing FK)",  category: "Revenue" },
+  { sourceField: "li_slid",              mappedTo: "Service Line ID (Billing)", category: "Revenue" },
+  { sourceField: "li_hold_flag",           mappedTo: "Billing Hold Flag",       category: "Revenue Cycle" },
+  { sourceField: "li_hold_days",           mappedTo: "Hold Days",               category: "Revenue Cycle" },
+  { sourceField: "li_claim_status",        mappedTo: "Claim Status",            category: "Revenue Cycle" },
+  { sourceField: "revenue_per_patient_day",mappedTo: "Revenue Per Patient Day", category: "Revenue Cycle" },
+  // PDGM / LUPA
+  { sourceField: "lupa_indicator",         mappedTo: "LUPA Indicator",          category: "Financial" },
+  { sourceField: "pdgm_expected_payment",  mappedTo: "Expected Payment",        category: "Financial" },
+  { sourceField: "period_start_date",      mappedTo: "PDGM Period Start Date",  category: "Financial" },
+  // Clinical Notes
+  { sourceField: "vn_id",                  mappedTo: "Visit Note ID",           category: "Clinical" },
+  { sourceField: "vn_visit_date",          mappedTo: "Visit Date",              category: "Clinical" },
+  { sourceField: "vn_completed_flag",      mappedTo: "Note Completed Flag",     category: "Clinical" },
+  { sourceField: "vn_signed_datetime",     mappedTo: "Note Signed Datetime",    category: "Clinical" },
+  { sourceField: "vn_episode_id",          mappedTo: "Episode ID (Notes FK)",   category: "Clinical" },
+  // Workforce
+  { sourceField: "worker_id",              mappedTo: "Worker ID",               category: "Workforce" },
+  { sourceField: "earned_points",          mappedTo: "Earned Productivity Points", category: "Workforce" },
+  { sourceField: "expected_points",        mappedTo: "Expected Points",         category: "Workforce" },
+  { sourceField: "target_points",          mappedTo: "Target Points",           category: "Workforce" },
+  // Referral
+  { sourceField: "epi_NonAdmitDate",       mappedTo: "Non-Admit Date",          category: "Referral" },
+  { sourceField: "ntuc_count",             mappedTo: "NTUC Count",              category: "Referral" },
+  // QA
+  { sourceField: "qa_status",              mappedTo: "QA Status",               category: "Quality" },
+  { sourceField: "qa_review_id",           mappedTo: "QA Review ID",            category: "Quality" },
 ];
 
 // ── KPI relationship graph ────────────────────────────────────────────────────
@@ -468,14 +518,11 @@ function buildPowerBiSchema(cards: KpiCard[]): PowerBiSchema {
       { date: "2026-06-01",   month: "June",  quarter: "Q2", year: 2026 },
       { date: "2026-05-01",   month: "May",   quarter: "Q2", year: 2026 },
     ],
-    dimBranch: [
-      { branch: "Santa Ana",    region: "Orange County",  state: "CA" },
-      { branch: "Riverside",    region: "Inland Empire",  state: "CA" },
-      { branch: "Los Angeles",  region: "LA Metro",       state: "CA" },
-      { branch: "San Diego",    region: "San Diego",      state: "CA" },
-      { branch: "Fontana",      region: "Inland Empire",  state: "CA" },
-      { branch: "Long Beach",   region: "LA Metro",       state: "CA" },
-    ],
+    dimBranch: BRANCH_DIRECTORY.map((b) => ({
+      branch:  b.branchName,
+      region:  b.serviceLine === "HOME HEALTH" ? "Home Health" : "Hospice",
+      state:   "CA",
+    })),
   };
 }
 
@@ -504,15 +551,16 @@ function buildIntelligence(): KpiIntelligenceResponse {
     `voluntary discharge investigation, intake speed improvement.`;
 
   return {
-    generatedAt:       new Date().toISOString(),
-    invoicePeriod:     INVOICE_PERIOD,
-    schemaVersion:     kpiConfig._meta.schemaVersion,
+    generatedAt:        new Date().toISOString(),
+    invoicePeriod:      INVOICE_PERIOD,
+    schemaVersion:      kpiConfig._meta.schemaVersion,
     totalKpis,
-    domainSummaries:   buildDomainSummaries(),
+    domainSummaries:    buildDomainSummaries(),
     kpiCards,
     recommendations,
     schemaIntelligence,
-    powerBiSchema:     buildPowerBiSchema(kpiCards),
+    powerBiSchema:      buildPowerBiSchema(kpiCards),
+    branchDirectory:    BRANCH_DIRECTORY,
     askContext,
   };
 }
