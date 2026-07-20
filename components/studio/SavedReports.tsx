@@ -434,6 +434,8 @@ export function SavedReports({
 
   const fetchReports = useCallback(async () => {
     try {
+      // Idempotent seed: populates SQL library reports if not yet present.
+      await fetch("/api/kpi/seed-reports", { method: "POST" }).catch(() => {});
       const res = await fetch("/api/reports");
       const json = await res.json();
       setReports(json.reports ?? []);

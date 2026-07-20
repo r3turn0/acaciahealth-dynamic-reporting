@@ -392,6 +392,8 @@ export function KpiInterpreter() {
   const loadReports = useCallback(async () => {
     setLoadingReports(true);
     try {
+      // Idempotent seed: populates SQL library reports if not yet present.
+      await fetch("/api/kpi/seed-reports", { method: "POST" }).catch(() => {});
       const res = await fetch("/api/reports");
       const json = await res.json();
       setReports(json.reports ?? []);
