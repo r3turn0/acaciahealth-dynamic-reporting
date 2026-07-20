@@ -10,6 +10,8 @@ import { SavedReports } from "@/components/studio/SavedReports";
 import type { LoadedReport } from "@/components/studio/ReportStudio";
 import { DataExplorer } from "@/components/data/DataExplorer";
 import { MetadataReportEngine } from "@/components/schema/MetadataReportEngine";
+import { DatasetDesigner } from "@/components/dataset/DatasetDesigner";
+import { SchemaIntelligenceRegistry } from "@/components/registry/SchemaIntelligenceRegistry";
 import { BiStudio } from "@/components/bi/BiStudio";
 import { DataContractWorkspace } from "@/components/access/DataContractWorkspace";
 import { KpiSchemaAdmin } from "@/components/kpi-admin/KpiSchemaAdmin";
@@ -23,7 +25,7 @@ import { AgentRegistry } from "@/components/agents/AgentRegistry";
 import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 
-type View = "dashboard" | "studio" | "data" | "kpi" | "kpiadmin" | "schema" | "metadata" | "bi" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin" | "agents";
+type View = "dashboard" | "studio" | "data" | "kpi" | "kpiadmin" | "schema" | "metadata" | "bi" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin" | "agents" | "designer" | "registry";
 
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   dashboard: {
@@ -86,6 +88,14 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   agents: {
     title: "Agent Registry",
     subtitle: "Registered agents — drag to reorder pipeline execution sequence, inspect status and capabilities",
+  },
+  designer: {
+    title: "Dataset Designer",
+    subtitle: "Discover tables, build semantic datasets, define PK/FK relationships, and publish analytical models",
+  },
+  registry: {
+    title: "Schema Registry",
+    subtitle: "Full metadata catalog — tables, columns, domains, data lineage, tags, and KPI dependencies",
   },
 };
 
@@ -322,6 +332,16 @@ export default function Home() {
           {view === "agents" && (
             <div className="max-w-3xl mx-auto w-full">
               <AgentRegistry />
+            </div>
+          )}
+          {view === "designer" && (
+            <div className="max-w-7xl mx-auto w-full">
+              <DatasetDesigner />
+            </div>
+          )}
+          {view === "registry" && (
+            <div className="max-w-6xl mx-auto w-full">
+              <SchemaIntelligenceRegistry />
             </div>
           )}
           {view === "audit" && (
