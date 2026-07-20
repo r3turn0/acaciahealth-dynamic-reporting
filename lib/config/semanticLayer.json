@@ -6,70 +6,127 @@
       "synonyms": ["clients", "members", "beneficiaries"],
       "description": "Master patient demographic and enrollment record",
       "columns": {
-        "id": { "physical": "PatientID", "type": "int", "description": "Unique patient identifier" },
-        "name": { "physical": "RTRIM(pat.LastName) + ', ' + RTRIM(pat.FirstName)", "type": "string", "description": "Full patient name" },
-        "dob": { "physical": "pat.DateOfBirth", "type": "date", "description": "Date of birth" },
-        "mrn": { "physical": "pat.MRN", "type": "string", "description": "Medical record number" },
-        "branch_code": { "physical": "RTRIM(pat.BranchCode)", "type": "string", "description": "Assigned branch code" }
+        "id":          { "physical": "PatientID",                                           "type": "int",    "description": "Unique patient identifier" },
+        "name":        { "physical": "RTRIM(pat.LastName) + ', ' + RTRIM(pat.FirstName)",   "type": "string", "description": "Full patient name" },
+        "dob":         { "physical": "pat.DateOfBirth",                                     "type": "date",   "description": "Date of birth" },
+        "mrn":         { "physical": "pat.MRN",                                             "type": "string", "description": "Medical record number" },
+        "branch_code": { "physical": "RTRIM(pat.BranchCode)",                               "type": "string", "description": "Assigned branch code" }
       }
     },
+
     "visits": {
       "physical_name": "tbl_Visit",
       "alias": "vis",
       "synonyms": ["appointments", "encounters", "services"],
       "description": "Clinical visit events tied to patient episodes",
       "columns": {
-        "id": { "physical": "VisitID", "type": "int", "description": "Unique visit identifier" },
-        "date": { "physical": "vis.VisitDate", "type": "date", "description": "Date the visit occurred" },
-        "patient_id": { "physical": "vis.PatientID", "type": "int", "description": "FK to tbl_Patient" },
-        "discipline": { "physical": "RTRIM(vis.Discipline)", "type": "string", "description": "Clinical discipline (SN, PT, OT, etc.)" },
-        "status": { "physical": "RTRIM(vis.VisitStatus)", "type": "string", "description": "Visit status (Completed, Missed, etc.)" },
-        "duration_minutes": { "physical": "vis.DurationMinutes", "type": "int", "description": "Duration of visit in minutes" }
+        "id":               { "physical": "VisitID",                  "type": "int",    "description": "Unique visit identifier" },
+        "date":             { "physical": "vis.VisitDate",            "type": "date",   "description": "Date the visit occurred" },
+        "patient_id":       { "physical": "vis.PatientID",            "type": "int",    "description": "FK to tbl_Patient" },
+        "discipline":       { "physical": "RTRIM(vis.Discipline)",    "type": "string", "description": "Clinical discipline (SN, PT, OT, etc.)" },
+        "status":           { "physical": "RTRIM(vis.VisitStatus)",   "type": "string", "description": "Visit status (Completed, Missed, etc.)" },
+        "duration_minutes": { "physical": "vis.DurationMinutes",      "type": "int",    "description": "Duration of visit in minutes" }
       }
     },
+
     "episodes": {
       "physical_name": "CLIENT_EPISODES_ALL",
       "alias": "epi",
-      "synonyms": ["admissions", "enrollments", "certifications"],
-      "description": "Patient care episode lifecycle — SOC through discharge",
+      "synonyms": ["admissions", "enrollments", "certifications", "census"],
+      "description": "Patient care episode lifecycle — SOC through discharge. Primary reporting grain: BRANCH via epi_branchcode.",
+      "reportingGrain": "BRANCH",
       "columns": {
-        "id": { "physical": "epi.epi_id", "type": "int", "description": "Episode identifier" },
-        "soc_date": { "physical": "epi.epi_SocDate", "type": "date", "description": "Start of care date" },
-        "discharge_date": { "physical": "epi.epi_DischargeDate", "type": "date", "description": "Discharge date" },
-        "branch_code": { "physical": "RTRIM(epi.epi_branchcode)", "type": "string", "description": "Branch code for the episode" }
+        "id":             { "physical": "epi.epi_id",                       "type": "int",    "description": "Episode identifier (primary key)" },
+        "branch_code":    { "physical": "RTRIM(epi.epi_branchcode)",        "type": "string", "description": "Branch code — primary location key (epi_branchcode)" },
+        "service_line_id":{ "physical": "epi.epi_slid",                     "type": "int",    "description": "Service line ID (epi_slid): 1=Home Health, 2=Hospice, 3=Private Duty, 25000=Palliative, 25001=Personal Care" },
+        "soc_date":       { "physical": "epi.epi_SocDate",                  "type": "date",   "description": "Start of care / admission date" },
+        "discharge_date": { "physical": "epi.epi_DischargeDate",            "type": "date",   "description": "Discharge date (NULL = currently active)" },
+        "referral_date":  { "physical": "epi.epi_ReferralDate",             "type": "date",   "description": "Date referral was received" },
+        "care_type":      { "physical": "RTRIM(epi.epi_CareType)",          "type": "string", "description": "Care type (e.g. Routine, Continuous, Respite, General Inpatient)" },
+        "payor":          { "physical": "RTRIM(epi.epi_PayorSource)",       "type": "string", "description": "Primary payor source (Medicare, Medicaid, Private Insurance, etc.)" },
+        "location_id":    { "physical": "epi.epi_locid",                    "type": "int",    "description": "Internal location ID (legacy — use branch_code for reporting)" }
       }
     },
+
     "branches": {
       "physical_name": "BRANCHES",
       "alias": "b",
-      "synonyms": ["locations", "offices", "agencies"],
-      "description": "Branch/location master reference",
+      "synonyms": ["locations", "offices", "agencies", "facilities"],
+      "description": "Branch/location master reference — authoritative source for branch name, region, city, and state dimensions",
       "columns": {
-        "code": { "physical": "RTRIM(b.branch_code)", "type": "string", "description": "Branch code (primary key)" },
-        "name": { "physical": "RTRIM(b.branch_name)", "type": "string", "description": "Branch display name" }
+        "code":   { "physical": "RTRIM(b.branch_code)", "type": "string", "description": "Branch code — primary key, joins to epi_branchcode" },
+        "name":   { "physical": "RTRIM(b.branch_name)", "type": "string", "description": "Branch display name" },
+        "region": { "physical": "RTRIM(b.region)",      "type": "string", "description": "Geographic region grouping for the branch" },
+        "city":   { "physical": "RTRIM(b.city)",        "type": "string", "description": "City where the branch is located" },
+        "state":  { "physical": "RTRIM(b.state)",       "type": "string", "description": "State abbreviation for the branch" }
+      }
+    },
+
+    "service_lines": {
+      "physical_name": "SERVICE_LINES",
+      "alias": "sl",
+      "synonyms": ["programs", "lines of business", "LOB"],
+      "description": "Service line lookup — maps epi_slid to human-readable service line names",
+      "columns": {
+        "id":   { "physical": "sl.sl_id",   "type": "int",    "description": "Service line ID (epi_slid FK)" },
+        "name": { "physical": "RTRIM(sl.sl_name)", "type": "string", "description": "Service line name (HOME HEALTH, HOSPICE, PRIVATE DUTY, etc.)" }
+      }
+    },
+
+    "care_types": {
+      "physical_name": "CARE_TYPES",
+      "alias": "ct",
+      "synonyms": ["level of care", "care level"],
+      "description": "Care type lookup for hospice and home health level-of-care classification",
+      "columns": {
+        "id":   { "physical": "ct.ct_id",         "type": "int",    "description": "Care type ID" },
+        "name": { "physical": "RTRIM(ct.ct_name)", "type": "string", "description": "Care type name" }
       }
     }
   },
+
   "relationships": {
-    "visits_to_patients": "vis.PatientID = pat.PatientID",
+    "visits_to_patients":   "vis.PatientID = pat.PatientID",
     "episodes_to_branches": "RTRIM(epi.epi_branchcode) = RTRIM(b.branch_code)",
-    "visits_to_episodes": "vis.EpisodeID = epi.epi_id"
+    "visits_to_episodes":   "vis.EpisodeID = epi.epi_id",
+    "episodes_to_servicelines": "epi.epi_slid = sl.sl_id",
+    "episodes_to_caretypes":    "epi.epi_CareTypeID = ct.ct_id"
   },
+
   "metrics": {
-    "visit_count": { "expression": "COUNT(vis.VisitID)", "description": "Total number of visits" },
-    "patients_count": { "expression": "COUNT(DISTINCT pat.PatientID)", "description": "Distinct patient count" },
-    "avg_visits_per_patient": { "expression": "CAST(COUNT(vis.VisitID) AS FLOAT) / NULLIF(COUNT(DISTINCT vis.PatientID), 0)", "description": "Average visits per patient" },
-    "admission_count": { "expression": "COUNT(epi.epi_id)", "description": "Episode/admission count" },
-    "avg_visit_duration": { "expression": "AVG(vis.DurationMinutes)", "description": "Average visit duration in minutes" }
+    "visit_count":               { "expression": "COUNT(vis.VisitID)",                                                                                                          "description": "Total number of visits" },
+    "patients_count":            { "expression": "COUNT(DISTINCT pat.PatientID)",                                                                                               "description": "Distinct patient count" },
+    "avg_visits_per_patient":    { "expression": "CAST(COUNT(vis.VisitID) AS FLOAT) / NULLIF(COUNT(DISTINCT vis.PatientID), 0)",                                                "description": "Average visits per patient" },
+    "admission_count":           { "expression": "COUNT(epi.epi_id)",                                                                                                           "description": "Episode/admission count" },
+    "avg_visit_duration":        { "expression": "AVG(vis.DurationMinutes)",                                                                                                    "description": "Average visit duration in minutes" },
+    "current_census":            { "expression": "COUNT(DISTINCT CASE WHEN epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @AsOfDate THEN epi.epi_id END)",            "description": "Active patient count as of a given date" },
+    "average_daily_census":      { "expression": "CAST(COUNT(DISTINCT epi.epi_id) AS FLOAT) / NULLIF(DATEDIFF(day, @StartDate, @EndDate) + 1, 0)",                             "description": "Mean active patients per day over the period" },
+    "hospice_census_equivalent": { "expression": "SUM(DATEDIFF(day, CASE WHEN epi.epi_SocDate < @StartDate THEN @StartDate ELSE epi.epi_SocDate END, CASE WHEN epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @EndDate THEN DATEADD(day,1,@EndDate) ELSE epi.epi_DischargeDate END))", "description": "Total hospice patient-days within the reporting period" },
+    "avg_days_referral_to_soc":  { "expression": "AVG(CAST(DATEDIFF(day, epi.epi_ReferralDate, epi.epi_SocDate) AS FLOAT))",                                                   "description": "Mean days from referral to start of care" },
+    "admissions_within_2_days":  { "expression": "COUNT(CASE WHEN DATEDIFF(day, epi.epi_ReferralDate, epi.epi_SocDate) <= 2 THEN 1 END)",                                      "description": "Admissions where SOC occurred within 2 days of referral" }
   },
+
+  "serviceLine": {
+    "field": "epi_slid",
+    "mappings": {
+      "1":     "HOME HEALTH",
+      "2":     "HOSPICE",
+      "3":     "PRIVATE DUTY",
+      "25000": "PALLIATIVE",
+      "25001": "PERSONAL CARE"
+    },
+    "activeByDefault": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"]
+  },
+
   "time_intelligence": {
-    "by_day": "CAST({{date_col}} AS DATE)",
-    "by_week": "DATEPART(WEEK, {{date_col}})",
-    "by_month": "DATEPART(MONTH, {{date_col}})",
-    "by_year": "DATEPART(YEAR, {{date_col}})",
+    "by_day":        "CAST({{date_col}} AS DATE)",
+    "by_week":       "DATEPART(WEEK, {{date_col}})",
+    "by_month":      "DATEPART(MONTH, {{date_col}})",
+    "by_year":       "DATEPART(YEAR, {{date_col}})",
     "by_month_name": "DATENAME(MONTH, {{date_col}})"
   },
-  "sensitive_columns": ["PatientID", "MRN", "DateOfBirth", "LastName", "FirstName", "SSN", "DateOfBirth"],
+
+  "sensitive_columns": ["PatientID", "MRN", "DateOfBirth", "LastName", "FirstName", "SSN"],
   "masked_columns": {
     "MRN": "LEFT(pat.MRN, 3) + '****'",
     "SSN": "'***-**-' + RIGHT(RTRIM(pat.SSN), 4)"

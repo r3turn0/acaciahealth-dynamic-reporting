@@ -1,4 +1,46 @@
 {
+  "_meta": {
+    "correlationId": "Acacia-KPI-Schema-2026-07-20",
+    "schemaVersion": "2.0",
+    "reportingGrain": "BRANCH",
+    "locationKey": "epi_branchcode",
+    "serviceLineField": "epi_slid",
+    "dimensionCatalogVersion": "2026-07-20",
+    "acLocationRequired": false,
+    "deploymentStatus": "GO",
+    "updatedAt": "2026-07-20"
+  },
+
+  "serviceLineMappings": {
+    "1": "HOME HEALTH",
+    "2": "HOSPICE",
+    "3": "PRIVATE DUTY",
+    "25000": "PALLIATIVE",
+    "25001": "PERSONAL CARE"
+  },
+
+  "activeServiceLines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+
+  "reportDimensions": [
+    "Service Line",
+    "Branch Code",
+    "Branch Name",
+    "Region",
+    "City",
+    "State",
+    "Admission Date",
+    "Discharge Date",
+    "Care Type",
+    "Payor",
+    "As Of Date"
+  ],
+
+  "branchDimension": {
+    "dimensionName": "Branch",
+    "keyField": "epi_branchcode",
+    "grain": "BRANCH"
+  },
+
   "admissions": {
     "fact_table": "CLIENT_EPISODES_ALL",
     "alias": "epi",
@@ -6,8 +48,171 @@
     "aggregation": "COUNT(*)",
     "label": "Admissions",
     "description": "Count of new patient episode start-of-care events",
-    "grouping_options": ["branch", "week", "region", "care_type"]
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "dimensions": [
+      "Service Line",
+      "Branch Code",
+      "Branch Name",
+      "Region",
+      "City",
+      "State",
+      "Admission Date",
+      "Discharge Date",
+      "Care Type",
+      "Payor",
+      "As Of Date"
+    ],
+    "grouping_options": ["branch", "week", "region", "care_type", "service_line", "payor"]
   },
+
+  "admissions_by_care_type": {
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_SocDate",
+    "aggregation": "COUNT(*)",
+    "label": "Admissions by Care Type",
+    "description": "Count of new patient admissions grouped by care type",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "dimensions": [
+      "Service Line",
+      "Branch Code",
+      "Branch Name",
+      "Region",
+      "City",
+      "State",
+      "Admission Date",
+      "Care Type",
+      "Payor",
+      "As Of Date"
+    ],
+    "grouping_options": ["care_type", "branch", "region", "service_line"]
+  },
+
+  "current_census": {
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_SocDate",
+    "aggregation": "COUNT(DISTINCT epi.epi_id)",
+    "label": "Current Census",
+    "description": "Count of active patient episodes as of the reporting date (no discharge date or discharge date in the future)",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "where_clause": "epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @AsOfDate",
+    "dimensions": [
+      "Service Line",
+      "Branch Code",
+      "Branch Name",
+      "Region",
+      "City",
+      "State",
+      "Care Type",
+      "Payor",
+      "As Of Date"
+    ],
+    "grouping_options": ["branch", "region", "care_type", "service_line"]
+  },
+
+  "average_daily_census": {
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_SocDate",
+    "aggregation": "CAST(COUNT(DISTINCT epi.epi_id) AS FLOAT) / NULLIF(DATEDIFF(day, @StartDate, @EndDate) + 1, 0)",
+    "label": "Average Daily Census",
+    "description": "Mean number of active patients per day over the reporting period",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "dimensions": [
+      "Service Line",
+      "Branch Code",
+      "Branch Name",
+      "Region",
+      "City",
+      "State",
+      "Care Type",
+      "As Of Date"
+    ],
+    "grouping_options": ["branch", "region", "service_line", "care_type"]
+  },
+
+  "hospice_census_equivalent": {
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_SocDate",
+    "aggregation": "SUM(DATEDIFF(day, CASE WHEN epi.epi_SocDate < @StartDate THEN @StartDate ELSE epi.epi_SocDate END, CASE WHEN epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @EndDate THEN DATEADD(day, 1, @EndDate) ELSE epi.epi_DischargeDate END))",
+    "label": "Hospice Census Equivalent",
+    "description": "Total patient days for hospice episodes within the reporting period — used to compute per diem rates",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOSPICE"],
+    "where_clause": "epi.epi_slid = 2",
+    "dimensions": [
+      "Branch Code",
+      "Branch Name",
+      "Region",
+      "City",
+      "State",
+      "Care Type",
+      "As Of Date"
+    ],
+    "grouping_options": ["branch", "region", "care_type"]
+  },
+
+  "avg_days_referral_to_admission": {
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_SocDate",
+    "aggregation": "AVG(CAST(DATEDIFF(day, epi.epi_ReferralDate, epi.epi_SocDate) AS FLOAT))",
+    "label": "Average Days Referral to Admission",
+    "description": "Mean elapsed days from referral receipt to start of care",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "where_clause": "epi.epi_ReferralDate IS NOT NULL AND epi.epi_SocDate IS NOT NULL",
+    "dimensions": [
+      "Service Line",
+      "Branch Code",
+      "Branch Name",
+      "Region",
+      "City",
+      "State",
+      "Admission Date",
+      "Care Type",
+      "As Of Date"
+    ],
+    "grouping_options": ["branch", "region", "service_line", "care_type"]
+  },
+
+  "admissions_within_2_days": {
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_SocDate",
+    "aggregation": "COUNT(CASE WHEN DATEDIFF(day, epi.epi_ReferralDate, epi.epi_SocDate) <= 2 THEN 1 END)",
+    "label": "Admissions Within 2 Days",
+    "description": "Count of admissions where start of care occurred within 2 days of referral",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "where_clause": "epi.epi_ReferralDate IS NOT NULL",
+    "dimensions": [
+      "Service Line",
+      "Branch Code",
+      "Branch Name",
+      "Region",
+      "City",
+      "State",
+      "Admission Date",
+      "Care Type",
+      "As Of Date"
+    ],
+    "grouping_options": ["branch", "region", "service_line", "care_type"]
+  },
+
   "discharges": {
     "fact_table": "CLIENT_EPISODES_ALL",
     "alias": "epi",
@@ -15,8 +220,23 @@
     "aggregation": "COUNT(*)",
     "label": "Discharges",
     "description": "Count of patient discharge events",
-    "grouping_options": ["branch", "week", "region"]
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "dimensions": [
+      "Service Line",
+      "Branch Code",
+      "Branch Name",
+      "Region",
+      "City",
+      "State",
+      "Discharge Date",
+      "Care Type",
+      "As Of Date"
+    ],
+    "grouping_options": ["branch", "region", "care_type", "service_line"]
   },
+
   "revenue": {
     "fact_table": "Billing.LINE_ITEMS",
     "alias": "li",
@@ -24,15 +244,19 @@
     "aggregation": "SUM(li.li_amount)",
     "label": "Revenue",
     "description": "Total billed revenue from line items",
-    "grouping_options": ["branch", "week", "region", "service_line"]
-  },
-  "census": {
-    "fact_table": "CLIENT_EPISODES_ALL",
-    "alias": "epi",
-    "date_column": "epi_SocDate",
-    "aggregation": "COUNT(DISTINCT epi.epi_id)",
-    "label": "Census",
-    "description": "Active patient census count",
-    "grouping_options": ["branch", "region", "care_type"]
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "dimensions": [
+      "Service Line",
+      "Branch Code",
+      "Branch Name",
+      "Region",
+      "City",
+      "State",
+      "Payor",
+      "As Of Date"
+    ],
+    "grouping_options": ["branch", "region", "service_line", "payor"]
   }
 }
