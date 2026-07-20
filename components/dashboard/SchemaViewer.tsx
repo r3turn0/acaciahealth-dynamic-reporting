@@ -67,10 +67,16 @@ export function SchemaViewer() {
       <div className="bg-card border border-border rounded-lg p-5">
         <h2 className="text-sm font-semibold text-foreground mb-4">KPI Definitions</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {Object.entries(kpiConfig).map(([kpi, def]) => (
+          {Object.entries(kpiConfig.kpis as Record<string, {
+            label?: string;
+            description?: string;
+            source?: string;
+            aggregation?: string;
+            category?: string;
+          }>).map(([kpi, def]) => (
             <div key={kpi} className="border border-border rounded-md p-3 bg-muted/30">
               <div className="flex items-center gap-2 mb-1.5">
-                <span className="text-xs font-semibold text-primary capitalize">{def.label}</span>
+                <span className="text-xs font-semibold text-primary capitalize">{def.label ?? kpi}</span>
                 <code className="text-[10px] font-mono text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
                   {kpi}
                 </code>
@@ -79,11 +85,11 @@ export function SchemaViewer() {
               <div className="flex flex-col gap-1 text-[11px]">
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Table:</span>
-                  <code className="font-mono text-foreground">{def.fact_table}</code>
+                  <code className="font-mono text-foreground">{def.source ?? "CLIENT_EPISODES_ALL"}</code>
                 </div>
                 <div className="flex gap-2">
-                  <span className="text-muted-foreground">Date col:</span>
-                  <code className="font-mono text-foreground">{def.date_column}</code>
+                  <span className="text-muted-foreground">Category:</span>
+                  <code className="font-mono text-foreground">{def.category}</code>
                 </div>
                 <div className="flex gap-2">
                   <span className="text-muted-foreground">Aggregation:</span>
