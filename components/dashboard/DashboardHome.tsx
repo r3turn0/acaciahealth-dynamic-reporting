@@ -83,10 +83,19 @@ export function DashboardHome({ onNavigate, onOpenReport }: DashboardHomeProps) 
     }
   }, []);
 
-  // Refresh pins + recent reports each time the dashboard mounts.
+  // On first mount: seed default reports + pins for all KPIs, then refresh.
+  // The seed endpoint is idempotent — subsequent mounts are no-ops.
   useEffect(() => {
-    void refreshPins();
-    void loadRecent();
+    async function seedAndRefresh() {
+      try {
+        await fetch("/api/kpi/seed-reports", { method: "POST" });
+      } catch {
+        // Non-critical — dashboard renders fine without seeded pins.
+      }
+      void refreshPins();
+      void loadRecent();
+    }
+    void seedAndRefresh();
   }, [loadRecent]);
 
   function openPin(pin: DashboardPin) {
