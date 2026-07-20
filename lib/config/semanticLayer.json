@@ -82,15 +82,50 @@
         "id":   { "physical": "ct.ct_id",         "type": "int",    "description": "Care type ID" },
         "name": { "physical": "RTRIM(ct.ct_name)", "type": "string", "description": "Care type name" }
       }
+    },
+
+    "visit_notes": {
+      "physical_name": "CLIENT_EPISODE_VISIT_NOTES",
+      "alias": "vn",
+      "synonyms": ["clinical notes", "documentation", "notes activity", "visit documentation"],
+      "description": "Clinical visit note records linked to patient episodes. Source for documentation compliance and activity KPIs.",
+      "columns": {
+        "id":               { "physical": "vn.vn_id",                    "type": "int",      "description": "Visit note primary key" },
+        "episode_id":       { "physical": "vn.vn_episode_id",            "type": "int",      "description": "FK to CLIENT_EPISODES_ALL.epi_id" },
+        "visit_date":       { "physical": "vn.vn_visit_date",            "type": "datetime", "description": "Date and time the visit occurred" },
+        "signed_datetime":  { "physical": "vn.vn_signed_datetime",       "type": "datetime", "description": "Date and time the note was signed by clinician" },
+        "completed_flag":   { "physical": "vn.vn_completed_flag",        "type": "bit",      "description": "1 = note completed and signed, 0 = incomplete" },
+        "discipline":       { "physical": "RTRIM(vn.vn_discipline)",     "type": "string",   "description": "Clinical discipline (SN, PT, OT, SW, HHA, etc.)" },
+        "note_type":        { "physical": "RTRIM(vn.vn_note_type)",      "type": "string",   "description": "Type of visit note (SOC, Resumption, Recertification, Routine)" }
+      }
+    },
+
+    "billing_line_items": {
+      "physical_name": "Billing.LINE_ITEMS",
+      "alias": "li",
+      "synonyms": ["billing", "claims", "line items", "revenue", "charges"],
+      "description": "Billing line items representing submitted or pending claims. Source for Revenue Cycle KPIs including holds and SLA compliance.",
+      "columns": {
+        "id":            { "physical": "li.li_id",                   "type": "int",      "description": "Line item primary key" },
+        "episode_id":    { "physical": "li.li_episode_id",           "type": "int",      "description": "FK to CLIENT_EPISODES_ALL.epi_id" },
+        "service_date":  { "physical": "li.li_service_date",         "type": "date",     "description": "Date of service for the line item" },
+        "amount":        { "physical": "li.li_amount",               "type": "decimal",  "description": "Billed dollar amount for the line item" },
+        "hold_flag":     { "physical": "li.li_hold_flag",            "type": "bit",      "description": "1 = line item is in billing hold, 0 = cleared for submission" },
+        "hold_days":     { "physical": "li.li_hold_days",            "type": "int",      "description": "Number of days the line item has been in hold status" },
+        "payor_code":    { "physical": "RTRIM(li.li_payor_code)",    "type": "string",   "description": "Payor code for the claim" },
+        "claim_status":  { "physical": "RTRIM(li.li_claim_status)",  "type": "string",   "description": "Current claim status (Hold, Submitted, Paid, Denied)" }
+      }
     }
   },
 
   "relationships": {
-    "visits_to_patients":   "vis.PatientID = pat.PatientID",
-    "episodes_to_branches": "RTRIM(epi.epi_branchcode) = RTRIM(b.branch_code)",
-    "visits_to_episodes":   "vis.EpisodeID = epi.epi_id",
-    "episodes_to_servicelines": "epi.epi_slid = sl.sl_id",
-    "episodes_to_caretypes":    "epi.epi_CareTypeID = ct.ct_id"
+    "visits_to_patients":           "vis.PatientID = pat.PatientID",
+    "episodes_to_branches":         "RTRIM(epi.epi_branchcode) = RTRIM(b.branch_code)",
+    "visits_to_episodes":           "vis.EpisodeID = epi.epi_id",
+    "episodes_to_servicelines":     "epi.epi_slid = sl.sl_id",
+    "episodes_to_caretypes":        "epi.epi_CareTypeID = ct.ct_id",
+    "visit_notes_to_episodes":      "vn.vn_episode_id = epi.epi_id",
+    "billing_items_to_episodes":    "li.li_episode_id = epi.epi_id"
   },
 
   "metrics": {
@@ -103,7 +138,14 @@
     "average_daily_census":      { "expression": "CAST(COUNT(DISTINCT epi.epi_id) AS FLOAT) / NULLIF(DATEDIFF(day, @StartDate, @EndDate) + 1, 0)",                             "description": "Mean active patients per day over the period" },
     "hospice_census_equivalent": { "expression": "SUM(DATEDIFF(day, CASE WHEN epi.epi_SocDate < @StartDate THEN @StartDate ELSE epi.epi_SocDate END, CASE WHEN epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @EndDate THEN DATEADD(day,1,@EndDate) ELSE epi.epi_DischargeDate END))", "description": "Total hospice patient-days within the reporting period" },
     "avg_days_referral_to_soc":  { "expression": "AVG(CAST(DATEDIFF(day, epi.epi_ReferralDate, epi.epi_SocDate) AS FLOAT))",                                                   "description": "Mean days from referral to start of care" },
-    "admissions_within_2_days":  { "expression": "COUNT(CASE WHEN DATEDIFF(day, epi.epi_ReferralDate, epi.epi_SocDate) <= 2 THEN 1 END)",                                      "description": "Admissions where SOC occurred within 2 days of referral" }
+    "admissions_within_2_days":            { "expression": "COUNT(CASE WHEN DATEDIFF(day, epi.epi_ReferralDate, epi.epi_SocDate) <= 2 THEN 1 END)", "description": "Admissions where SOC occurred within 2 days of referral" },
+    "daily_census":                        { "expression": "COUNT(DISTINCT CASE WHEN epi.epi_SocDate <= @AsOfDate AND (epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @AsOfDate) THEN epi.epi_id END)", "description": "Active patient count for a specific calendar date" },
+    "hospice_census_equivalent_by_branch": { "expression": "SUM(DATEDIFF(day, CASE WHEN epi.epi_SocDate < @StartDate THEN @StartDate ELSE epi.epi_SocDate END, CASE WHEN epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @EndDate THEN DATEADD(day,1,@EndDate) ELSE epi.epi_DischargeDate END)) * @HCE_FACTOR", "description": "Hospice patient-days by branch weighted by HCE_FACTOR" },
+    "enterprise_total_hce":                { "expression": "SUM(CASE WHEN epi.epi_slid = 2 THEN DATEDIFF(day, CASE WHEN epi.epi_SocDate < @StartDate THEN @StartDate ELSE epi.epi_SocDate END, CASE WHEN epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @EndDate THEN DATEADD(day,1,@EndDate) ELSE epi.epi_DischargeDate END) * 1.00 ELSE DATEDIFF(day, CASE WHEN epi.epi_SocDate < @StartDate THEN @StartDate ELSE epi.epi_SocDate END, CASE WHEN epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @EndDate THEN DATEADD(day,1,@EndDate) ELSE epi.epi_DischargeDate END) * 0.40 END)", "description": "Enterprise HCE — Hospice at 1.00, HH/Palliative at 0.40" },
+    "billing_holds":                       { "expression": "COUNT(DISTINCT CASE WHEN li.li_hold_flag = 1 THEN li.li_id END)", "description": "Line items in billing hold" },
+    "billing_hold_sla_compliance":         { "expression": "CAST(COUNT(CASE WHEN li.li_hold_flag = 1 AND li.li_hold_days <= 5 THEN 1 END) AS FLOAT) / NULLIF(COUNT(CASE WHEN li.li_hold_flag = 1 THEN 1 END), 0) * 100", "description": "Percent of billing holds resolved within 5-day SLA" },
+    "visit_notes_activity":                { "expression": "COUNT(DISTINCT vn.vn_id)", "description": "Total visit notes entered in the reporting period" },
+    "visit_note_documentation_compliance": { "expression": "CAST(COUNT(CASE WHEN vn.vn_completed_flag = 1 AND DATEDIFF(hour, vn.vn_visit_date, vn.vn_signed_datetime) <= 24 THEN 1 END) AS FLOAT) / NULLIF(COUNT(vn.vn_id), 0) * 100", "description": "Percent of visit notes signed within 24 hours of the visit" }
   },
 
   "serviceLine": {

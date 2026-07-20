@@ -1,14 +1,66 @@
 {
   "_meta": {
     "correlationId": "Acacia-KPI-Schema-2026-07-20",
-    "schemaVersion": "2.0",
+    "schemaVersion": "2.2",
     "reportingGrain": "BRANCH",
     "locationKey": "epi_branchcode",
     "serviceLineField": "epi_slid",
+    "reportingBucket": "branch_name",
+    "executiveRollup": "service_line",
+    "dimensionCatalog": "Acacia Branch Map v2026.07",
     "dimensionCatalogVersion": "2026-07-20",
     "acLocationRequired": false,
     "deploymentStatus": "GO",
+    "enterpriseKpiCount": 17,
+    "hceParameter": {
+      "name": "HCE_FACTOR",
+      "defaultValue": 0.40,
+      "weights": {
+        "HOME_HEALTH_WEIGHT": 0.40,
+        "HOSPICE_WEIGHT": 1.00
+      }
+    },
+    "validation": {
+      "branchGrainApplied": true,
+      "serviceLineMappingsValidated": true,
+      "hceConfigurationValidated": true,
+      "legacyLocationDimensionsRemoved": true,
+      "deploymentReady": true
+    },
     "updatedAt": "2026-07-20"
+  },
+
+  "categories": {
+    "Operations": [
+      "admissions",
+      "admissions_by_care_type",
+      "current_census",
+      "average_daily_census",
+      "current_census_by_service_line_branch",
+      "average_daily_census_by_service_line_branch",
+      "daily_census",
+      "daily_census_trend"
+    ],
+    "Executive": [
+      "hospice_census_equivalent_by_branch",
+      "hh_palliative_combined_hce",
+      "enterprise_total_hce"
+    ],
+    "Referral Performance": [
+      "avg_days_referral_to_admission",
+      "admissions_within_2_days"
+    ],
+    "Revenue Cycle": [
+      "billing_holds",
+      "billing_hold_sla_compliance",
+      "revenue"
+    ],
+    "Clinical Operations": [
+      "visit_notes_activity"
+    ],
+    "Clinical Quality": [
+      "visit_note_documentation_compliance"
+    ]
   },
 
   "serviceLineMappings": {
@@ -42,6 +94,7 @@
   },
 
   "admissions": {
+    "category": "Operations",
     "fact_table": "CLIENT_EPISODES_ALL",
     "alias": "epi",
     "date_column": "epi_SocDate",
@@ -52,22 +105,14 @@
     "service_line_field": "epi_slid",
     "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
     "dimensions": [
-      "Service Line",
-      "Branch Code",
-      "Branch Name",
-      "Region",
-      "City",
-      "State",
-      "Admission Date",
-      "Discharge Date",
-      "Care Type",
-      "Payor",
-      "As Of Date"
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "Admission Date", "Discharge Date", "Care Type", "Payor", "As Of Date"
     ],
     "grouping_options": ["branch", "week", "region", "care_type", "service_line", "payor"]
   },
 
   "admissions_by_care_type": {
+    "category": "Operations",
     "fact_table": "CLIENT_EPISODES_ALL",
     "alias": "epi",
     "date_column": "epi_SocDate",
@@ -78,21 +123,14 @@
     "service_line_field": "epi_slid",
     "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
     "dimensions": [
-      "Service Line",
-      "Branch Code",
-      "Branch Name",
-      "Region",
-      "City",
-      "State",
-      "Admission Date",
-      "Care Type",
-      "Payor",
-      "As Of Date"
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "Admission Date", "Care Type", "Payor", "As Of Date"
     ],
     "grouping_options": ["care_type", "branch", "region", "service_line"]
   },
 
   "current_census": {
+    "category": "Operations",
     "fact_table": "CLIENT_EPISODES_ALL",
     "alias": "epi",
     "date_column": "epi_SocDate",
@@ -104,20 +142,14 @@
     "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
     "where_clause": "epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @AsOfDate",
     "dimensions": [
-      "Service Line",
-      "Branch Code",
-      "Branch Name",
-      "Region",
-      "City",
-      "State",
-      "Care Type",
-      "Payor",
-      "As Of Date"
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "Care Type", "Payor", "As Of Date"
     ],
     "grouping_options": ["branch", "region", "care_type", "service_line"]
   },
 
   "average_daily_census": {
+    "category": "Operations",
     "fact_table": "CLIENT_EPISODES_ALL",
     "alias": "epi",
     "date_column": "epi_SocDate",
@@ -128,42 +160,161 @@
     "service_line_field": "epi_slid",
     "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
     "dimensions": [
-      "Service Line",
-      "Branch Code",
-      "Branch Name",
-      "Region",
-      "City",
-      "State",
-      "Care Type",
-      "As Of Date"
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "Care Type", "As Of Date"
     ],
     "grouping_options": ["branch", "region", "service_line", "care_type"]
   },
 
-  "hospice_census_equivalent": {
+  "current_census_by_service_line_branch": {
+    "category": "Operations",
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_SocDate",
+    "aggregation": "COUNT(DISTINCT epi.epi_id)",
+    "label": "Current Census by Service Line and Branch",
+    "description": "Active census pivoted across both service line and branch — supports cross-line branch comparison",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "where_clause": "epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @AsOfDate",
+    "dimensions": [
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "Care Type", "As Of Date"
+    ],
+    "grouping_options": ["service_line", "branch", "region", "care_type"],
+    "drill_down": ["enterprise", "service_line", "branch"]
+  },
+
+  "average_daily_census_by_service_line_branch": {
+    "category": "Operations",
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_SocDate",
+    "aggregation": "CAST(COUNT(DISTINCT epi.epi_id) AS FLOAT) / NULLIF(DATEDIFF(day, @StartDate, @EndDate) + 1, 0)",
+    "label": "Average Daily Census by Service Line and Branch",
+    "description": "ADC broken down by both service line and branch — the primary operational performance view",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "dimensions": [
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "Care Type", "As Of Date"
+    ],
+    "grouping_options": ["service_line", "branch", "region", "care_type"],
+    "drill_down": ["enterprise", "service_line", "branch"]
+  },
+
+  "daily_census": {
+    "category": "Operations",
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_SocDate",
+    "aggregation": "COUNT(DISTINCT epi.epi_id)",
+    "label": "Daily Census",
+    "description": "Active patient count for a specific calendar date",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "where_clause": "epi.epi_SocDate <= @AsOfDate AND (epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @AsOfDate)",
+    "dimensions": [
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "Care Type", "As Of Date"
+    ],
+    "grouping_options": ["branch", "service_line", "care_type", "region"]
+  },
+
+  "daily_census_trend": {
+    "category": "Operations",
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_SocDate",
+    "aggregation": "COUNT(DISTINCT epi.epi_id)",
+    "label": "Daily Census Trend",
+    "description": "Census count by calendar day across the reporting period — used to render trend lines",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "where_clause": "epi.epi_SocDate <= cal.calendar_date AND (epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > cal.calendar_date)",
+    "time_series": true,
+    "time_grain": "day",
+    "dimensions": [
+      "Service Line", "Branch Code", "Branch Name", "Region", "As Of Date"
+    ],
+    "grouping_options": ["date", "branch", "service_line", "region"]
+  },
+
+  "hospice_census_equivalent_by_branch": {
+    "category": "Executive",
     "fact_table": "CLIENT_EPISODES_ALL",
     "alias": "epi",
     "date_column": "epi_SocDate",
     "aggregation": "SUM(DATEDIFF(day, CASE WHEN epi.epi_SocDate < @StartDate THEN @StartDate ELSE epi.epi_SocDate END, CASE WHEN epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @EndDate THEN DATEADD(day, 1, @EndDate) ELSE epi.epi_DischargeDate END))",
-    "label": "Hospice Census Equivalent",
-    "description": "Total patient days for hospice episodes within the reporting period — used to compute per diem rates",
+    "label": "Hospice Census Equivalent By Branch",
+    "description": "Total hospice patient-days by branch — HCE_FACTOR applied for executive rollup",
     "location_key": "epi_branchcode",
     "service_line_field": "epi_slid",
     "active_service_lines": ["HOSPICE"],
     "where_clause": "epi.epi_slid = 2",
+    "hce_factor": "@HCE_FACTOR",
+    "hce_factor_default": 0.40,
     "dimensions": [
-      "Branch Code",
-      "Branch Name",
-      "Region",
-      "City",
-      "State",
-      "Care Type",
+      "Branch Code", "Branch Name", "Region", "City", "State",
+      "Care Type", "As Of Date"
+    ],
+    "grouping_options": ["branch", "region", "care_type"],
+    "drill_down": ["enterprise", "region", "branch"]
+  },
+
+  "hh_palliative_combined_hce": {
+    "category": "Executive",
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_SocDate",
+    "aggregation": "SUM(DATEDIFF(day, CASE WHEN epi.epi_SocDate < @StartDate THEN @StartDate ELSE epi.epi_SocDate END, CASE WHEN epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @EndDate THEN DATEADD(day, 1, @EndDate) ELSE epi.epi_DischargeDate END)) * @HOME_HEALTH_WEIGHT",
+    "label": "HH and Palliative Combined HCE",
+    "description": "Home Health and Palliative patient-days weighted by HCE_FACTOR (HOME_HEALTH_WEIGHT = 0.40) for hospice-equivalent normalization",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "PALLIATIVE"],
+    "where_clause": "epi.epi_slid IN (1, 25000)",
+    "hce_factor": "@HOME_HEALTH_WEIGHT",
+    "hce_factor_default": 0.40,
+    "dimensions": [
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
       "As Of Date"
     ],
-    "grouping_options": ["branch", "region", "care_type"]
+    "grouping_options": ["branch", "service_line", "region"],
+    "drill_down": ["enterprise", "service_line", "region", "branch"]
+  },
+
+  "enterprise_total_hce": {
+    "category": "Executive",
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_SocDate",
+    "aggregation": "SUM(CASE WHEN epi.epi_slid = 2 THEN DATEDIFF(day, CASE WHEN epi.epi_SocDate < @StartDate THEN @StartDate ELSE epi.epi_SocDate END, CASE WHEN epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @EndDate THEN DATEADD(day,1,@EndDate) ELSE epi.epi_DischargeDate END) * @HOSPICE_WEIGHT ELSE DATEDIFF(day, CASE WHEN epi.epi_SocDate < @StartDate THEN @StartDate ELSE epi.epi_SocDate END, CASE WHEN epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @EndDate THEN DATEADD(day,1,@EndDate) ELSE epi.epi_DischargeDate END) * @HOME_HEALTH_WEIGHT END)",
+    "label": "Enterprise Total HCE",
+    "description": "Total HCE across all service lines — Hospice at 1.00 weight, Home Health and Palliative at 0.40 weight. Enterprise executive rollup metric.",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY", "PALLIATIVE"],
+    "hce_factor": "@HCE_FACTOR",
+    "hce_factor_default": 0.40,
+    "hce_weights": {
+      "HOSPICE_WEIGHT": 1.00,
+      "HOME_HEALTH_WEIGHT": 0.40
+    },
+    "dimensions": [
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "As Of Date"
+    ],
+    "grouping_options": ["enterprise", "service_line", "region", "branch"],
+    "drill_down": ["enterprise", "service_line", "region", "branch"]
   },
 
   "avg_days_referral_to_admission": {
+    "category": "Referral Performance",
     "fact_table": "CLIENT_EPISODES_ALL",
     "alias": "epi",
     "date_column": "epi_SocDate",
@@ -175,20 +326,14 @@
     "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
     "where_clause": "epi.epi_ReferralDate IS NOT NULL AND epi.epi_SocDate IS NOT NULL",
     "dimensions": [
-      "Service Line",
-      "Branch Code",
-      "Branch Name",
-      "Region",
-      "City",
-      "State",
-      "Admission Date",
-      "Care Type",
-      "As Of Date"
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "Admission Date", "Care Type", "As Of Date"
     ],
     "grouping_options": ["branch", "region", "service_line", "care_type"]
   },
 
   "admissions_within_2_days": {
+    "category": "Referral Performance",
     "fact_table": "CLIENT_EPISODES_ALL",
     "alias": "epi",
     "date_column": "epi_SocDate",
@@ -200,44 +345,56 @@
     "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
     "where_clause": "epi.epi_ReferralDate IS NOT NULL",
     "dimensions": [
-      "Service Line",
-      "Branch Code",
-      "Branch Name",
-      "Region",
-      "City",
-      "State",
-      "Admission Date",
-      "Care Type",
-      "As Of Date"
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "Admission Date", "Care Type", "As Of Date"
     ],
     "grouping_options": ["branch", "region", "service_line", "care_type"]
   },
 
-  "discharges": {
-    "fact_table": "CLIENT_EPISODES_ALL",
-    "alias": "epi",
-    "date_column": "epi_DischargeDate",
-    "aggregation": "COUNT(*)",
-    "label": "Discharges",
-    "description": "Count of patient discharge events",
+  "billing_holds": {
+    "category": "Revenue Cycle",
+    "fact_table": "Billing.LINE_ITEMS",
+    "alias": "li",
+    "date_column": "li.li_service_date",
+    "aggregation": "COUNT(DISTINCT li.li_id)",
+    "label": "Billing Holds",
+    "description": "Count of line items currently in a billing hold status — awaiting clinical documentation or authorization before claim submission",
     "location_key": "epi_branchcode",
     "service_line_field": "epi_slid",
     "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "where_clause": "li.li_hold_flag = 1",
+    "join": "INNER JOIN CLIENT_EPISODES_ALL epi ON li.li_episode_id = epi.epi_id",
     "dimensions": [
-      "Service Line",
-      "Branch Code",
-      "Branch Name",
-      "Region",
-      "City",
-      "State",
-      "Discharge Date",
-      "Care Type",
-      "As Of Date"
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "Payor", "As Of Date"
     ],
-    "grouping_options": ["branch", "region", "care_type", "service_line"]
+    "grouping_options": ["branch", "service_line", "payor", "region"]
+  },
+
+  "billing_hold_sla_compliance": {
+    "category": "Revenue Cycle",
+    "fact_table": "Billing.LINE_ITEMS",
+    "alias": "li",
+    "date_column": "li.li_service_date",
+    "aggregation": "CAST(COUNT(CASE WHEN li.li_hold_days <= 5 THEN 1 END) AS FLOAT) / NULLIF(COUNT(li.li_id), 0) * 100",
+    "label": "Billing Hold SLA Compliance",
+    "description": "Percentage of billing holds resolved within the 5-day SLA threshold — revenue cycle timeliness KPI",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "where_clause": "li.li_hold_flag = 1",
+    "join": "INNER JOIN CLIENT_EPISODES_ALL epi ON li.li_episode_id = epi.epi_id",
+    "sla_threshold_days": 5,
+    "unit": "percent",
+    "dimensions": [
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "Payor", "As Of Date"
+    ],
+    "grouping_options": ["branch", "service_line", "payor", "region"]
   },
 
   "revenue": {
+    "category": "Revenue Cycle",
     "fact_table": "Billing.LINE_ITEMS",
     "alias": "li",
     "date_column": "li_service_date",
@@ -248,15 +405,88 @@
     "service_line_field": "epi_slid",
     "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
     "dimensions": [
-      "Service Line",
-      "Branch Code",
-      "Branch Name",
-      "Region",
-      "City",
-      "State",
-      "Payor",
-      "As Of Date"
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "Payor", "As Of Date"
     ],
     "grouping_options": ["branch", "region", "service_line", "payor"]
+  },
+
+  "visit_notes_activity": {
+    "category": "Clinical Operations",
+    "fact_table": "CLIENT_EPISODE_VISIT_NOTES",
+    "alias": "vn",
+    "date_column": "vn.vn_visit_date",
+    "aggregation": "COUNT(DISTINCT vn.vn_id)",
+    "label": "Visit Notes Activity",
+    "description": "Total visit notes entered within the reporting period — proxy for clinical documentation volume and workflow activity",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "join": "INNER JOIN CLIENT_EPISODES_ALL epi ON vn.vn_episode_id = epi.epi_id",
+    "dimensions": [
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "Care Type", "As Of Date"
+    ],
+    "grouping_options": ["branch", "service_line", "care_type", "region", "discipline"]
+  },
+
+  "visit_note_documentation_compliance": {
+    "category": "Clinical Quality",
+    "fact_table": "CLIENT_EPISODE_VISIT_NOTES",
+    "alias": "vn",
+    "date_column": "vn.vn_visit_date",
+    "aggregation": "CAST(COUNT(CASE WHEN vn.vn_completed_flag = 1 AND DATEDIFF(hour, vn.vn_visit_date, vn.vn_signed_datetime) <= 24 THEN 1 END) AS FLOAT) / NULLIF(COUNT(vn.vn_id), 0) * 100",
+    "label": "Visit Note Documentation Compliance",
+    "description": "Percentage of visit notes completed and signed within 24 hours of the visit — clinical quality and compliance metric",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "join": "INNER JOIN CLIENT_EPISODES_ALL epi ON vn.vn_episode_id = epi.epi_id",
+    "sla_threshold_hours": 24,
+    "unit": "percent",
+    "dimensions": [
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "Care Type", "As Of Date"
+    ],
+    "grouping_options": ["branch", "service_line", "care_type", "region", "discipline"]
+  },
+
+  "discharges": {
+    "category": "Operations",
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_DischargeDate",
+    "aggregation": "COUNT(*)",
+    "label": "Discharges",
+    "description": "Count of patient discharge events",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "dimensions": [
+      "Service Line", "Branch Code", "Branch Name", "Region", "City", "State",
+      "Discharge Date", "Care Type", "As Of Date"
+    ],
+    "grouping_options": ["branch", "region", "care_type", "service_line"]
+  },
+
+  "hospice_census_equivalent": {
+    "category": "Executive",
+    "fact_table": "CLIENT_EPISODES_ALL",
+    "alias": "epi",
+    "date_column": "epi_SocDate",
+    "aggregation": "SUM(DATEDIFF(day, CASE WHEN epi.epi_SocDate < @StartDate THEN @StartDate ELSE epi.epi_SocDate END, CASE WHEN epi.epi_DischargeDate IS NULL OR epi.epi_DischargeDate > @EndDate THEN DATEADD(day, 1, @EndDate) ELSE epi.epi_DischargeDate END))",
+    "label": "Hospice Census Equivalent",
+    "description": "Total patient days for hospice episodes within the reporting period — used to compute per diem rates",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": ["HOSPICE"],
+    "where_clause": "epi.epi_slid = 2",
+    "hce_factor": "@HCE_FACTOR",
+    "hce_factor_default": 0.40,
+    "dimensions": [
+      "Branch Code", "Branch Name", "Region", "City", "State",
+      "Care Type", "As Of Date"
+    ],
+    "grouping_options": ["branch", "region", "care_type"]
   }
 }
