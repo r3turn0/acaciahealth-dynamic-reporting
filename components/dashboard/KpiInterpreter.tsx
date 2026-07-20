@@ -13,6 +13,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleAlert,
+  Copy,
   Download,
   Lightbulb,
   Loader2,
@@ -43,7 +44,29 @@ interface FollowUpMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  loading?: boolean;
+  streaming?: boolean;
+}
+
+// ── Simple plain-text → JSX renderer ─────────────────────────────────────────
+
+function SimpleMarkdown({ text }: { text: string }) {
+  const lines = text.split("\n");
+  return (
+    <div className="flex flex-col gap-1.5 text-sm leading-relaxed text-foreground/85">
+      {lines.map((line, i) => {
+        if (line.startsWith("- ") || line.startsWith("• ")) {
+          return (
+            <div key={i} className="flex gap-2 items-start">
+              <span className="text-primary mt-1 shrink-0">•</span>
+              <span>{line.slice(2)}</span>
+            </div>
+          );
+        }
+        if (!line.trim()) return <div key={i} className="h-1" />;
+        return <p key={i}>{line}</p>;
+      })}
+    </div>
+  );
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -195,6 +218,7 @@ function FollowUpThread({
   const [messages, setMessages] = useState<FollowUpMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -212,8 +236,10 @@ function FollowUpThread({
   async function ask(question: string) {
     if (!question.trim() || loading) return;
     if (startDate && endDate && startDate > endDate) return;
+
     const userMsg: FollowUpMessage = { id: Date.now().toString(), role: "user", content: question };
-    const placeholder: FollowUpMessage = { id: `${Date.now()}-loading`, role: "assistant", content: "", loading: true };
+    const assistantId = `${Date.now()}-a`;
+    const placeholder: FollowUpMessage = { id: assistantId, role: "assistant", content: "", streaming: true };
     setMessages((prev) => [...prev, userMsg, placeholder]);
     setInput("");
     setLoading(true);
@@ -231,16 +257,31 @@ function FollowUpThread({
           end_date: endDate,
         }),
       });
-      const data = await res.json();
-      const answer = data.answer ?? "Sorry, I could not generate an answer.";
+
+      if (!res.ok || !res.body) throw new Error("Stream failed");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        accumulated += decoder.decode(value, { stream: true });
+        const current = accumulated;
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, content: current } : m))
+        );
+      }
+
       setMessages((prev) =>
-        prev.map((m) => (m.id === placeholder.id ? { ...m, content: answer, loading: false } : m))
+        prev.map((m) => (m.id === assistantId ? { ...m, streaming: false } : m))
       );
     } catch {
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === placeholder.id
-            ? { ...m, content: "Failed to get a response. Please try again.", loading: false }
+          m.id === assistantId
+            ? { ...m, content: "Failed to get a response. Please try again.", streaming: false }
             : m
         )
       );
@@ -250,19 +291,36 @@ function FollowUpThread({
     }
   }
 
+  async function copyMsg(content: string, id: string) {
+    await copyToClipboard(content);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  }
+
+  const userMessageCount = messages.filter((m) => m.role === "user").length;
+
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
       <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border bg-muted/20">
         <MessageSquare className="w-4 h-4 text-primary" />
         <h3 className="text-sm font-semibold text-foreground">Ask Follow-Up Questions</h3>
         {messages.length > 0 && (
-          <span className="ml-auto text-[10px] text-muted-foreground">
-            {Math.ceil(messages.filter((m) => m.role === "user").length)} question{messages.filter((m) => m.role === "user").length !== 1 ? "s" : ""} asked
-          </span>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-[10px] text-muted-foreground">
+              {userMessageCount} question{userMessageCount !== 1 ? "s" : ""} asked
+            </span>
+            <button
+              onClick={() => setMessages([])}
+              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <RefreshCw className="w-3 h-3" />
+              Clear
+            </button>
+          </div>
         )}
       </div>
 
-      {/* Date range filter — scopes follow-up answers to a period */}
+      {/* Date range filter */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-2.5 border-b border-border bg-muted/10">
         <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <Calendar className="w-3.5 h-3.5 text-primary" /> Date range
@@ -290,14 +348,15 @@ function FollowUpThread({
       </div>
 
       <div className="p-4 flex flex-col gap-3">
-        {/* Suggestion chips — only shown when no messages yet */}
+        {/* Suggestion chips — always visible when no messages */}
         {messages.length === 0 && (
           <div className="flex flex-wrap gap-2">
             {SUGGESTIONS.map((s) => (
               <button
                 key={s}
                 onClick={() => ask(s)}
-                className="text-xs text-muted-foreground hover:text-primary border border-border hover:border-primary/40 rounded-full px-3 py-1 transition-colors bg-muted/30 hover:bg-primary/5"
+                disabled={loading}
+                className="text-xs text-muted-foreground hover:text-primary border border-border hover:border-primary/40 rounded-full px-3 py-1 transition-colors bg-muted/30 hover:bg-primary/5 disabled:opacity-50"
               >
                 {s}
               </button>
@@ -313,22 +372,33 @@ function FollowUpThread({
                 key={m.id}
                 className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
-                <div
-                  className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed ${
-                    m.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted border border-border text-foreground"
-                  }`}
-                >
-                  {m.loading ? (
-                    <span className="flex items-center gap-2 text-muted-foreground">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      Thinking...
-                    </span>
-                  ) : (
-                    m.content
-                  )}
-                </div>
+                {m.role === "user" ? (
+                  <div className="max-w-[85%] rounded-xl px-3.5 py-2.5 bg-primary text-primary-foreground text-sm leading-relaxed">
+                    {m.content}
+                  </div>
+                ) : (
+                  <div className="max-w-[95%] rounded-xl px-4 py-3 bg-muted border border-border flex flex-col gap-2">
+                    {m.streaming && !m.content ? (
+                      <span className="flex items-center gap-2 text-muted-foreground text-sm">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Thinking...
+                      </span>
+                    ) : (
+                      <>
+                        <SimpleMarkdown text={m.content} />
+                        {!m.streaming && (
+                          <button
+                            onClick={() => copyMsg(m.content, m.id)}
+                            className="self-end flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-1"
+                          >
+                            <Copy className="w-3 h-3" />
+                            {copiedId === m.id ? "Copied!" : "Copy"}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
             <div ref={bottomRef} />
