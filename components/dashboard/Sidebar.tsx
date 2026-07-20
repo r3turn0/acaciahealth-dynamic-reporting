@@ -19,24 +19,26 @@ import {
   MonitorSmartphone,
   ShieldAlert,
   Layers,
+  SlidersHorizontal,
 } from "lucide-react";
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard",          id: "dashboard", group: "main" },
-  { icon: Compass,         label: "Discover Data",      id: "data",      group: "workflow" },
-  { icon: Boxes,           label: "Build Dataset",      id: "contracts", group: "workflow" },
-  { icon: BarChart3,       label: "KPI Explorer",       id: "kpi",       group: "workflow" },
-  { icon: Blocks,          label: "BI Studio",          id: "bi",        group: "tools" },
-  { icon: Sparkles,        label: "Report Studio",      id: "studio",    group: "tools" },
-  { icon: Database,        label: "Schema Intelligence",id: "schema",    group: "tools" },
-  { icon: FlaskConical,    label: "Metadata Engine",    id: "metadata",  group: "tools" },
-  { icon: Layers,          label: "Agent Registry",     id: "agents",    group: "tools" },
+  { icon: LayoutDashboard,    label: "Dashboard",           id: "dashboard",  group: "main" },
+  { icon: Compass,            label: "Discover Data",       id: "data",       group: "workflow" },
+  { icon: Boxes,              label: "Build Dataset",       id: "contracts",  group: "workflow" },
+  { icon: BarChart3,          label: "KPI Explorer",        id: "kpi",        group: "workflow" },
+  { icon: SlidersHorizontal,  label: "KPI Schema Admin",    id: "kpiadmin",   group: "workflow", adminOnly: false },
+  { icon: Blocks,             label: "BI Studio",           id: "bi",         group: "tools" },
+  { icon: Sparkles,           label: "Report Studio",       id: "studio",     group: "tools" },
+  { icon: Database,           label: "Schema Intelligence", id: "schema",     group: "tools" },
+  { icon: FlaskConical,       label: "Metadata Engine",     id: "metadata",   group: "tools" },
+  { icon: Layers,             label: "Agent Registry",      id: "agents",     group: "tools" },
 
-  { icon: Bookmark,        label: "Saved Reports",      id: "saved",     group: "reports" },
-  { icon: ShieldCheck,     label: "Audit & Monitoring", id: "audit",     group: "reports" },
-  { icon: MonitorSmartphone, label: "Session Manager",  id: "sessions",  group: "security", adminOnly: false },
-  { icon: ShieldAlert,       label: "Security Console", id: "admin",     group: "security", adminOnly: true },
-  { icon: Settings,        label: "Settings",           id: "settings",  group: "config" },
+  { icon: Bookmark,           label: "Saved Reports",       id: "saved",      group: "reports" },
+  { icon: ShieldCheck,        label: "Audit & Monitoring",  id: "audit",      group: "reports" },
+  { icon: MonitorSmartphone,  label: "Session Manager",     id: "sessions",   group: "security", adminOnly: false },
+  { icon: ShieldAlert,        label: "Security Console",    id: "admin",      group: "security", adminOnly: true },
+  { icon: Settings,           label: "Settings",            id: "settings",   group: "config" },
 ];
 
 // ── Live status rows (fetched client-side to avoid SSR env var leaks) ─────────

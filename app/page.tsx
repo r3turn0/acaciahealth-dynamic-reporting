@@ -12,6 +12,7 @@ import { DataExplorer } from "@/components/data/DataExplorer";
 import { MetadataReportEngine } from "@/components/schema/MetadataReportEngine";
 import { BiStudio } from "@/components/bi/BiStudio";
 import { DataContractWorkspace } from "@/components/access/DataContractWorkspace";
+import { KpiSchemaAdmin } from "@/components/kpi-admin/KpiSchemaAdmin";
 
 import { LoginPage } from "@/components/auth/LoginPage";
 import type { AuthUser } from "@/components/auth/LoginPage";
@@ -22,7 +23,7 @@ import { AgentRegistry } from "@/components/agents/AgentRegistry";
 import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 
-type View = "dashboard" | "studio" | "data" | "kpi" | "schema" | "metadata" | "bi" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin" | "agents";
+type View = "dashboard" | "studio" | "data" | "kpi" | "kpiadmin" | "schema" | "metadata" | "bi" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin" | "agents";
 
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   dashboard: {
@@ -40,6 +41,10 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   kpi: {
     title: "KPI Explorer",
     subtitle: "Browse available KPI definitions and API specs",
+  },
+  kpiadmin: {
+    title: "KPI Schema Administration",
+    subtitle: "Schema v6.0 · Create, version, validate, approve, publish, and deploy KPI definitions without code changes",
   },
   schema: {
     title: "Schema Intelligence",
@@ -286,6 +291,11 @@ export default function Home() {
           {view === "kpi" && (
             <div className="max-w-6xl mx-auto w-full">
               <KpiExplorer />
+            </div>
+          )}
+          {view === "kpiadmin" && (
+            <div className="max-w-7xl mx-auto w-full">
+              <KpiSchemaAdmin userRole={user.role as "Admin" | "Analyst" | "Viewer"} />
             </div>
           )}
           {view === "schema" && (
