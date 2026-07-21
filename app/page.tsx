@@ -9,9 +9,8 @@ import { ReportStudio } from "@/components/studio/ReportStudio";
 import { SavedReports } from "@/components/studio/SavedReports";
 import type { LoadedReport } from "@/components/studio/ReportStudio";
 import { DataExplorer } from "@/components/data/DataExplorer";
-import { MetadataReportEngine } from "@/components/schema/MetadataReportEngine";
 import { DatasetDesigner } from "@/components/dataset/DatasetDesigner";
-import { SchemaIntelligenceRegistry } from "@/components/registry/SchemaIntelligenceRegistry";
+import { SchemaHub } from "@/components/schema/SchemaHub";
 import { BiStudio } from "@/components/bi/BiStudio";
 import { DataContractWorkspace } from "@/components/access/DataContractWorkspace";
 import { KpiSchemaAdmin } from "@/components/kpi-admin/KpiSchemaAdmin";
@@ -25,6 +24,8 @@ import { AgentRegistry } from "@/components/agents/AgentRegistry";
 import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 
+// "metadata" and "registry" redirect to "schema" (now SchemaHub)
+// "contracts" (DataContractWorkspace) kept for backwards compatibility
 type View = "dashboard" | "studio" | "data" | "kpi" | "kpiadmin" | "schema" | "metadata" | "bi" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin" | "agents" | "designer" | "registry";
 
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
@@ -49,12 +50,12 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
     subtitle: "Schema v6.0 · Create, version, validate, approve, publish, and deploy KPI definitions without code changes",
   },
   schema: {
-    title: "Schema Intelligence",
-    subtitle: "Live database schema, join paths, and semantic layer",
+    title: "Schema Hub",
+    subtitle: "Schema Explorer · Metadata Engine · Schema Registry — unified schema intelligence platform",
   },
   metadata: {
-    title: "Metadata Engine",
-    subtitle: "AI schema-inference tool — inspect tables, columns, roles, and join paths for fast lookup and grounding",
+    title: "Schema Hub",
+    subtitle: "Schema Explorer · Metadata Engine · Schema Registry — unified schema intelligence platform",
   },
   bi: {
     title: "BI Studio",
@@ -91,11 +92,11 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   },
   designer: {
     title: "Dataset Designer",
-    subtitle: "Discover tables, build semantic datasets, define PK/FK relationships, and publish analytical models",
+    subtitle: "Discover tables, build semantic datasets via drag-and-drop, define PK/FK relationships, and publish analytical models",
   },
   registry: {
-    title: "Schema Registry",
-    subtitle: "Full metadata catalog — tables, columns, domains, data lineage, tags, and KPI dependencies",
+    title: "Schema Hub",
+    subtitle: "Schema Explorer · Metadata Engine · Schema Registry — unified schema intelligence platform",
   },
 };
 
@@ -308,15 +309,15 @@ export default function Home() {
               <KpiSchemaAdmin userRole={user.role as "Admin" | "Analyst" | "Viewer"} />
             </div>
           )}
-          {view === "schema" && (
-            <div className="max-w-6xl mx-auto w-full">
-              <SchemaViewer />
-            </div>
-          )}
-          {view === "metadata" && (
-            <div className="max-w-6xl mx-auto w-full">
-              <MetadataReportEngine />
-            </div>
+          {(view === "schema" || view === "metadata" || view === "registry") && (
+            <SchemaHub
+              onNavigate={(id) => setView(id as View)}
+              initialTab={
+                view === "metadata" ? "metadata" :
+                view === "registry" ? "registry" :
+                "explorer"
+              }
+            />
           )}
           {view === "bi" && (
             <div className="max-w-7xl mx-auto w-full">
@@ -336,12 +337,7 @@ export default function Home() {
           )}
           {view === "designer" && (
             <div className="max-w-7xl mx-auto w-full">
-              <DatasetDesigner />
-            </div>
-          )}
-          {view === "registry" && (
-            <div className="max-w-6xl mx-auto w-full">
-              <SchemaIntelligenceRegistry />
+              <DatasetDesigner onNavigate={(id) => setView(id as View)} />
             </div>
           )}
           {view === "audit" && (

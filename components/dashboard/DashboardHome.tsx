@@ -427,16 +427,18 @@ function RecentReportsList({
 
 function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {
   const actions = [
-    { id: "data", label: "1 · Discover Data", desc: "Search, preview, and sample tables from the warehouse" },
-    { id: "contracts", label: "2 · Build Dataset", desc: "Pick tables, columns, and relationships into a reusable dataset" },
-    { id: "kpi", label: "3 · KPI Explorer", desc: "Analyze your dataset and browse KPI definitions" },
-    { id: "studio", label: "Report Studio", desc: "Ask AI, write SQL, run queries, save reports" },
+    { id: "data",      label: "1 · Discover Data",     desc: "Search, preview, and sample tables from the warehouse" },
+    { id: "designer",  label: "2 · Dataset Designer",  desc: "Drag-and-drop PK/FK relationships, build semantic datasets" },
+    { id: "kpi",       label: "3 · KPI Explorer",      desc: "Browse KPI definitions, metrics, and interpreter" },
+    { id: "studio",    label: "4 · Report Studio",     desc: "Ask AI, write SQL, run queries, save and share reports" },
+    { id: "schema",    label: "Schema Hub",             desc: "Schema Explorer · Metadata Engine · Schema Registry" },
+    { id: "kpiadmin",  label: "KPI Schema Admin",       desc: "Author, version, validate, and deploy KPI definitions" },
   ];
 
   return (
     <div className="bg-card border border-border rounded-lg p-5">
       <h2 className="text-sm font-semibold text-foreground mb-4">Quick Actions</h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         {actions.map((a) => (
           <button
             key={a.id}
