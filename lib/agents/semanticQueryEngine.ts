@@ -67,7 +67,10 @@ export const LogicalPlanSchema = z.object({
   groupBy: z.array(z.string()).describe("Group-by columns"),
   filters: z.array(FilterSchema).describe("Row-level filters"),
   orderBy: z.array(OrderBySchema).describe("Sort order"),
-  limit: z.number().int().default(100).describe("Result row limit"),
+  // Must NOT use .default() — OpenAI structured output requires every property key
+  // to appear in the 'required' array. Zod omits defaulted fields from 'required',
+  // which causes a 400 "Invalid schema for response_format" error.
+  limit: z.number().int().describe("Result row limit — use 100 when not specified"),
 });
 
 export type LogicalPlan = z.infer<typeof LogicalPlanSchema>;
@@ -217,7 +220,7 @@ ${sem}
   "logicalPlan": {
     "table": "patients",
     "select": ["nurse"],
-    "aggregations": [{ "metric": "patient_count", "function": "MEASURE" }],
+    "aggregations": [{ "metric": "patient_count", "function": "MEASURE", "alias": "patient_count" }],
     "groupBy": ["nurse"],
     "filters": [],
     "orderBy": [{ "field": "patient_count", "direction": "DESC" }],
@@ -227,18 +230,18 @@ ${sem}
   "response": {
     "type": "CHART",
     "data": [],
-    "presentation": { "chartType": "bar", "xAxis": "nurse", "yAxis": "patient_count", "limit": 5 }
+    "presentation": { "chartType": "bar", "xAxis": "nurse", "yAxis": "patient_count", "groupBy": [], "limit": 5 }
   },
   "pipelineStages": [
-    { "stage": "interpret_query", "status": "ok" },
-    { "stage": "resolve_context", "status": "ok" },
+    { "stage": "interpret_query", "status": "ok", "note": "" },
+    { "stage": "resolve_context", "status": "ok", "note": "" },
     { "stage": "classify_intent", "status": "ok", "note": "TOP_N detected (limit=5)" },
-    { "stage": "validate_against_schema", "status": "ok" },
-    { "stage": "detect_ambiguity", "status": "ok" },
-    { "stage": "generate_logical_plan", "status": "ok" },
+    { "stage": "validate_against_schema", "status": "ok", "note": "" },
+    { "stage": "detect_ambiguity", "status": "ok", "note": "" },
+    { "stage": "generate_logical_plan", "status": "ok", "note": "" },
     { "stage": "format_response", "status": "ok", "note": "CHART / bar recommended" }
   ],
-  "metadata": { "source": "powerbi_json", "confidence": 0.97 }
+  "metadata": { "source": "powerbi_json", "confidence": 0.97, "warnings": [] }
 }`;
 }
 

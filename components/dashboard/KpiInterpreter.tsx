@@ -459,10 +459,14 @@ export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
     };
   });
   const [interpreting, setInterpreting] = useState(false);
+  const [interpretStage, setInterpretStage] = useState<string>("");
   const [insights, setInsights] = useState<BusinessInsights | null>(null);
   const [meta, setMeta] = useState<InterpretMeta | null>(null);
   const [showJson, setShowJson] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Stable ref so interpret() can be called from effects without being a dep
+  const interpretRef = useRef<(() => Promise<void>) | null>(null);
 
   const loadReports = useCallback(async (autoSelectKpi?: string) => {
     setLoadingReports(true);
@@ -480,6 +484,7 @@ export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
         if (match) {
           setSelectedReport(match);
           setInsights(null);
+          // Interpretation will auto-trigger via the selectedReport effect below
         }
       }
     } catch {
@@ -499,12 +504,24 @@ export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
       if (match) {
         setSelectedReport(match);
         setInsights(null);
+        // Interpretation will auto-trigger via the selectedReport effect below
       }
     } else {
       // Trigger a load with auto-selection
       loadReports(preselectedKpi);
     }
   }, [preselectedKpi]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-run interpretation whenever the selected report changes (and we have dates)
+  useEffect(() => {
+    if (!selectedReport) return;
+    // Use the ref so we always call the latest version of interpret()
+    // without adding it as a dep (avoids infinite loop)
+    const timer = setTimeout(() => {
+      interpretRef.current?.();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [selectedReport?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Derived filter
   const allKpis = reports
@@ -528,6 +545,7 @@ export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
     setInsights(null);
     setMeta(null);
     setError(null);
+    setInterpretStage("Running report query...");
 
     try {
       const runRes = await fetch("/api/report/run", {
@@ -544,6 +562,8 @@ export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
       const runJson = await runRes.json();
       const rows: Record<string, unknown>[] = runJson.data ?? [];
       const columns: string[] = rows.length > 0 ? Object.keys(rows[0]) : [];
+
+      setInterpretStage(`Analysing ${rows.length} rows with AI...`);
 
       const intRes = await fetch("/api/kpi/interpret", {
         method: "POST",
@@ -564,8 +584,12 @@ export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
       setError("Interpretation failed. Please try again.");
     } finally {
       setInterpreting(false);
+      setInterpretStage("");
     }
   }
+
+  // Keep ref in sync so the auto-trigger effect always calls the latest closure
+  interpretRef.current = interpret;
 
   // ── Empty state ─────────���──────────────────────────────────────────────────
 
@@ -583,7 +607,7 @@ export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
           </p>
         </div>
         <button
-          onClick={loadReports}
+          onClick={() => loadReports()}
           disabled={loadingReports}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
@@ -604,7 +628,7 @@ export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-foreground">Select a Report to Interpret</h3>
           <button
-            onClick={loadReports}
+            onClick={() => loadReports()}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             <RefreshCw className="w-3 h-3" />
@@ -723,15 +747,30 @@ export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
               {interpreting ? (
                 <><Loader2 className="w-4 h-4 animate-spin" />Interpreting...</>
               ) : (
-                <><Sparkles className="w-4 h-4" />Generate Insights</>
+                <><Sparkles className="w-4 h-4" />Re-run Insights</>
               )}
             </button>
           </div>
+          {interpreting && interpretStage && (
+            <div className="mt-3 flex items-center gap-2 text-xs text-primary">
+              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+              <span>{interpretStage}</span>
+            </div>
+          )}
           {error && (
             <p className="mt-3 text-xs text-destructive flex items-center gap-1.5">
               <AlertTriangle className="w-3.5 h-3.5" />{error}
             </p>
           )}
+        </div>
+      )}
+
+      {/* Interpreting spinner — shown between report selection and insights appearing */}
+      {interpreting && !insights && (
+        <div className="flex flex-col items-center justify-center py-12 gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-sm font-medium text-foreground">{interpretStage || "Generating insights..."}</p>
+          <p className="text-xs text-muted-foreground">Running the report query and analysing with AI</p>
         </div>
       )}
 
