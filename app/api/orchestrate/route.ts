@@ -17,7 +17,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { orchestrate } from "@/lib/agents/orchestrator";
-import { isDbConfigured, query as runQuery } from "@/lib/services/db";
+import { isDbConfigured, executeQueryWithParams } from "@/lib/services/db";
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
               { name: "StartDate", value: startDate },
               { name: "EndDate",   value: endDate },
             ];
-            const result = await runQuery(sql, params);
+            const result = await executeQueryWithParams(sql, params);
             return {
               ok:   true,
               rows: result as Record<string, unknown>[],
