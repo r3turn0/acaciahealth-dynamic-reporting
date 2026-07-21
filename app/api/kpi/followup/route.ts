@@ -18,6 +18,7 @@ import { NextRequest } from "next/server";
 import { streamText } from "ai";
 import { getModel } from "@/lib/ai/gateway";
 import type { BusinessInsights } from "@/app/api/kpi/interpret/route";
+import { buildConversationalSystemPrompt } from "@/lib/ai/insightAgentPrompt";
 
 export const runtime = "edge";
 
@@ -42,16 +43,7 @@ export async function POST(req: NextRequest) {
       return new Response("insights context is required", { status: 400 });
     }
 
-    const systemPrompt = `You are a senior healthcare analytics consultant for AcaciaHealth, specialising in home health and hospice operations.
-You have already generated a BusinessInsights report for the user. They are now asking a follow-up question about that report.
-
-Rules:
-- Answer concisely and directly — 2–5 sentences unless the question requires a list.
-- Ground every answer in the insights data provided. Do not invent numbers not present in the context.
-- Use healthcare / home health domain language where relevant.
-- If you cannot answer from the provided context, say so clearly and suggest what additional data would help.
-- Do not repeat the full insights back — only reference the relevant parts.
-- Format lists as short bullet lines when presenting multiple items.`;
+    const systemPrompt = buildConversationalSystemPrompt();
 
     const dateContext =
       start_date && end_date

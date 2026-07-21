@@ -10,6 +10,7 @@ import schemaConfig from "../config/schemaConfig.json";
 import kpiConfig from "../config/kpiConfig.json";
 import semanticLayer from "../config/semanticLayer.json";
 import { getModel, getModelId } from "../ai/gateway";
+import { buildSQLPlannerSystemPrompt } from "../ai/insightAgentPrompt";
 
 // ── Output schema ─────────────────────────────────────────────────────────────
 
@@ -30,62 +31,10 @@ export type QueryPlan = z.infer<typeof QueryPlanSchema>;
 // ── System prompt builder ─────────────────────────────────────────────────────
 
 function buildSystemPrompt(): string {
-  const schemaJSON = JSON.stringify(schemaConfig, null, 2);
-  const kpiJSON = JSON.stringify(kpiConfig, null, 2);
+  const schemaJSON   = JSON.stringify(schemaConfig, null, 2);
+  const kpiJSON      = JSON.stringify(kpiConfig, null, 2);
   const semanticJSON = JSON.stringify(semanticLayer, null, 2);
-
-  return `You are an expert healthcare data analyst and T-SQL query planner for AcaciaHealth.
-Your job is to convert natural language questions into safe, optimized T-SQL SELECT queries.
-
-## Strict Rules (NEVER violate these)
-- ONLY generate SELECT statements. Never UPDATE, DELETE, INSERT, DROP, TRUNCATE, CREATE, or EXEC.
-- Never use SELECT *. Always name explicit columns.
-- Always include a WHERE clause with @StartDate and @EndDate parameters.
-- Always include TOP 10000 to cap result size.
-- Never use CROSS JOIN.
-- Never expose sensitive columns (SSN, DateOfBirth) unless specifically asked — and even then use masking expressions from the semantic layer.
-- All string comparisons on branch codes must use RTRIM() on both sides.
-
-## AcaciaHealth Schema
-\`\`\`json
-${schemaJSON}
-\`\`\`
-
-## KPI Definitions
-\`\`\`json
-${kpiJSON}
-\`\`\`
-
-## Semantic Layer (business term → physical mapping)
-\`\`\`json
-${semanticJSON}
-\`\`\`
-
-## T-SQL Date Parameters
-Always use these named parameters:
-- @StartDate (MSSQL Date type)
-- @EndDate   (MSSQL Date type)
-
-## Query Cost Rules
-Flag a cost_warning if the query:
-- Joins more than 3 large tables
-- Has no GROUP BY but requests millions of rows
-- Scans the entire CLIENT_EPISODES_ALL without a branch filter
-In those cases, also provide an optimized_suggestion.
-
-## API Fallback
-If the request genuinely cannot be answered with SQL (e.g., asks for a live external API, real-time scheduling, document retrieval), set strategy = "api_fallback" and explain why.
-
-## Example SQL pattern
-SELECT TOP 10000
-    RTRIM(b.branch_name) AS branch_name,
-    DATEPART(WEEK, epi.epi_SocDate) AS week_number,
-    COUNT(*) AS admissions
-FROM CLIENT_EPISODES_ALL epi
-JOIN BRANCHES b ON RTRIM(epi.epi_branchcode) = RTRIM(b.branch_code)
-WHERE epi.epi_SocDate BETWEEN @StartDate AND @EndDate
-GROUP BY RTRIM(b.branch_name), DATEPART(WEEK, epi.epi_SocDate)
-ORDER BY week_number, branch_name`;
+  return buildSQLPlannerSystemPrompt(schemaJSON, kpiJSON, semanticJSON);
 }
 
 // ── Planner function ──────────────────────────────────────────────────────────

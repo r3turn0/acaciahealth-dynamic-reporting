@@ -22,6 +22,7 @@ import { agentRegistry } from "@/lib/orchestrator/AgentOfAgents";
 import type { Agent }    from "@/lib/orchestrator/AgentOfAgents";
 import { kpiDefinitionAgent, type KPIDefinition } from "./KPIDefinitionAgent";
 import kpiConfig from "@/lib/config/kpiConfig.json";
+import { buildInsightsSystemPrompt } from "@/lib/ai/insightAgentPrompt";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -79,8 +80,8 @@ async function generateInsights(
     try {
       const { chatJSON } = await import("@/lib/ai/gateway");
       const sample = JSON.stringify(rows.slice(0, 10));
-      const sysPrompt = "You are a healthcare BI analyst. Respond only with valid JSON matching { \"insight\": \"...\" }. Be specific with numbers.";
-      const userPrompt = `KPI: ${kpiName}\nUser query: "${userQuery}"\nResults (first 10 rows):\n${sample}\nSummarise in 2-3 sentences.`;
+      const sysPrompt = buildInsightsSystemPrompt();
+      const userPrompt = `KPI: ${kpiName}\nUser query: "${userQuery}"\nResults (first 10 rows):\n${sample}\nSummarise in 2-3 sentences. Return JSON: { "insight": "..." }`;
       const response = await chatJSON<{ insight: string }>(sysPrompt, userPrompt);
       if (response?.insight) return response.insight;
     } catch { /* fall through to rule-based */ }

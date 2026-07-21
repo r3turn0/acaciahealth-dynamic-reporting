@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import { getModel, getModelId } from "@/lib/ai/gateway";
+import { buildInterpretationSystemPrompt } from "@/lib/ai/insightAgentPrompt";
 
 // ── Output schema ─────────────────────────────────────────────────────────────
 
@@ -86,16 +87,7 @@ export async function POST(req: NextRequest) {
     // Cap rows sent to the model to avoid token limits
     const sample = data.slice(0, 200);
 
-    const systemPrompt = `You are a senior healthcare analytics consultant specialising in home health and hospice operations.
-You will receive raw report data from the AcaciaHealth reporting engine and produce structured business insights.
-
-Rules:
-- Be precise and data-driven. Reference actual numbers from the data.
-- Use healthcare / home health domain language (census, SOC, discharge, branch, etc.).
-- Alerts should be specific and actionable — not generic.
-- Opportunities must be grounded in the numbers, not generic advice.
-- Never hallucinate numbers that are not in the data.
-- Confidence = "high" if data covers a full period with no nulls, "medium" if partial, "low" if sparse or heavily demo data.`;
+    const systemPrompt = buildInterpretationSystemPrompt();
 
     const userMessage = `Analyse the following KPI report and return a BusinessInsights object.
 

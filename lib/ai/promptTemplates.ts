@@ -14,6 +14,11 @@
 import schemaConfig from "@/lib/config/schemaConfig.json";
 import kpiConfig from "@/lib/config/kpiConfig.json";
 import semanticLayer from "@/lib/config/semanticLayer.json";
+import {
+  buildSQLPlannerSystemPrompt,
+  buildSQLCorrectionSystemPrompt,
+  buildInsightsSystemPrompt,
+} from "@/lib/ai/insightAgentPrompt";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -100,7 +105,7 @@ function buildSchemaBlock(): string {
 
 function buildKpiBlock(): string {
   const lines = ["## KPI Catalogue"];
-  for (const [kpi, cfg] of Object.entries(kpiConfig as Record<string, {
+  for (const [kpi, cfg] of Object.entries(kpiConfig as unknown as Record<string, {
     fact_table: string; alias: string; date_column: string;
     aggregation: string; label: string; description: string;
   }>)) {
@@ -134,79 +139,25 @@ Return a confidenceScore (0.0–1.0) reflecting how well the SQL matches the req
 // ── System prompt for NL→SQL ──────────────────────────────────────────────────
 
 export function buildSQLSystemPrompt(): string {
-  return [
-    "You are an expert healthcare data analyst and T-SQL query architect for AcaciaHealth.",
-    "AcaciaHealth operates hospice, home health, and palliative care programs.",
-    "Convert natural language questions into safe, optimized T-SQL SELECT queries.",
-    "",
-    CORE_RULES,
-    "",
-    buildSchemaBlock(),
-    "",
-    buildKpiBlock(),
-    "",
-    CONFIDENCE_RULES,
-    "",
-    "## Output Format",
-    "Return a JSON object matching the QueryPlan schema exactly.",
-    "sql: complete parameterized T-SQL string.",
-    "explanation: 1-2 sentences in plain English describing what the query returns.",
-    "tables_used: array of physical table names referenced in FROM/JOIN clauses.",
-    "filters_applied: array of human-readable filter descriptions.",
-    "kpi_detected: the KPI name if one was clearly requested, else null.",
-    "strategy: always 'sql' unless the request genuinely cannot be answered with SQL.",
-    "confidenceScore: number 0.0–1.0 per the rules above.",
-    "cost_warning: string if the query scans large tables without selective filters, else null.",
-    "optimized_suggestion: a leaner SQL alternative when cost_warning is set, else null.",
-  ].join("\n");
+  const schemaJSON   = JSON.stringify(schemaConfig, null, 2);
+  const kpiJSON      = JSON.stringify(kpiConfig, null, 2);
+  const semanticJSON = JSON.stringify(semanticLayer, null, 2);
+  return buildSQLPlannerSystemPrompt(schemaJSON, kpiJSON, semanticJSON);
 }
 
 // ── System prompt for query correction ───────────────────────────────────────
 
 export function buildCorrectionSystemPrompt(): string {
-  return [
-    "You are an expert T-SQL debugger and query optimizer for AcaciaHealth's healthcare analytics platform.",
-    "You will be given a SQL query that failed, the error message, and the original user request.",
-    "Your job is to fix the SQL and return a corrected, working version.",
-    "",
-    CORE_RULES,
-    "",
-    buildSchemaBlock(),
-    "",
-    "## Correction Guidelines",
-    "- Read the error message carefully. Fix only what is necessary.",
-    "- Common causes: wrong column names, missing aliases, invalid JOIN conditions, data type mismatches.",
-    "- If a column does not exist, find the correct column from the schema above.",
-    "- If a table is unknown, map the business term to the correct physical table using the Semantic Layer.",
-    "- Never change the logical intent of the query — preserve aggregations, filters, and groupings.",
-    "- Add WITH (NOLOCK) if missing on high-row tables.",
-    "- Ensure RTRIM() is used on all branch code comparisons.",
-    "",
-    CONFIDENCE_RULES,
-    "",
-    "Return the same QueryPlan JSON schema as the original planner.",
-  ].join("\n");
+  const schemaJSON   = JSON.stringify(schemaConfig, null, 2);
+  const kpiJSON      = JSON.stringify(kpiConfig, null, 2);
+  const semanticJSON = JSON.stringify(semanticLayer, null, 2);
+  return buildSQLCorrectionSystemPrompt(schemaJSON, kpiJSON, semanticJSON);
 }
 
 // ── System prompt for KPI interpretation ─────────────────────────────────────
 
 export function buildKpiInterpretationSystemPrompt(): string {
-  return [
-    "You are an expert healthcare analytics interpreter for AcaciaHealth.",
-    "AcaciaHealth operates hospice, home health, and palliative care programs.",
-    "Your role is to explain KPI values in plain language that non-technical clinical and operations staff can understand.",
-    "",
-    buildKpiBlock(),
-    "",
-    "## Interpretation Guidelines",
-    "- Be concise (2-4 sentences maximum per interpretation).",
-    "- Compare to target/benchmark when available.",
-    "- Mention trend direction when provided.",
-    "- Use healthcare-specific language: 'census', 'SOC', 'LUPA', 'PDGM period', 'discipline utilization', etc.",
-    "- Flag if the value is significantly above or below target (>15% deviation).",
-    "- Do NOT make clinical recommendations — only analytical observations.",
-    "- Return a JSON object: { interpretation: string, sentiment: 'positive'|'neutral'|'negative', actionable: boolean, suggestedNextQuery: string|null }",
-  ].join("\n");
+  return buildInsightsSystemPrompt();
 }
 
 // ── User turn message builders ────────────────────────────────────────────────

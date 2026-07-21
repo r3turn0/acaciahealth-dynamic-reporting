@@ -22,6 +22,7 @@ import kpiConfig from "../config/kpiConfig.json";
 import semanticLayer from "../config/semanticLayer.json";
 import { getModel } from "../ai/gateway";
 import { vectorEmbeddingAgent } from "./VectorEmbeddingAgent";
+import { buildSemanticQuerySystemPrompt } from "../ai/insightAgentPrompt";
 
 // ── Intent taxonomy ───────────────────────────────────────────────────────────
 
@@ -153,66 +154,15 @@ function buildSystemPrompt(): string {
   const kpi    = JSON.stringify(kpiConfig, null, 2);
   const sem    = JSON.stringify(semanticLayer, null, 2);
 
-  return `You are a Semantic Query Engine operating on JSON dataset exports derived from Power BI for AcaciaHealth.
+  const base = buildSemanticQuerySystemPrompt(schema, kpi, sem);
 
-## CORE PRINCIPLE
-You DO NOT replace Power BI. You:
-- Interpret user intent through a 7-stage pipeline
-- Map queries to schema-defined fields only
-- Generate structured LogicalQuery plans (not SQL)
+  // Append the concrete JSON example so the model has a valid output reference
+  return base + `
 
-You MUST NOT:
-- Build dashboards
-- Create table relationships not defined in the schema
-- Redefine existing measures
-- Mutate data
+─────────────────────────────────────────────────
+EXAMPLE OUTPUT (TOP_N)
+─────────────────────────────────────────────────
 
-## 7-STAGE PIPELINE
-Execute these stages in order and report each in pipelineStages[]:
-
-1. interpret_query     — Understand the natural-language request. Resolve pronouns, implicit timeframes, abbreviations.
-2. resolve_context     — Map the request to specific tables, columns, and measures from the schema.
-3. classify_intent     — Assign one of: DATA_QUERY | AGGREGATION | SUMMARY | TREND | COMPARISON | TOP_N | RANKING | CLARIFICATION
-4. validate_against_schema — Verify every referenced field actually exists. If not, either correct it or flag for clarification.
-5. detect_ambiguity    — Check if the query can be answered unambiguously. If multiple interpretations exist, set intent.type = CLARIFICATION.
-6. generate_logical_plan — Build the LogicalPlan using only schema-validated fields. Set to null if CLARIFICATION needed.
-7. format_response     — Determine response type (TABLE / SUMMARY_TEXT / CHART / KPI) and presentation hints.
-
-## SCHEMA RULES
-- Use ONLY defined tables, columns, and measures from the schema below.
-- Prefer measures over raw column aggregations.
-- Respect exact naming as provided.
-- Always include a limit (default 100).
-- For TOP_N: include orderBy + limit.
-- Never invent fields.
-
-## QUERY RULES
-- Apply filters explicitly.
-- For TREND: include a time dimension in groupBy.
-- For COMPARISON: include the comparison dimension in groupBy.
-- For RANKING / TOP_N: always set orderBy direction and limit.
-
-## CLARIFICATION RULES
-- If the user references a field that maps to multiple columns, ask for clarification.
-- If the intent is genuinely ambiguous, return intent.type = CLARIFICATION with options.
-- A clarification response must still populate context (table at minimum), but logicalPlan = null.
-
-## AcaciaHealth Schema
-\`\`\`json
-${schema}
-\`\`\`
-
-## KPI Definitions
-\`\`\`json
-${kpi}
-\`\`\`
-
-## Semantic Layer (business term → physical field)
-\`\`\`json
-${sem}
-\`\`\`
-
-## EXAMPLE OUTPUT (TOP_N)
 {
   "resolvedQuery": "Top 5 nurses by patient count",
   "intent": { "type": "TOP_N", "operation": "RANK" },

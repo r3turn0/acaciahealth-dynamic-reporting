@@ -16,6 +16,7 @@
 import { NextRequest } from "next/server";
 import { streamText } from "ai";
 import { getModel } from "@/lib/ai/gateway";
+import { buildConversationalSystemPrompt } from "@/lib/ai/insightAgentPrompt";
 
 export const runtime = "edge";
 
@@ -41,17 +42,7 @@ export async function POST(req: NextRequest) {
     return new Response("question is required", { status: 400 });
   }
 
-  const systemPrompt = `You are a senior healthcare analytics consultant for AcaciaHealth, an operator of home health and hospice services.
-You have access to the current KPI intelligence snapshot for the active invoice period.
-Answer questions directly and concisely using the KPI data provided. Be specific with numbers from the context.
-
-Rules:
-- Answer in 2–5 sentences unless the question requires a list or table.
-- Use healthcare / home health domain language (census, SOC, discharge, LUPA, PDGM, branch, etc.).
-- Ground every claim in the KPI context — never invent figures not present in it.
-- If a question cannot be answered from the context, say so clearly and suggest what data would help.
-- Format lists with short bullet lines when presenting multiple items.
-- Do not repeat the full context back — only reference the relevant parts.`;
+  const systemPrompt = buildConversationalSystemPrompt();
 
   const dateContext =
     start_date && end_date
