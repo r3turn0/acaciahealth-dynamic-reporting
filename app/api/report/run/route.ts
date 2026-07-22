@@ -1,19 +1,22 @@
+/**
+ * POST /api/report/run  →  GATEWAY ADAPTER
+ *
+ * Report execution is now routed through QueryGateway — the single permitted
+ * SQL execution entry point. Legacy report runner payload is translated to
+ * a GatewayRequest with source="report_builder".
+ */
+
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { generateSQL } from "@/lib/services/queryGenerator";
-import { validateQuery } from "@/lib/services/queryGuard";
-import { executeQuery, isDbConfigured } from "@/lib/services/db";
+import { runQueryGateway } from "@/lib/gateway/QueryGateway";
 import { formatReport } from "@/lib/services/formatter";
-import { buildCacheKey, getCache, setCache } from "@/lib/services/cache";
-import type { ReportOutput } from "@/lib/services/formatter";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { report_name, prompt, filters } = body;
 
-    // Input validation
     if (!report_name || typeof report_name !== "string") {
       return NextResponse.json({ error: "report_name is required" }, { status: 400 });
     }
@@ -27,77 +30,46 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Cache check
-    const cacheKey = buildCacheKey(prompt, filters);
-    const cached = getCache<ReportOutput>(cacheKey);
-    if (cached) {
-      console.log("[v0] Cache hit for key:", cacheKey.slice(0, 12) + "...");
-      return NextResponse.json({ ...cached, cache_hit: true });
-    }
+    const result = await runQueryGateway({
+      query: prompt,
+      source: "report_builder",
+      startDate: filters.date_range.start_date,
+      endDate: filters.date_range.end_date,
+      branchCode: filters.branch_code,
+      reportName: report_name,
+    });
 
-    // Generate SQL
-    const { sql, params, kpi } = generateSQL(prompt, filters);
-    console.log("[v0] Generated SQL for KPI:", kpi);
-
-    // Validate SQL
-    const validation = validateQuery(sql);
-    if (!validation.valid) {
-      console.log("[v0] Query validation failed:", validation.errors);
+    if (!result.validation.valid) {
       return NextResponse.json(
-        { error: "Query validation failed", details: validation.errors },
+        { error: "Query validation failed", details: result.validation.errors },
         { status: 422 }
       );
     }
 
-    // Check if DB is configured
-    if (!isDbConfigured()) {
-      // Return mock data for demo/preview purposes
-      const mockData = generateMockData(kpi, filters);
-      const report = formatReport(report_name, filters, mockData, kpi, sql);
-      return NextResponse.json({ ...report, demo_mode: true, cache_hit: false });
-    }
+    const rows = result.execution?.rows ?? [];
+    const report = formatReport(
+      report_name,
+      filters,
+      rows as Record<string, unknown>[],
+      result.intent.requiredKpis[0] ?? "custom",
+      result.sql
+    );
 
-    // Execute
-    const data = await executeQuery(sql, params);
-    const report = formatReport(report_name, filters, data as Record<string, unknown>[], kpi, sql);
-
-    setCache(cacheKey, report);
-
-    return NextResponse.json({ ...report, cache_hit: false });
+    return NextResponse.json({
+      ...report,
+      demo_mode: result.demoMode,
+      cache_hit: false,
+      gateway: {
+        requestId: result.requestId,
+        confidence: result.confidence,
+        pipeline: result.pipeline,
+        intent: result.intent,
+        lineage: result.lineage,
+        governance: result.governance,
+      },
+    });
   } catch (err) {
-    console.error("[db] Report run error:", err);
+    console.error("[Gateway→report/run] error:", err);
     return NextResponse.json({ error: "Report execution failed" }, { status: 500 });
   }
-}
-
-function generateMockData(
-  kpi: string,
-  filters: { date_range: { start_date: string; end_date: string } }
-): Record<string, unknown>[] {
-  const branches = [
-    "Hospice OC",
-    "Home Health",
-    "Hospice GI",
-    "Hospice IRC",
-    "Palliative Care",
-    "Pediatrics",
-  ];
-
-  const startDate = new Date(filters.date_range.start_date);
-  const endDate = new Date(filters.date_range.end_date);
-  const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-  const weeks = Math.max(1, Math.floor(daysDiff / 7));
-
-  const data: Record<string, unknown>[] = [];
-  for (const branch of branches) {
-    for (let w = 1; w <= weeks; w++) {
-      const base = kpi === "revenue" ? 50000 + Math.random() * 80000 : 5 + Math.random() * 30;
-      data.push({
-        branch_name: branch,
-        week_number: w,
-        [kpi]: kpi === "revenue" ? Math.round(base * 100) / 100 : Math.round(base),
-      });
-    }
-  }
-  return data;
 }

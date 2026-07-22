@@ -25,7 +25,6 @@ import "@/lib/orchestrator/PipelineEngine"; // ensure seeded
 // end-to-end in demo mode.
 
 import { runSemanticPipeline } from "@/lib/agents/semanticQueryEngine";
-import { planQuery }           from "@/lib/agents/queryPlanner";
 import type { AgentConfig }    from "@/lib/orchestrator/AgentRegistryStore";
 import type { PipelineContext } from "@/lib/orchestrator/PipelineEngine";
 
@@ -59,16 +58,34 @@ const executor: AgentExecutorFn = async (
     }
 
     case "QueryGenerationAgent": {
+      // ALL SQL generation must pass through QueryGateway — the single
+      // permitted SQL execution entry point for the application.
       if (inp.query) {
         try {
-          const plan = await planQuery({
-            prompt:     String(inp.query),
-            startDate:  String(inp.startDate ?? ""),
-            endDate:    String(inp.endDate ?? ""),
+          const { runQueryGateway } = await import("@/lib/gateway/QueryGateway");
+          const gwResult = await runQueryGateway({
+            query:      String(inp.query),
+            source:     "pipeline",
+            startDate:  String(inp.startDate ?? new Date(Date.now() - 30 * 86400_000).toISOString().split("T")[0]),
+            endDate:    String(inp.endDate ?? new Date().toISOString().split("T")[0]),
             branchCode: inp.branchCode ? String(inp.branchCode) : undefined,
-            role:       (ctx.role as "admin" | "analyst" | "viewer") ?? "analyst",
+            role:       (ctx.role as string) ?? "analyst",
+            planOnly:   true,
           });
-          return { ...inp, plan, sql: plan.sql };
+          return {
+            ...inp,
+            plan: {
+              sql:           gwResult.sql,
+              explanation:   gwResult.explanation,
+              tables_used:   gwResult.lineage.tablesUsed,
+              filters_applied: gwResult.lineage.filtersApplied,
+              kpi_detected:  gwResult.intent.requiredKpis[0] ?? gwResult.intent.type,
+              strategy:      "sql",
+              confidence_score: gwResult.confidence,
+            },
+            sql:       gwResult.sql,
+            gateway:   { requestId: gwResult.requestId, pipeline: gwResult.pipeline, validation: gwResult.validation },
+          };
         } catch {
           return { ...inp, sql: null, plan: null };
         }

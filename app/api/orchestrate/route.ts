@@ -1,23 +1,13 @@
 /**
- * POST /api/orchestrate
+ * POST /api/orchestrate  →  GATEWAY ADAPTER
  *
- * Single endpoint for the full multi-agent pipeline:
- * semantic → planner → validator → executor → healer → presentation
- *
- * Request:
- *   query      — natural language question
- *   startDate  — ISO date string
- *   endDate    — ISO date string
- *   branchCode — optional branch filter
- *   role       — "admin" | "analyst" | "viewer"
- *   execute    — boolean: if true, run the SQL against the DB (default true)
- *
- * Response: OrchestrationResult
+ * The multi-agent orchestration pipeline now routes through QueryGateway.
+ * source="natural_language" — all 9 stages enforced.
+ * OrchestrationResult shape preserved for callers.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { orchestrate } from "@/lib/agents/orchestrator";
-import { isDbConfigured, executeQueryWithParams } from "@/lib/services/db";
+import { runQueryGateway } from "@/lib/gateway/QueryGateway";
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
@@ -41,40 +31,53 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "query is required" }, { status: 400 });
   }
 
-  // Build executor function only when DB is configured and caller wants execution
-  const executeSQL =
-    execute && isDbConfigured()
-      ? async (sql: string) => {
-          try {
-            const params = [
-              { name: "StartDate", value: startDate },
-              { name: "EndDate",   value: endDate },
-            ];
-            const result = await executeQueryWithParams(sql, params);
-            return {
-              ok:   true,
-              rows: result as Record<string, unknown>[],
-            };
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            return { ok: false, error: msg, dbErrorLogs: msg };
-          }
-        }
-      : undefined;
-
   try {
-    const result = await orchestrate({
+    const result = await runQueryGateway({
       query,
+      source: "natural_language",
       startDate,
       endDate,
       branchCode,
       role,
-      executeSQL,
+      planOnly: !execute,
     });
 
-    return NextResponse.json(result);
+    // Map GatewayResult back to legacy OrchestrationResult shape
+    return NextResponse.json({
+      query,
+      plan: {
+        sql: result.sql,
+        explanation: result.explanation,
+        tables_used: result.lineage.tablesUsed,
+        filters_applied: result.lineage.filtersApplied,
+        kpi_detected: result.intent.requiredKpis[0] ?? result.intent.type,
+        strategy: "sql",
+        confidence_score: result.confidence,
+      },
+      validation: result.validation,
+      execution: result.execution
+        ? {
+            ok: true,
+            rows: result.execution.rows,
+            rowCount: result.execution.rowCount,
+            executionMs: result.execution.executionMs,
+            truncated: result.execution.truncated,
+          }
+        : execute
+          ? { ok: false, error: "Execution blocked by validation or no DB configured" }
+          : null,
+      intent: result.intent,
+      semanticContext: result.semanticContext,
+      approvedPattern: result.approvedPattern,
+      pipeline: result.pipeline,
+      lineage: result.lineage,
+      governance: result.governance,
+      demoMode: result.demoMode,
+      elapsedMs: result.elapsedMs,
+      requestId: result.requestId,
+    });
   } catch (err) {
-    console.error("[orchestrate] Unhandled error:", err);
+    console.error("[Gateway→orchestrate] error:", err);
     return NextResponse.json(
       { error: "Orchestration failed", details: err instanceof Error ? err.message : String(err) },
       { status: 500 }
