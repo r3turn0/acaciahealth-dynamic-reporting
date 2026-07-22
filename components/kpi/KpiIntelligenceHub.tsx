@@ -15,7 +15,7 @@
  *       No KPI logic may exist outside this hub.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import {
   Brain,
@@ -72,6 +72,11 @@ export function KpiIntelligenceHub({
   onNavigate,
 }: KpiIntelligenceHubProps) {
   const [tab, setTab] = useState<KpiTab>(initialTab);
+
+  // Respond to sidebar sub-item clicks while the hub is already mounted
+  useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
 
   const activeTab = TABS.find((t) => t.id === tab) ?? TABS[0];
 

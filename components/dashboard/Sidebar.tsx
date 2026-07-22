@@ -211,11 +211,20 @@ export function Sidebar({ activeView, userRole: _userRole, onNavigate }: Sidebar
 
   const activePrimary = getPrimary(activeView);
 
-  // Track which primary items are expanded (open accordion)
-  const [expanded, setExpanded] = useState<Set<PrimaryView>>(() => {
-    // Auto-expand the active section on mount
-    return new Set([activePrimary]);
-  });
+  // Track which primary items are expanded (open accordion).
+  // Initialise with the active section open.
+  const [expanded, setExpanded] = useState<Set<PrimaryView>>(() => new Set([activePrimary]));
+
+  // Keep the accordion in sync whenever the active primary section changes
+  // (e.g. programmatic navigation, DashboardHome quick-actions, etc.)
+  useEffect(() => {
+    setExpanded((prev) => {
+      if (prev.has(activePrimary)) return prev; // already open — no change
+      const next = new Set(prev);
+      next.add(activePrimary);
+      return next;
+    });
+  }, [activePrimary]);
 
   function toggleExpand(id: PrimaryView) {
     setExpanded((prev) => {

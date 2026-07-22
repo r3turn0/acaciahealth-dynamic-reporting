@@ -217,8 +217,31 @@ export default function Home() {
   const { title, subtitle } = getTitle(view);
   const primary       = getPrimaryView(view);
 
-  // Sub-tab to pass into hub components
-  const subTab = view.includes("-") ? view.split("-").slice(1).join("-") : undefined;
+  // Sub-tab to pass into hub components.
+  // Strip the primary prefix segment to get the sub-tab key.
+  // e.g. "admin-audit"            → "audit"
+  //      "dataset-studio-validate"→ "validate"
+  //      "reports-saved"          → "saved"
+  //      "kpi-registry"           → "registry"
+  //      "schema-metadata"        → "metadata"
+  //      "reports" (no dash)      → undefined
+  function deriveSubTab(v: string): string | undefined {
+    if (v === "home" || v === "discover" || v === "reports" || v === "kpi" || v === "schema" || v === "administration" || v === "dataset-studio") return undefined;
+    // Strip the longest matching primary prefix
+    const prefixes: [string, string][] = [
+      ["dataset-studio-", "dataset-studio-"],
+      ["admin-",          "admin-"],
+      ["reports-",        "reports-"],
+      ["kpi-",            "kpi-"],
+      ["schema-",         "schema-"],
+      ["discover-",       "discover-"],
+    ];
+    for (const [prefix, strip] of prefixes) {
+      if (v.startsWith(prefix)) return v.slice(strip.length);
+    }
+    return undefined;
+  }
+  const subTab = deriveSubTab(view);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">

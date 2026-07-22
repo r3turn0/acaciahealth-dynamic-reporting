@@ -10,7 +10,7 @@
  * Spec: ≤ 7 primary nav items · Administration is primary item #7
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import {
   ShieldCheck,
@@ -81,6 +81,11 @@ interface AdministrationHubProps {
 export function AdministrationHub({ initialTab = "audit", currentUser, onNavigate }: AdministrationHubProps) {
   const [tab, setTab] = useState<AdminTab>(initialTab);
   const isAdmin = currentUser.role === "Admin";
+
+  // Respond to sidebar sub-item clicks that change initialTab while this hub is already mounted
+  useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
 
   const visibleTabs = TABS.filter((t) => !t.adminOnly || isAdmin);
   const activeTab   = TABS.find((t) => t.id === tab) ?? TABS[0];

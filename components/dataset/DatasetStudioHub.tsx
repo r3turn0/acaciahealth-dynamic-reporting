@@ -18,7 +18,7 @@
  *   - Single dataset design tool — no alternatives
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import {
   Layers,
@@ -79,6 +79,11 @@ interface DatasetStudioHubProps {
 
 export function DatasetStudioHub({ initialTab = "build", onNavigate }: DatasetStudioHubProps) {
   const [tab, setTab] = useState<DatasetTab>(initialTab);
+
+  // Respond to sidebar sub-item clicks while the hub is already mounted
+  useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
 
   const activeTab = TABS.find((t) => t.id === tab) ?? TABS[0];
 
