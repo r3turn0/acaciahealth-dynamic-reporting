@@ -66,9 +66,12 @@ interface AgentEntry {
 }
 
 interface RegistryResponse {
-  agents:      AgentEntry[];
-  count:       number;
-  generatedAt: string;
+  agents:       AgentEntry[];
+  count:        number;
+  enabledCount: number;
+  totalCount:   number;
+  generatedAt:  string;
+  version:      string;
 }
 
 // ── Domain icon / colour map ──────────────────────────────────────────────────
@@ -169,7 +172,7 @@ function PipelineTrace({ agents }: { agents: AgentEntry[] }) {
   );
 }
 
-// ── Drag state tracked via refs (no re-renders during drag) ───────────────────
+// ── Drag state tracked via refs (no re-renders during drag) ─────────────────���─
 
 interface AgentCardProps {
   agent:        AgentEntry;
@@ -244,15 +247,99 @@ function AgentCard({
         </div>
       </div>
 
-      {/* Expanded description */}
+      {/* Expanded details */}
       {expanded && (
-        <div className="px-4 pb-4 pt-0 border-t border-border/50">
+        <div className="px-4 pb-4 pt-0 border-t border-border/50 flex flex-col gap-3">
+          {/* Description */}
           <p className="text-xs text-muted-foreground leading-relaxed pt-3">{agent.description}</p>
-          <div className="flex items-center gap-3 text-[10px] text-muted-foreground font-mono mt-2 flex-wrap">
-            <span className="bg-muted/60 border border-border rounded px-2 py-0.5">{agent.name}</span>
-            <span>v{agent.version}</span>
-            <span className={cn("px-2 py-0.5 rounded border", bg, border, color)}>{agent.domain}</span>
+
+          {/* Identity chips */}
+          <div className="flex items-center gap-2 flex-wrap text-[10px]">
+            <span className="bg-muted/60 border border-border rounded px-2 py-0.5 font-mono">{agent.name}</span>
+            <span className="bg-muted/60 border border-border rounded px-2 py-0.5 font-mono">v{agent.version}</span>
+            {agent.isActiveVersion && (
+              <span className="bg-chart-3/10 border border-chart-3/25 text-chart-3 rounded px-2 py-0.5 flex items-center gap-1">
+                <GitBranch className="w-2.5 h-2.5" />active
+              </span>
+            )}
+            <span className={cn("px-2 py-0.5 rounded border", bg, border, color)}>{agent.runtime}</span>
           </div>
+
+          {/* Dependencies */}
+          {agent.dependencies.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Dependencies</p>
+              <div className="flex flex-wrap gap-1.5">
+                {agent.dependencies.map((dep) => (
+                  <span key={dep} className="text-[10px] bg-chart-2/10 border border-chart-2/25 text-chart-2 rounded px-2 py-0.5 font-mono">
+                    {dep}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tags */}
+          {agent.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {agent.tags.map((tag) => (
+                <span key={tag} className="text-[10px] bg-muted/50 border border-border rounded px-1.5 py-0.5 text-muted-foreground">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Feature flag */}
+          {agent.featureFlag && (
+            <div className="flex items-center gap-2">
+              <ToggleRight className="w-3.5 h-3.5 text-chart-5 shrink-0" />
+              <span className="text-[10px] text-muted-foreground">Feature flag:</span>
+              <span className="text-[10px] font-mono text-chart-5 bg-chart-5/10 border border-chart-5/25 rounded px-2 py-0.5">{agent.featureFlag}</span>
+            </div>
+          )}
+
+          {/* A/B variants */}
+          {agent.abVariants.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <FlaskConical className="w-3 h-3 text-chart-5 shrink-0" />
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">A/B Variants</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {agent.abVariants.map((v) => (
+                  <div key={v.label} className="flex items-center gap-1 text-[10px] bg-chart-5/8 border border-chart-5/20 rounded px-2 py-1">
+                    <span className="font-medium text-foreground">{v.label}</span>
+                    <span className="text-muted-foreground">weight: {v.weight}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Metrics */}
+          {agent.metrics.totalRuns > 0 && (
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: "Runs",    value: agent.metrics.totalRuns,     color: "text-foreground"    },
+                { label: "Success", value: agent.metrics.successRuns,   color: "text-chart-3"       },
+                { label: "Errors",  value: agent.metrics.errorRuns,     color: agent.metrics.errorRuns > 0 ? "text-destructive" : "text-muted-foreground" },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="bg-muted/40 border border-border/60 rounded-lg px-2.5 py-2 text-center">
+                  <p className={cn("text-sm font-bold", color)}>{value}</p>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-wide mt-0.5">{label}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Last error */}
+          {agent.metrics.lastErrorMsg && (
+            <div className="flex items-start gap-1.5 bg-destructive/8 border border-destructive/20 rounded-lg px-2.5 py-2">
+              <AlertCircle className="w-3 h-3 text-destructive mt-0.5 shrink-0" />
+              <p className="text-[10px] text-destructive leading-relaxed">{agent.metrics.lastErrorMsg}</p>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -261,13 +348,14 @@ function AgentCard({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function AgentRegistry() {
+export function AgentRegistry({ onNavigateToPipeline }: { onNavigateToPipeline?: () => void } = {}) {
   const [agents, setAgents]             = useState<AgentEntry[]>([]);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState<string | null>(null);
   const [expanded, setExpanded]         = useState<Set<string>>(new Set());
   const [lastRefresh, setLastRefresh]   = useState<string>("");
   const [showPipeline, setShowPipeline] = useState(false);
+  const [enabledCount, setEnabledCount] = useState(0);
 
   // Drag state — kept in refs so drag-over doesn't trigger full re-renders
   const dragIndex  = useRef<number | null>(null);
@@ -281,6 +369,7 @@ export function AgentRegistry() {
       const res  = await fetch("/api/agents/registry");
       const json = await res.json() as RegistryResponse;
       setAgents(json.agents ?? []);
+      setEnabledCount(json.enabledCount ?? (json.agents ?? []).filter((a) => a.enabled).length);
       setLastRefresh(new Date(json.generatedAt).toLocaleTimeString());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load registry");
@@ -329,7 +418,6 @@ export function AgentRegistry() {
     });
   }
 
-  const readyCount   = agents.filter((a) => a.status === "ready").length;
   const domainGroups = [...new Set(agents.map((a) => a.domain))].length;
 
   return (
@@ -355,6 +443,15 @@ export function AgentRegistry() {
               refreshed {lastRefresh}
             </span>
           )}
+          {onNavigateToPipeline && (
+            <button
+              onClick={onNavigateToPipeline}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+            >
+              <ArrowRight className="w-3.5 h-3.5" />
+              Pipeline Builder
+            </button>
+          )}
           <button
             onClick={() => setShowPipeline((v) => !v)}
             className={cn(
@@ -365,7 +462,7 @@ export function AgentRegistry() {
             )}
           >
             <Activity className="w-3.5 h-3.5" />
-            Pipeline
+            Trace
           </button>
           <button
             onClick={load}
@@ -383,7 +480,7 @@ export function AgentRegistry() {
         <div className="grid grid-cols-3 gap-3">
           {[
             { label: "Total Agents", value: agents.length, icon: Cpu,          color: "text-primary"  },
-            { label: "Ready",        value: readyCount,    icon: CheckCircle2, color: "text-chart-3"  },
+            { label: "Enabled",      value: enabledCount,  icon: CheckCircle2, color: "text-chart-3"  },
             { label: "Domains",      value: domainGroups,  icon: Layers,       color: "text-chart-2"  },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="bg-card border border-border rounded-xl px-4 py-3 flex flex-col gap-1">
