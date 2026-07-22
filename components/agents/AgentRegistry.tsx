@@ -18,17 +18,51 @@ import {
   Loader2,
   Activity,
   Layers,
+  FlaskConical,
+  ToggleLeft,
+  ToggleRight,
+  GitBranch,
+  Zap,
+  Shield,
+  Star,
+  ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+interface ABVariant {
+  label:  string;
+  weight: number;
+  config: Record<string, unknown>;
+}
+
+interface AgentMetrics {
+  totalRuns:     number;
+  successRuns:   number;
+  errorRuns:     number;
+  avgDurationMs: number;
+  lastRunAt?:    string;
+  lastErrorMsg?: string;
+}
+
 interface AgentEntry {
-  name:        string;
-  description: string;
-  domain:      string;
-  version:     string;
-  status:      "ready" | "running" | "error" | "idle";
+  name:            string;
+  description:     string;
+  domain:          string;
+  version:         string;
+  status:          "ready" | "running" | "error" | "idle" | "disabled" | "deprecated";
+  enabled:         boolean;
+  isActiveVersion: boolean;
+  dependencies:    string[];
+  tags:            string[];
+  runtime:         string;
+  featureFlag?:    string;
+  abVariants:      ABVariant[];
+  metrics:         AgentMetrics;
+  registeredAt?:   string;
+  updatedAt?:      string;
+  registeredBy?:   string;
 }
 
 interface RegistryResponse {
@@ -45,21 +79,37 @@ const DOMAIN_CONFIG: Record<string, { icon: React.ElementType; color: string; bg
   "KPI Intelligence":            { icon: LineChart, color: "text-chart-5",          bg: "bg-chart-5/10",     border: "border-chart-5/25"  },
   "KPI Definitions":             { icon: BookOpen,  color: "text-chart-2",          bg: "bg-chart-2/10",     border: "border-chart-2/25"  },
   "Relationship Engine":         { icon: Network,   color: "text-muted-foreground", bg: "bg-muted/60",       border: "border-border"      },
+  "Query Generation":            { icon: Zap,       color: "text-chart-5",          bg: "bg-chart-5/10",     border: "border-chart-5/25"  },
+  "Business Intelligence":       { icon: LineChart, color: "text-chart-1",          bg: "bg-chart-1/10",     border: "border-chart-1/25"  },
+  "Data Quality":                { icon: CheckCircle2, color: "text-chart-3",       bg: "bg-chart-3/10",     border: "border-chart-3/25"  },
+  "Report Validation":           { icon: CheckCircle2, color: "text-chart-3",       bg: "bg-chart-3/10",     border: "border-chart-3/25"  },
+  "Security Audit":              { icon: Shield,    color: "text-destructive",      bg: "bg-destructive/10", border: "border-destructive/25" },
+  "Recommendation Engine":       { icon: Star,      color: "text-chart-5",          bg: "bg-chart-5/10",     border: "border-chart-5/25"  },
 };
 const DEFAULT_DOMAIN = { icon: Cpu, color: "text-muted-foreground", bg: "bg-muted/60", border: "border-border" };
 const getDomainConfig = (domain: string) => DOMAIN_CONFIG[domain] ?? DEFAULT_DOMAIN;
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: AgentEntry["status"] }) {
+function StatusBadge({ status, enabled }: { status: AgentEntry["status"]; enabled?: boolean }) {
+  if (!enabled || status === "disabled") return (
+    <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground/60 bg-muted/40 border border-border rounded-full px-2 py-0.5">
+      <Circle className="w-2.5 h-2.5" />disabled
+    </span>
+  );
   if (status === "running") return (
-    <span className="flex items-center gap-1 text-[10px] font-medium text-chart-3 bg-chart-3/10 border border-chart-3/25 rounded-full px-2 py-0.5">
+    <span className="flex items-center gap-1 text-[10px] font-medium text-chart-5 bg-chart-5/10 border border-chart-5/25 rounded-full px-2 py-0.5">
       <Loader2 className="w-2.5 h-2.5 animate-spin" />running
     </span>
   );
   if (status === "error") return (
     <span className="flex items-center gap-1 text-[10px] font-medium text-destructive bg-destructive/10 border border-destructive/25 rounded-full px-2 py-0.5">
       <AlertCircle className="w-2.5 h-2.5" />error
+    </span>
+  );
+  if (status === "deprecated") return (
+    <span className="flex items-center gap-1 text-[10px] font-medium text-chart-5 bg-chart-5/10 border border-chart-5/25 rounded-full px-2 py-0.5">
+      <AlertCircle className="w-2.5 h-2.5" />deprecated
     </span>
   );
   if (status === "ready") return (

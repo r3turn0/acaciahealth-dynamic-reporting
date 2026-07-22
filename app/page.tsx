@@ -21,12 +21,13 @@ import { SessionManager } from "@/components/security/SessionManager";
 import { SecurityConsole } from "@/components/admin/SecurityConsole";
 import { AuditDashboard } from "@/components/audit/AuditDashboard";
 import { AgentRegistry } from "@/components/agents/AgentRegistry";
+import { PipelineBuilder } from "@/components/pipeline/PipelineBuilder";
 import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 
 // "metadata" and "registry" redirect to "schema" (now SchemaHub)
 // "contracts" (DataContractWorkspace) kept for backwards compatibility
-type View = "dashboard" | "studio" | "data" | "kpi" | "kpiadmin" | "schema" | "metadata" | "bi" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin" | "agents" | "designer" | "registry";
+type View = "dashboard" | "studio" | "data" | "kpi" | "kpiadmin" | "schema" | "metadata" | "bi" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin" | "agents" | "pipeline" | "designer" | "registry";
 
 const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   dashboard: {
@@ -89,6 +90,10 @@ const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
   agents: {
     title: "Agent Registry",
     subtitle: "Registered agents — drag to reorder pipeline execution sequence, inspect status and capabilities",
+  },
+  pipeline: {
+    title: "Pipeline Builder",
+    subtitle: "Construct, version, and execute dynamic multi-agent pipelines — no hardcoded workflows",
   },
   designer: {
     title: "Dataset Designer",
@@ -332,7 +337,12 @@ export default function Home() {
 
           {view === "agents" && (
             <div className="max-w-3xl mx-auto w-full">
-              <AgentRegistry />
+              <AgentRegistry onNavigateToPipeline={() => setView("pipeline")} />
+            </div>
+          )}
+          {view === "pipeline" && (
+            <div className="max-w-6xl mx-auto w-full">
+              <PipelineBuilder />
             </div>
           )}
           {view === "designer" && (
