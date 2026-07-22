@@ -2,130 +2,168 @@
 
 import { useState, useEffect } from "react";
 import { Sidebar } from "@/components/dashboard/Sidebar";
-import { SchemaViewer } from "@/components/dashboard/SchemaViewer";
-import { KpiExplorer } from "@/components/dashboard/KpiExplorer";
 import { DashboardHome } from "@/components/dashboard/DashboardHome";
-import { ReportStudio } from "@/components/studio/ReportStudio";
-import { SavedReports } from "@/components/studio/SavedReports";
-import type { LoadedReport } from "@/components/studio/ReportStudio";
-import { DataExplorer } from "@/components/data/DataExplorer";
-import { DatasetDesigner } from "@/components/dataset/DatasetDesigner";
-import { SchemaHub } from "@/components/schema/SchemaHub";
-import { BiStudio } from "@/components/bi/BiStudio";
-import { DataContractWorkspace } from "@/components/access/DataContractWorkspace";
-import { KpiSchemaAdmin } from "@/components/kpi-admin/KpiSchemaAdmin";
 
-import { LoginPage } from "@/components/auth/LoginPage";
+// ── Consolidated module imports ───────────────────────────────────────────────
+// Each hub merges previously-separate screens into one governed surface.
+
+import { DataExplorer }       from "@/components/data/DataExplorer";
+import { DatasetStudioHub }   from "@/components/dataset/DatasetStudioHub";
+import { ReportStudio }       from "@/components/studio/ReportStudio";
+import { SavedReports }       from "@/components/studio/SavedReports";
+import { BiStudio }           from "@/components/bi/BiStudio";
+import { KpiIntelligenceHub } from "@/components/kpi/KpiIntelligenceHub";
+import { SchemaHub }          from "@/components/schema/SchemaHub";
+import { AdministrationHub }  from "@/components/admin/AdministrationHub";
+
+import { LoginPage }    from "@/components/auth/LoginPage";
 import type { AuthUser } from "@/components/auth/LoginPage";
-import { SessionManager } from "@/components/security/SessionManager";
-import { SecurityConsole } from "@/components/admin/SecurityConsole";
-import { AuditDashboard } from "@/components/audit/AuditDashboard";
-import { AgentRegistry } from "@/components/agents/AgentRegistry";
-import { PipelineBuilder } from "@/components/pipeline/PipelineBuilder";
+import type { LoadedReport } from "@/components/studio/ReportStudio";
 import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 
-// "metadata" and "registry" redirect to "schema" (now SchemaHub)
-// "contracts" (DataContractWorkspace) kept for backwards compatibility
-type View = "dashboard" | "studio" | "data" | "kpi" | "kpiadmin" | "schema" | "metadata" | "bi" | "contracts" | "saved" | "audit" | "settings" | "sessions" | "admin" | "agents" | "pipeline" | "designer" | "registry";
+// ── View type — maps directly to sidebar sub-item IDs ────────────────────────
+//
+// Primary views (7):  home, discover, dataset-studio, reports, kpi, schema, administration
+// Sub-views depth-2:  prefixed with their primary (e.g. "reports-saved", "kpi-admin")
+// Legacy aliases:     kept so any existing deep-links still resolve
 
-const VIEW_TITLES: Record<View, { title: string; subtitle: string }> = {
-  dashboard: {
-    title: "Dashboard",
-    subtitle: "AcaciaHealth Dynamic Reporting Engine — overview",
-  },
-  studio: {
-    title: "Report Studio",
-    subtitle: "Ask AI, edit SQL, run queries, view results, save reports",
-  },
-  data: {
-    title: "Discover Data",
-    subtitle: "Search, preview, and sample tables — then add them to your dataset",
-  },
-  kpi: {
-    title: "KPI Explorer",
-    subtitle: "Browse available KPI definitions and API specs",
-  },
-  kpiadmin: {
-    title: "KPI Schema Administration",
-    subtitle: "Schema v6.0 · Create, version, validate, approve, publish, and deploy KPI definitions without code changes",
-  },
-  schema: {
-    title: "Schema Hub",
-    subtitle: "Schema Explorer · Metadata Engine · Schema Registry — unified schema intelligence platform",
-  },
-  metadata: {
-    title: "Schema Hub",
-    subtitle: "Schema Explorer · Metadata Engine · Schema Registry — unified schema intelligence platform",
-  },
-  bi: {
-    title: "BI Studio",
-    subtitle: "Build datasets, explore KPIs with drag-and-drop, import Excel, and generate reports with AI",
-  },
-  contracts: {
-    title: "Build Dataset",
-    subtitle: "Shape a reusable dataset — pick tables, columns, and relationships the access proxy will enforce",
-  },
+type View =
+  // Primary
+  | "home"
+  | "discover"
+  | "discover-semantic"
+  | "dataset-studio"
+  | "dataset-studio-validate"
+  | "dataset-studio-publish"
+  | "dataset-studio-history"
+  | "reports"
+  | "reports-saved"
+  | "reports-bi"
+  | "kpi"
+  | "kpi-registry"
+  | "kpi-admin"
+  | "schema"
+  | "schema-metadata"
+  | "schema-registry"
+  | "schema-lineage"
+  | "schema-glossary"
+  | "administration"
+  | "admin-audit"
+  | "admin-security"
+  | "admin-sessions"
+  | "admin-agents"
+  | "admin-pipeline"
+  | "admin-settings"
+  // Legacy aliases — redirect to unified views
+  | "dashboard"
+  | "studio"
+  | "data"
+  | "kpiadmin"
+  | "bi"
+  | "saved"
+  | "audit"
+  | "sessions"
+  | "admin"
+  | "agents"
+  | "pipeline"
+  | "settings"
+  | "designer"
+  | "contracts"
+  | "metadata"
+  | "registry";
 
-  saved: {
-    title: "Saved Reports",
-    subtitle: "Your saved report library — load, re-run, or delete",
-  },
-  audit: {
-    title: "Audit & Monitoring",
-    subtitle: "Immutable authentication, access, and policy event log — HIPAA §164.312 · Azure Sentinel",
-  },
-  sessions: {
-    title: "Session Management",
-    subtitle: "Active sessions, device compliance, revocation, and inactivity timeout",
-  },
-  admin: {
-    title: "Security Console",
-    subtitle: "RBAC/ABAC, Conditional Access, IP allowlists, PAM, and break-glass — privileged access required",
-  },
-  settings: {
-    title: "Settings",
-    subtitle: "Environment and connection configuration",
-  },
-  agents: {
-    title: "Agent Registry",
-    subtitle: "Registered agents — drag to reorder pipeline execution sequence, inspect status and capabilities",
-  },
-  pipeline: {
-    title: "Pipeline Builder",
-    subtitle: "Construct, version, and execute dynamic multi-agent pipelines — no hardcoded workflows",
-  },
-  designer: {
-    title: "Dataset Designer",
-    subtitle: "Discover tables, build semantic datasets via drag-and-drop, define PK/FK relationships, and publish analytical models",
-  },
-  registry: {
-    title: "Schema Hub",
-    subtitle: "Schema Explorer · Metadata Engine · Schema Registry — unified schema intelligence platform",
-  },
+// ── Title map — governs the topbar header ─────────────────────────────────────
+
+const VIEW_TITLES: Partial<Record<View, { title: string; subtitle: string }>> = {
+  home:                      { title: "Home",                  subtitle: "AcaciaHealth Dynamic Reporting Platform — overview" },
+  // Discover Data
+  discover:                  { title: "Discover Data",         subtitle: "Global search — tables, columns, relationships, glossary, lineage, and semantic search" },
+  "discover-semantic":       { title: "Discover Data",         subtitle: "Semantic search — find data by meaning, not just name" },
+  // Dataset Studio
+  "dataset-studio":          { title: "Dataset Studio",        subtitle: "Build — Validate — Publish — one governed workflow" },
+  "dataset-studio-validate": { title: "Dataset Studio",        subtitle: "Validate dataset — schema checks, relationship integrity, Power BI compatibility" },
+  "dataset-studio-publish":  { title: "Dataset Studio",        subtitle: "Publish dataset — version, register in Schema Hub, expose to reports" },
+  "dataset-studio-history":  { title: "Dataset Studio",        subtitle: "Version history — inspect all published versions and lineage" },
+  // Reports
+  reports:                   { title: "Reports",               subtitle: "Report Studio — natural language, SQL editor, and query gateway" },
+  "reports-saved":           { title: "Reports",               subtitle: "Report Catalog — single catalog of all governed reports" },
+  "reports-bi":              { title: "Reports",               subtitle: "BI Studio — drag-and-drop KPI canvas and AI copilot" },
+  // KPI Intelligence
+  kpi:                       { title: "KPI Intelligence",      subtitle: "AI-powered KPI analysis — trends, variance, root cause, anomaly detection" },
+  "kpi-registry":            { title: "KPI Intelligence",      subtitle: "KPI Registry — single source of truth for all KPI definitions and formulas" },
+  "kpi-admin":               { title: "KPI Intelligence",      subtitle: "KPI Governance — version, approve, and publish KPI definitions" },
+  // Schema Hub
+  schema:                    { title: "Schema Hub",            subtitle: "Schema Explorer — single metadata authority for the platform" },
+  "schema-metadata":         { title: "Schema Hub",            subtitle: "Metadata Engine — AI schema inference, column roles, and join path grounding" },
+  "schema-registry":         { title: "Schema Hub",            subtitle: "Schema Registry — full metadata catalog, lineage, tags, and KPI dependencies" },
+  "schema-lineage":          { title: "Schema Hub",            subtitle: "Lineage Explorer — end-to-end data lineage from source to report" },
+  "schema-glossary":         { title: "Schema Hub",            subtitle: "Business Glossary — canonical business definitions and term ownership" },
+  // Administration
+  administration:            { title: "Administration",        subtitle: "Audit, security, sessions, agents, pipelines, and settings" },
+  "admin-audit":             { title: "Administration",        subtitle: "Audit & Monitoring — immutable event log, HIPAA §164.312" },
+  "admin-security":          { title: "Administration",        subtitle: "Security Console — RBAC, conditional access, IP allowlists, PAM" },
+  "admin-sessions":          { title: "Administration",        subtitle: "Session Manager — active sessions, device compliance, revocation" },
+  "admin-agents":            { title: "Administration",        subtitle: "Agent Registry — registered agents, versioning, and capabilities" },
+  "admin-pipeline":          { title: "Administration",        subtitle: "Pipeline Builder — dynamic multi-agent pipeline construction" },
+  "admin-settings":          { title: "Administration",        subtitle: "Settings — environment, connections, and configuration" },
 };
+
+// Resolve a raw view string (including legacy aliases) → canonical View
+function canonicalize(raw: string): View {
+  switch (raw) {
+    case "dashboard": return "home";
+    case "studio":    return "reports";
+    case "data":      return "discover";
+    case "kpiadmin":  return "kpi-admin";
+    case "bi":        return "reports-bi";
+    case "saved":     return "reports-saved";
+    case "audit":     return "admin-audit";
+    case "sessions":  return "admin-sessions";
+    case "admin":     return "admin-security";
+    case "agents":    return "admin-agents";
+    case "pipeline":  return "admin-pipeline";
+    case "settings":  return "admin-settings";
+    case "designer":  return "dataset-studio";
+    case "contracts": return "dataset-studio";
+    case "metadata":  return "schema-metadata";
+    case "registry":  return "schema-registry";
+    default:          return raw as View;
+  }
+}
+
+function getTitle(view: View): { title: string; subtitle: string } {
+  return VIEW_TITLES[view] ?? VIEW_TITLES["home"]!;
+}
+
+// ── Primary view resolver — maps canonical View → which hub to render ─────────
+
+function getPrimaryView(view: View): string {
+  if (view === "home" || view === "dashboard")                                   return "home";
+  if (view.startsWith("discover") || view === "data")                           return "discover";
+  if (view.startsWith("dataset"))                                                return "dataset-studio";
+  if (view.startsWith("reports") || view === "studio" || view === "bi")         return "reports";
+  if (view.startsWith("kpi"))                                                    return "kpi";
+  if (view.startsWith("schema") || view === "metadata" || view === "registry")  return "schema";
+  if (view.startsWith("admin") || view === "audit" || view === "sessions" || view === "agents" || view === "pipeline" || view === "settings") return "administration";
+  return "home";
+}
 
 const SESSION_KEY = "acacia_auth_user";
 
 export default function Home() {
-  const [view, setView] = useState<View>("dashboard");
+  const [view, setView]               = useState<View>("home");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [todayLabel, setTodayLabel] = useState<string>("");
+  const [todayLabel, setTodayLabel]   = useState<string>("");
   const [loadedReport, setLoadedReport] = useState<LoadedReport | null>(null);
-  // null = not yet checked, false = unauthenticated, AuthUser = authenticated
-  const [authUser, setAuthUser] = useState<AuthUser | null | false>(null);
+  const [authUser, setAuthUser]       = useState<AuthUser | null | false>(null);
 
   const { data: nextAuthSession, status: nextAuthStatus } = useSession();
 
   useEffect(() => {
     setTodayLabel(
-      new Date().toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
+      new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     );
-    // Rehydrate demo session from sessionStorage
     try {
       const stored = sessionStorage.getItem(SESSION_KEY);
       setAuthUser(stored ? (JSON.parse(stored) as AuthUser) : false);
@@ -134,54 +172,53 @@ export default function Home() {
     }
   }, []);
 
-  // If a real Azure AD session exists, synthesise an AuthUser from it
   useEffect(() => {
     if (nextAuthStatus === "authenticated" && nextAuthSession?.user && authUser === false) {
       const u: AuthUser = {
-        id: (nextAuthSession.user as { id?: string }).id ?? nextAuthSession.user.email ?? "azure-ad",
-        name: nextAuthSession.user.name ?? nextAuthSession.user.email ?? "User",
-        email: nextAuthSession.user.email ?? "",
-        role: ((nextAuthSession as { roles?: string[] }).roles ?? []).includes("Admin") ? "Admin" : "Analyst",
-        department: "Azure AD",
-        mfa_method: "azure_ad",
-        aal: "AAL2",
+        id:             (nextAuthSession.user as { id?: string }).id ?? nextAuthSession.user.email ?? "azure-ad",
+        name:           nextAuthSession.user.name ?? nextAuthSession.user.email ?? "User",
+        email:          nextAuthSession.user.email ?? "",
+        role:           ((nextAuthSession as { roles?: string[] }).roles ?? []).includes("Admin") ? "Admin" : "Analyst",
+        department:     "Azure AD",
+        mfa_method:     "azure_ad",
+        aal:            "AAL2",
         device_compliant: true,
-        last_login: new Date().toISOString(),
+        last_login:     new Date().toISOString(),
       };
       setAuthUser(u);
       try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(u)); } catch { /* ignore */ }
     }
   }, [nextAuthStatus, nextAuthSession, authUser]);
 
+  function navigate(raw: string) {
+    setView(canonicalize(raw));
+    setSidebarOpen(false);
+  }
+
   function handleAuthenticated(u: AuthUser) {
     setAuthUser(u);
     try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(u)); } catch { /* ignore */ }
-    setView("dashboard");
+    setView("home");
   }
 
   function handleSignOut() {
     setAuthUser(false);
     try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
-    // Sign out of NextAuth session too if one exists
-    if (nextAuthSession) {
-      signOut({ callbackUrl: "/login" });
-      return;
-    }
-    setView("dashboard");
+    if (nextAuthSession) { signOut({ callbackUrl: "/login" }); return; }
+    setView("home");
   }
 
-  // Null = hydrating; wait for both storage and NextAuth status to resolve
   if (authUser === null || nextAuthStatus === "loading") return null;
-
-  // Not authenticated — show full-page login
   if (authUser === false && nextAuthStatus !== "authenticated") {
     return <LoginPage onAuthenticated={handleAuthenticated} />;
   }
 
-  // After this point authUser is always a real AuthUser (narrowed for TypeScript)
-  const user = authUser as AuthUser;
+  const user          = authUser as AuthUser;
+  const { title, subtitle } = getTitle(view);
+  const primary       = getPrimaryView(view);
 
-  const { title, subtitle } = VIEW_TITLES[view];
+  // Sub-tab to pass into hub components
+  const subTab = view.includes("-") ? view.split("-").slice(1).join("-") : undefined;
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -202,10 +239,7 @@ export default function Home() {
         <Sidebar
           activeView={view}
           userRole={user.role}
-          onNavigate={(id) => {
-            setView(id as View);
-            setSidebarOpen(false);
-          }}
+          onNavigate={navigate}
         />
       </div>
 
@@ -239,7 +273,6 @@ export default function Home() {
               <Bell className="w-4 h-4 text-muted-foreground" />
               <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-primary" />
             </button>
-            {/* User avatar + sign out */}
             <div className="flex items-center gap-2">
               <div className="hidden sm:flex flex-col items-end">
                 <span className="text-xs font-medium text-foreground leading-none">{user.name}</span>
@@ -262,139 +295,99 @@ export default function Home() {
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto px-5 md:px-6 py-6">
-          {view === "dashboard" && (
+
+          {/* 1. Home */}
+          {primary === "home" && (
             <DashboardHome
-              onNavigate={(id) => setView(id as View)}
+              onNavigate={navigate}
               onOpenReport={(report) => {
-                setLoadedReport({
-                  sql: report.sql,
-                  prompt: report.prompt,
-                  kpi: report.kpi,
-                  name: report.name,
-                });
-                setView("studio");
+                setLoadedReport({ sql: report.sql, prompt: report.prompt, kpi: report.kpi, name: report.name });
+                navigate("reports");
               }}
             />
           )}
-          {view === "studio" && (
-            <div className="max-w-6xl mx-auto w-full">
-              <ReportStudio initialReport={loadedReport} />
-            </div>
-          )}
-          {view === "data" && (
+
+          {/* 2. Discover Data */}
+          {primary === "discover" && (
             <div className="max-w-7xl mx-auto w-full">
-              <DataExplorer onOpenBuilder={() => setView("contracts")} />
+              <DataExplorer onOpenBuilder={() => navigate("dataset-studio")} />
             </div>
           )}
-          {view === "saved" && (
-            <div className="max-w-5xl mx-auto w-full">
-              <div className="bg-card border border-border rounded-lg p-5">
-                <SavedReports
-                  allowCreate
-                  onLoad={(report) => {
-                    setLoadedReport({
-                      sql: report.sql,
-                      prompt: report.prompt,
-                      kpi: report.kpi,
-                      name: report.name,
-                    });
-                    setView("studio");
-                  }}
-                />
-              </div>
-            </div>
-          )}
-          {view === "kpi" && (
-            <div className="max-w-6xl mx-auto w-full">
-              <KpiExplorer />
-            </div>
-          )}
-          {view === "kpiadmin" && (
+
+          {/* 3. Dataset Studio — unified: Designer + DataContract + BI dataset */}
+          {primary === "dataset-studio" && (
             <div className="max-w-7xl mx-auto w-full">
-              <KpiSchemaAdmin userRole={user.role as "Admin" | "Analyst" | "Viewer"} />
+              <DatasetStudioHub
+                initialTab={subTab as "build" | "validate" | "publish" | "history" | undefined}
+                onNavigate={navigate}
+              />
             </div>
           )}
-          {(view === "schema" || view === "metadata" || view === "registry") && (
+
+          {/* 4. Reports — unified: ReportStudio + Saved + BI Studio */}
+          {primary === "reports" && (
+            <div className="max-w-7xl mx-auto w-full">
+              {(subTab === "saved") ? (
+                <div className="bg-card border border-border rounded-xl p-5">
+                  <SavedReports
+                    allowCreate
+                    onLoad={(report) => {
+                      setLoadedReport({ sql: report.sql, prompt: report.prompt, kpi: report.kpi, name: report.name });
+                      navigate("reports");
+                    }}
+                  />
+                </div>
+              ) : subTab === "bi" ? (
+                <BiStudio />
+              ) : (
+                <ReportStudio initialReport={loadedReport} />
+              )}
+            </div>
+          )}
+
+          {/* 5. KPI Intelligence — unified: KpiExplorer + KpiSchemaAdmin */}
+          {primary === "kpi" && (
+            <div className="max-w-7xl mx-auto w-full">
+              <KpiIntelligenceHub
+                initialTab={subTab as "intelligence" | "registry" | "admin" | undefined}
+                userRole={user.role as "Admin" | "Analyst" | "Viewer"}
+                onNavigate={navigate}
+              />
+            </div>
+          )}
+
+          {/* 6. Schema Hub — sole metadata authority */}
+          {primary === "schema" && (
             <SchemaHub
-              onNavigate={(id) => setView(id as View)}
+              onNavigate={navigate}
               initialTab={
-                view === "metadata" ? "metadata" :
-                view === "registry" ? "registry" :
+                subTab === "metadata" ? "metadata" :
+                subTab === "registry" ? "registry" :
                 "explorer"
               }
             />
           )}
-          {view === "bi" && (
-            <div className="max-w-7xl mx-auto w-full">
-              <BiStudio />
-            </div>
-          )}
-          {view === "contracts" && (
-            <div className="max-w-7xl mx-auto w-full">
-              <DataContractWorkspace />
+
+          {/* 7. Administration — unified: Security + Sessions + Audit + Agents + Pipeline + Settings */}
+          {primary === "administration" && (
+            <div className="max-w-6xl mx-auto w-full">
+              <AdministrationHub
+                initialTab={subTab as "audit" | "security" | "sessions" | "agents" | "pipeline" | "settings" | undefined}
+                currentUser={user}
+                onNavigate={navigate}
+              />
             </div>
           )}
 
-          {view === "agents" && (
-            <div className="max-w-3xl mx-auto w-full">
-              <AgentRegistry onNavigateToPipeline={() => setView("pipeline")} />
-            </div>
-          )}
-          {view === "pipeline" && (
-            <div className="max-w-6xl mx-auto w-full">
-              <PipelineBuilder />
-            </div>
-          )}
-          {view === "designer" && (
-            <div className="max-w-7xl mx-auto w-full">
-              <DatasetDesigner onNavigate={(id) => setView(id as View)} />
-            </div>
-          )}
-          {view === "audit" && (
-            <div className="max-w-6xl mx-auto w-full">
-              <AuditDashboard />
-            </div>
-          )}
-          {view === "sessions" && (
-            <div className="max-w-3xl mx-auto w-full">
-              <SessionManager currentUser={user} />
-            </div>
-          )}
-          {view === "admin" && (
-            <div className="max-w-6xl mx-auto w-full">
-              {user.role === "Admin" ? (
-                <SecurityConsole currentUser={user} />
-              ) : (
-                <AccessDenied
-                  requiredRole="Admin"
-                  currentRole={user.role}
-                  onBack={() => setView("dashboard")}
-                />
-              )}
-            </div>
-          )}
-          {view === "settings" && (
-            <div className="max-w-2xl mx-auto w-full">
-              <SettingsPanel />
-            </div>
-          )}
         </main>
       </div>
     </div>
   );
 }
 
-// ── Supporting sub-views ──────────────────────────────────────────────────────
+// ── Access denied fallback ────────────────────────────────────────────────────
 
-function AccessDenied({
-  requiredRole,
-  currentRole,
-  onBack,
-}: {
-  requiredRole: string;
-  currentRole: string;
-  onBack: () => void;
-}) {
+function _AccessDenied({ requiredRole, currentRole, onBack }: { requiredRole: string; currentRole: string; onBack: () => void }) {
   return (
     <div className="bg-card border border-border rounded-xl p-10 flex flex-col items-center gap-4 text-center max-w-md mx-auto mt-10">
       <div className="w-14 h-14 rounded-2xl bg-destructive/10 border border-destructive/30 flex items-center justify-center">
@@ -405,7 +398,6 @@ function AccessDenied({
         <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed max-w-xs">
           This area requires the <span className="text-foreground font-medium">{requiredRole}</span> role.
           You are signed in as <span className="text-foreground font-medium">{currentRole}</span>.
-          Contact your system administrator to request elevated access.
         </p>
       </div>
       <div className="text-[11px] text-muted-foreground bg-muted border border-border rounded-lg px-4 py-3 w-full">
@@ -415,122 +407,8 @@ function AccessDenied({
         onClick={onBack}
         className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
       >
-        Return to Dashboard
+        Return to Home
       </button>
-    </div>
-  );
-}
-
-function SettingsPanel() {
-  return (
-    <div className="flex flex-col gap-5">
-      <div className="bg-card border border-border rounded-lg p-5">
-        <h2 className="text-sm font-semibold text-foreground mb-4">AI Configuration</h2>
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-muted-foreground font-medium">AI_GATEWAY_API_KEY</label>
-            <input
-              type="password"
-              disabled
-              placeholder="Set via Vars → AI_GATEWAY_API_KEY"
-              className="bg-muted border border-border rounded-md px-3 py-2 text-xs text-muted-foreground cursor-not-allowed"
-            />
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Powers the AI Query Planner Agent (GPT-4o-mini via Vercel AI Gateway). Without this key the engine falls back to rule-based query generation.
-            </p>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-muted-foreground font-medium">
-              AZURE_OPENAI_API_KEY <span className="opacity-50">(optional — override)</span>
-            </label>
-            <input
-              type="password"
-              disabled
-              placeholder="Set via Vars → AZURE_OPENAI_API_KEY"
-              className="bg-muted border border-border rounded-md px-3 py-2 text-xs text-muted-foreground cursor-not-allowed"
-            />
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Use your own Azure OpenAI deployment instead of the gateway. Set AZURE_OPENAI_DEPLOYMENT to your deployment name.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-card border border-border rounded-lg p-5">
-        <h2 className="text-sm font-semibold text-foreground mb-4">Database Connection</h2>
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs text-muted-foreground font-medium">
-            SQL_CONNECTION_STRING
-          </label>
-          <input
-            type="password"
-            disabled
-            placeholder="Set via Vars → SQL_CONNECTION_STRING"
-            className="bg-muted border border-border rounded-md px-3 py-2 text-xs text-muted-foreground cursor-not-allowed"
-          />
-          <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
-            Add this environment variable via the Vars section in project settings. The engine
-            automatically switches from demo mode to live mode once configured.
-          </p>
-        </div>
-      </div>
-
-      <div className="bg-card border border-border rounded-lg p-5">
-        <h2 className="text-sm font-semibold text-foreground mb-4">Architecture Reference</h2>
-        <div className="flex flex-col gap-0.5">
-          {[
-            ["POST /api/generate-query", "AI Query Planner Agent — NL → structured QueryPlan"],
-            ["POST /api/generate-query/validate", "Inline SQL validator for the SQL editor"],
-            ["POST /api/run-sql", "SQL Execution Agent — runs validated SQL, caps at 10k rows"],
-            ["GET  /api/schema", "Schema Intelligence Agent — live INFORMATION_SCHEMA or static"],
-            ["GET  /api/reports", "List all saved reports (Report Registry)"],
-            ["POST /api/reports", "Save a new report to the registry"],
-            ["PATCH/DELETE /api/reports/[id]", "Update or delete a saved report"],
-            ["POST /api/report/run", "Legacy pipeline — NL → generate → validate → execute"],
-            ["GET /api/health", "Service and database health check"],
-            ["lib/agents/queryPlanner.ts", "AI Query Planner — Azure OpenAI / AI Gateway"],
-            ["lib/agents/schemaAgent.ts", "Schema Intelligence — INFORMATION_SCHEMA + cache"],
-            ["lib/agents/reportRegistry.ts", "Report Registry — DynamicReports in-memory store"],
-            ["lib/services/queryGuard.ts", "Security layer — blocks DDL, injection, SELECT *"],
-            ["lib/services/db.ts", "MSSQL connection pool with read-only intent"],
-            ["lib/config/semanticLayer.json", "Business term → physical column mapping"],
-            ["lib/config/schemaConfig.json", "Table aliases, keys, join conditions"],
-            ["lib/config/kpiConfig.json", "KPI → table/column/aggregation mapping"],
-          ].map(([path, desc]) => (
-            <div
-              key={path}
-              className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 py-1.5 border-b border-border/40 last:border-0"
-            >
-              <code className="font-mono text-primary/90 shrink-0 text-[11px]">{path}</code>
-              <span className="text-xs text-muted-foreground">{desc}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-card border border-border rounded-lg p-5">
-        <h2 className="text-sm font-semibold text-foreground mb-3">
-          Scheduling — Azure Logic Apps
-        </h2>
-        <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-          Schedule a weekly trigger every Sunday at 23:00 America/Los_Angeles. The Logic App
-          POSTs to{" "}
-          <code className="font-mono text-primary">/api/report/run</code> with your report
-          payload.
-        </p>
-        <pre className="text-[11px] font-mono text-foreground/80 bg-muted rounded-md p-3 overflow-x-auto leading-relaxed">
-{`{
-  "report_name": "Weekly Admissions",
-  "prompt": "Show weekly admissions by branch",
-  "filters": {
-    "date_range": {
-      "start_date": "@{startOfWeek(utcNow())}",
-      "end_date": "@{utcNow()}"
-    }
-  }
-}`}
-        </pre>
-      </div>
     </div>
   );
 }
