@@ -10,7 +10,6 @@ import { DashboardHome } from "@/components/dashboard/DashboardHome";
 import { DataExplorer }       from "@/components/data/DataExplorer";
 import { DatasetStudioHub }   from "@/components/dataset/DatasetStudioHub";
 import { ReportStudio }       from "@/components/studio/ReportStudio";
-import { SavedReports }       from "@/components/studio/SavedReports";
 import { BiStudio }           from "@/components/bi/BiStudio";
 import { KpiIntelligenceHub } from "@/components/kpi/KpiIntelligenceHub";
 import { SchemaHub }          from "@/components/schema/SchemaHub";
@@ -41,7 +40,9 @@ type View =
   | "reports-saved"
   | "reports-bi"
   | "kpi"
+  | "kpi-interpreter"
   | "kpi-registry"
+  | "kpi-governance"
   | "kpi-admin"
   | "schema"
   | "schema-metadata"
@@ -90,8 +91,10 @@ const VIEW_TITLES: Partial<Record<View, { title: string; subtitle: string }>> = 
   "reports-saved":           { title: "Reports",               subtitle: "Report Catalog — single catalog of all governed reports" },
   "reports-bi":              { title: "Reports",               subtitle: "BI Studio — drag-and-drop KPI canvas and AI copilot" },
   // KPI Intelligence
-  kpi:                       { title: "KPI Intelligence",      subtitle: "AI-powered KPI analysis — trends, variance, root cause, anomaly detection" },
+  kpi:                       { title: "KPI Intelligence",      subtitle: "KPI Interpreter — select a saved report and get AI-powered business interpretation" },
+  "kpi-interpreter":         { title: "KPI Intelligence",      subtitle: "KPI Interpreter — AI-powered business interpretation of saved reports" },
   "kpi-registry":            { title: "KPI Intelligence",      subtitle: "KPI Registry — single source of truth for all KPI definitions and formulas" },
+  "kpi-governance":          { title: "KPI Intelligence",      subtitle: "KPI Governance — version, approve, and publish KPI definitions" },
   "kpi-admin":               { title: "KPI Intelligence",      subtitle: "KPI Governance — version, approve, and publish KPI definitions" },
   // Schema Hub
   schema:                    { title: "Schema Hub",            subtitle: "Schema Explorer — single metadata authority for the platform" },
@@ -115,7 +118,7 @@ function canonicalize(raw: string): View {
     case "dashboard": return "home";
     case "studio":    return "reports";
     case "data":      return "discover";
-    case "kpiadmin":  return "kpi-admin";
+    case "kpiadmin":  return "kpi-governance";
     case "bi":        return "reports-bi";
     case "saved":     return "reports-saved";
     case "audit":     return "admin-audit";
@@ -157,6 +160,8 @@ export default function Home() {
   const [todayLabel, setTodayLabel]   = useState<string>("");
   const [loadedReport, setLoadedReport] = useState<LoadedReport | null>(null);
   const [authUser, setAuthUser]       = useState<AuthUser | null | false>(null);
+  // KPI pre-selection: set when user clicks "Interpret" on a saved report
+  const [preselectedKpi, setPreselectedKpi] = useState<string | null>(null);
 
   const { data: nextAuthSession, status: nextAuthStatus } = useSession();
 
@@ -191,6 +196,14 @@ export default function Home() {
   }, [nextAuthStatus, nextAuthSession, authUser]);
 
   function navigate(raw: string) {
+    // Special token: "kpi:interpret:<kpiName>" — jump to KPI Interpreter with pre-selection
+    if (raw.startsWith("kpi:interpret:")) {
+      const kpiName = raw.slice("kpi:interpret:".length);
+      setPreselectedKpi(kpiName || null);
+      setView("kpi");
+      setSidebarOpen(false);
+      return;
+    }
     setView(canonicalize(raw));
     setSidebarOpen(false);
   }
@@ -242,6 +255,18 @@ export default function Home() {
     return undefined;
   }
   const subTab = deriveSubTab(view);
+
+  // Resolve KPI sub-tab string → KpiIntelligenceHub tab ID
+  function resolveKpiTab(raw: string | undefined): "interpreter" | "intelligence" | "registry" | "governance" | undefined {
+    if (!raw) return undefined;
+    if (raw === "admin") return "governance";         // legacy alias
+    if (raw === "governance") return "governance";
+    if (raw === "interpreter") return "interpreter";
+    if (raw === "intelligence") return "intelligence";
+    if (raw === "registry") return "registry";
+    return undefined;
+  }
+  const kpiTab = resolveKpiTab(subTab);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -347,34 +372,30 @@ export default function Home() {
             </div>
           )}
 
-          {/* 4. Reports — unified: ReportStudio + Saved + BI Studio */}
+          {/* 4. Reports — unified: ReportStudio (with internal Saved tab) + BI Studio */}
           {primary === "reports" && (
             <div className="max-w-7xl mx-auto w-full">
-              {(subTab === "saved") ? (
-                <div className="bg-card border border-border rounded-xl p-5">
-                  <SavedReports
-                    allowCreate
-                    onLoad={(report) => {
-                      setLoadedReport({ sql: report.sql, prompt: report.prompt, kpi: report.kpi, name: report.name });
-                      navigate("reports");
-                    }}
-                  />
-                </div>
-              ) : subTab === "bi" ? (
+              {subTab === "bi" ? (
                 <BiStudio />
               ) : (
-                <ReportStudio initialReport={loadedReport} />
+                <ReportStudio
+                  initialReport={loadedReport}
+                  initialTab={subTab === "saved" ? "saved" : undefined}
+                  onNavigate={navigate}
+                />
               )}
             </div>
           )}
 
-          {/* 5. KPI Intelligence — unified: KpiExplorer + KpiSchemaAdmin */}
+          {/* 5. KPI Intelligence — Interpreter + Intelligence + Registry + Governance */}
           {primary === "kpi" && (
             <div className="max-w-7xl mx-auto w-full">
               <KpiIntelligenceHub
-                initialTab={subTab as "intelligence" | "registry" | "admin" | undefined}
+                initialTab={kpiTab}
+                preselectedKpi={preselectedKpi}
                 userRole={user.role as "Admin" | "Analyst" | "Viewer"}
                 onNavigate={navigate}
+                onClearPreselected={() => setPreselectedKpi(null)}
               />
             </div>
           )}

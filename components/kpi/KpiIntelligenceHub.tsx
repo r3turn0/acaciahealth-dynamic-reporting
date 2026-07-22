@@ -3,42 +3,44 @@
 /**
  * KpiIntelligenceHub
  *
- * Single governed KPI surface — replaces 3 previously separate nav items:
- *   KPI Explorer  |  KPI Schema Admin  |  KPI Intelligence
- *
- * Tabs:
- *   intelligence  — AI-powered analysis, trends, root-cause (KpiIntelligence)
- *   registry      — Browse all KPI definitions, single source of truth (KpiExplorer)
- *   admin         — Create, version, approve, publish KPI definitions (KpiSchemaAdmin)
- *
- * Spec: KPI Intelligence is primary item #5 in the 7-item nav.
- *       No KPI logic may exist outside this hub.
+ * Single governed KPI surface — 4 tabs:
+ *   interpreter  — Select a saved report and get AI-powered business interpretation (KpiInterpreter)
+ *   intelligence — AI analysis panel: trends, variance, root cause, anomaly detection (KpiIntelligence)
+ *   registry     — Browse all KPI definitions, single source of truth (KpiExplorer)
+ *   governance   — Create, version, approve, publish KPI definitions (KpiSchemaAdmin)
  */
 
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import {
-  Brain,
   BookOpen,
   SlidersHorizontal,
   TrendingUp,
-  Lock,
+  Brain,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
-import { KpiIntelligence } from "@/components/dashboard/KpiIntelligence";
-import { KpiExplorer }     from "@/components/dashboard/KpiExplorer";
-import { KpiSchemaAdmin }  from "@/components/kpi-admin/KpiSchemaAdmin";
+import { KpiIntelligence }  from "@/components/dashboard/KpiIntelligence";
+import { KpiExplorer }      from "@/components/dashboard/KpiExplorer";
+import { KpiSchemaAdmin }   from "@/components/kpi-admin/KpiSchemaAdmin";
+import { KpiInterpreter }   from "@/components/dashboard/KpiInterpreter";
 
 // ── Tab definitions ───────────────────────────────────────────────────────────
 
-type KpiTab = "intelligence" | "registry" | "admin";
+type KpiTab = "interpreter" | "intelligence" | "registry" | "governance";
 
 const TABS: {
   id:          KpiTab;
   label:       string;
   icon:        React.ElementType;
   description: string;
-  adminOnly?:  boolean;
 }[] = [
+  {
+    id:          "interpreter",
+    label:       "KPI Interpreter",
+    icon:        Sparkles,
+    description: "Select a saved report and get AI-powered business interpretation — trends, alerts, root cause, and follow-up Q&A",
+  },
   {
     id:          "intelligence",
     label:       "KPI Intelligence",
@@ -52,24 +54,27 @@ const TABS: {
     description: "Single source of truth — all KPI definitions, formulas, ownership, lineage, and Power BI measures",
   },
   {
-    id:          "admin",
+    id:          "governance",
     label:       "KPI Governance",
     icon:        SlidersHorizontal,
-    adminOnly:   false,                // Analysts can view; Admins can edit
-    description: "Version, approve, and publish KPI definitions — governance-controlled schema v6.0",
+    description: "Version, approve, and publish KPI definitions — governance-controlled schema",
   },
 ];
 
 interface KpiIntelligenceHubProps {
-  initialTab?: KpiTab;
-  userRole?:   "Admin" | "Analyst" | "Viewer";
-  onNavigate?: (view: string) => void;
+  initialTab?:         KpiTab;
+  preselectedKpi?:     string | null;
+  userRole?:           "Admin" | "Analyst" | "Viewer";
+  onNavigate?:         (view: string) => void;
+  onClearPreselected?: () => void;
 }
 
 export function KpiIntelligenceHub({
-  initialTab = "intelligence",
-  userRole   = "Analyst",
+  initialTab          = "interpreter",
+  preselectedKpi,
+  userRole            = "Analyst",
   onNavigate,
+  onClearPreselected,
 }: KpiIntelligenceHubProps) {
   const [tab, setTab] = useState<KpiTab>(initialTab);
 
@@ -77,6 +82,13 @@ export function KpiIntelligenceHub({
   useEffect(() => {
     if (initialTab) setTab(initialTab);
   }, [initialTab]);
+
+  // When a KPI is pre-selected from another view, jump to interpreter tab
+  useEffect(() => {
+    if (preselectedKpi) {
+      setTab("interpreter");
+    }
+  }, [preselectedKpi]);
 
   const activeTab = TABS.find((t) => t.id === tab) ?? TABS[0];
 
@@ -95,7 +107,7 @@ export function KpiIntelligenceHub({
 
       {/* Tab strip */}
       <div className="flex items-stretch border-b border-border overflow-x-auto bg-card shrink-0">
-        {TABS.map(({ id, label, icon: Icon, adminOnly }) => (
+        {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -108,9 +120,6 @@ export function KpiIntelligenceHub({
           >
             <Icon className="w-3.5 h-3.5 shrink-0" />
             {label}
-            {adminOnly && userRole !== "Admin" && (
-              <Lock className="w-2.5 h-2.5 text-muted-foreground/60 shrink-0" />
-            )}
           </button>
         ))}
       </div>
@@ -119,17 +128,42 @@ export function KpiIntelligenceHub({
       <div className="flex items-center gap-2 px-5 py-2 bg-muted/20 border-b border-border/60">
         {activeTab && <activeTab.icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
         <p className="text-[11px] text-muted-foreground">{activeTab?.description}</p>
+        {/* Cross-nav: from Interpreter, offer jump to Report Catalog */}
+        {tab === "interpreter" && onNavigate && (
+          <button
+            onClick={() => onNavigate("reports-saved")}
+            className="ml-auto flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 transition-colors shrink-0"
+          >
+            Report Catalog
+            <ArrowRight className="w-3 h-3" />
+          </button>
+        )}
+        {/* Cross-nav: from Registry, offer jump to Report Studio */}
+        {tab === "registry" && onNavigate && (
+          <button
+            onClick={() => onNavigate("reports")}
+            className="ml-auto flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 transition-colors shrink-0"
+          >
+            Open Report Studio
+            <ArrowRight className="w-3 h-3" />
+          </button>
+        )}
       </div>
 
       {/* Tab content */}
       <div className="p-0">
+        {tab === "interpreter" && (
+          <div className="p-5">
+            <KpiInterpreter preselectedKpi={preselectedKpi ?? undefined} />
+          </div>
+        )}
         {tab === "intelligence" && <KpiIntelligence />}
-        {tab === "registry"     && (
+        {tab === "registry" && (
           <div className="p-5">
             <KpiExplorer />
           </div>
         )}
-        {tab === "admin"        && (
+        {tab === "governance" && (
           <div className="p-5">
             <KpiSchemaAdmin userRole={userRole} />
           </div>

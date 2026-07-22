@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   MoreHorizontal,
   Eye,
+  TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -70,6 +71,8 @@ interface SavedReportsProps {
   allowCreate?: boolean;
   /** Current result rows for download (populated after a report is run). */
   currentRows?: Record<string, unknown>[];
+  /** Called when user wants to interpret a report's KPI in the KPI Interpreter. */
+  onInterpretKpi?: (kpi: string) => void;
 }
 
 type SortKey = "created_date" | "last_run_date" | "run_count" | "name";
@@ -405,6 +408,7 @@ export function SavedReports({
   onSaveDone,
   allowCreate = false,
   currentRows,
+  onInterpretKpi,
 }: SavedReportsProps) {
   const [reports, setReports] = useState<SavedReport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -832,6 +836,18 @@ export function SavedReports({
                         <Play className="w-3 h-3" />
                         Load
                       </button>
+
+                      {/* Interpret KPI */}
+                      {onInterpretKpi && r.kpi && (
+                        <button
+                          onClick={() => onInterpretKpi(r.kpi)}
+                          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2.5 py-1.5 rounded border border-border hover:border-primary/30 hover:bg-accent/40"
+                          title="Interpret this KPI with AI"
+                        >
+                          <TrendingUp className="w-3 h-3" />
+                          Interpret
+                        </button>
+                      )}
 
                       {/* More actions */}
                       <ActionMenu

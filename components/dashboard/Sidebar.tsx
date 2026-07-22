@@ -101,9 +101,9 @@ const PRIMARY_NAV: NavItem[] = [
     step:  4,
     badge: "Registry",
     subItems: [
-      { id: "kpi",          label: "KPI Intelligence" },
-      { id: "kpi-registry", label: "KPI Registry"     },
-      { id: "kpi-admin",    label: "KPI Governance"   },
+      { id: "kpi",              label: "KPI Interpreter"  },
+      { id: "kpi-registry",     label: "KPI Registry"     },
+      { id: "kpi-governance",   label: "KPI Governance"   },
     ],
   },
   {
@@ -203,7 +203,7 @@ export function Sidebar({ activeView, userRole: _userRole, onNavigate }: Sidebar
     if (view.startsWith("discover") || view === "data")           return "discover";
     if (view.startsWith("dataset") || view === "designer" || view === "contracts" || view === "bi-data") return "dataset-studio";
     if (view.startsWith("reports") || view === "studio" || view === "saved" || view === "bi")           return "reports";
-    if (view.startsWith("kpi"))                                   return "kpi";
+    if (view.startsWith("kpi") || view === "kpiadmin")            return "kpi";
     if (view.startsWith("schema") || view === "metadata" || view === "registry") return "schema";
     if (view.startsWith("admin") || view === "audit" || view === "sessions" || view === "agents" || view === "pipeline" || view === "settings") return "administration";
     return "home";

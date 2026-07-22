@@ -23,11 +23,13 @@ export interface LoadedReport {
 }
 
 interface ReportStudioProps {
-  initialReport?: LoadedReport | null;
+  initialReport?:  LoadedReport | null;
+  initialTab?:     StudioTab;
+  onNavigate?:     (view: string) => void;
 }
 
-export function ReportStudio({ initialReport }: ReportStudioProps) {
-  const [tab, setTab] = useState<StudioTab>("ask");
+export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportStudioProps) {
+  const [tab, setTab] = useState<StudioTab>(initialTab ?? "ask");
   // Dates initialized empty to avoid SSR/client mismatch; populated in useEffect
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -83,6 +85,11 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
   const [saveModalSaving, setSaveModalSaving] = useState(false);
   const [saveModalDone, setSaveModalDone] = useState(false);
   const saveNameRef = useRef<HTMLInputElement>(null);
+
+  // Respond to parent navigation while this component is already mounted
+  useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
 
   // Sync when an external saved report is pushed in after initial render
   useEffect(() => {
@@ -599,6 +606,11 @@ Return only the corrected SQL.`,
             onLoad={handleLoadSaved}
             pendingSave={pendingSave}
             onSaveDone={() => setPendingSave(null)}
+            onInterpretKpi={
+              onNavigate
+                ? (kpi) => onNavigate(`kpi:interpret:${kpi}`)
+                : undefined
+            }
           />
         </div>
       )}
