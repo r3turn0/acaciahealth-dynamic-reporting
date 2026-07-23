@@ -9,7 +9,7 @@
  * Cross-navigation: accepts onNavigate to jump to Dataset Designer or KPI tools.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Database, FlaskConical, Network, GitMerge, BarChart3, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SchemaViewer } from "@/components/dashboard/SchemaViewer";
@@ -46,6 +46,12 @@ const TABS: { id: SchemaHubTab; label: string; icon: React.ElementType; descript
 
 export function SchemaHub({ onNavigate, initialTab = "explorer" }: SchemaHubProps) {
   const [tab, setTab] = useState<SchemaHubTab>(initialTab);
+
+  // Sync internal tab when the parent navigates to a specific sub-tab
+  // while this component is already mounted (primary stays "schema").
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
 
   return (
     <div className="flex flex-col gap-5 max-w-6xl mx-auto w-full">
