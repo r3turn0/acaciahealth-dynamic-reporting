@@ -20,17 +20,19 @@ import {
   GitMerge,
   Settings,
   Lock,
+  BarChart2,
 } from "lucide-react";
-import { AuditDashboard }   from "@/components/audit/AuditDashboard";
-import { SecurityConsole }  from "@/components/admin/SecurityConsole";
-import { SessionManager }   from "@/components/security/SessionManager";
-import { AgentRegistry }    from "@/components/agents/AgentRegistry";
-import { PipelineBuilder }  from "@/components/pipeline/PipelineBuilder";
-import type { AuthUser }    from "@/components/auth/LoginPage";
+import { AuditDashboard }          from "@/components/audit/AuditDashboard";
+import { SecurityConsole }         from "@/components/admin/SecurityConsole";
+import { SessionManager }          from "@/components/security/SessionManager";
+import { AgentRegistry }           from "@/components/agents/AgentRegistry";
+import { PipelineBuilder }         from "@/components/pipeline/PipelineBuilder";
+import { ObservabilityDashboard }  from "@/components/admin/ObservabilityDashboard";
+import type { AuthUser }           from "@/components/auth/LoginPage";
 
 // ── Tab definitions ───────────────────────────────────────────────────────────
 
-type AdminTab = "audit" | "security" | "sessions" | "agents" | "pipeline" | "settings";
+type AdminTab = "audit" | "security" | "sessions" | "agents" | "pipeline" | "settings" | "observability";
 
 const TABS: { id: AdminTab; label: string; icon: React.ElementType; adminOnly?: boolean; description: string }[] = [
   {
@@ -69,6 +71,12 @@ const TABS: { id: AdminTab; label: string; icon: React.ElementType; adminOnly?: 
     label:       "Settings",
     icon:        Settings,
     description: "Environment, AI gateway, database connection, and configuration",
+  },
+  {
+    id:          "observability",
+    label:       "Observability",
+    icon:        BarChart2,
+    description: "Live platform diagnostics — API logs, search health, query execution, export activity, and zero-result tracker",
   },
 ];
 
@@ -138,7 +146,8 @@ export function AdministrationHub({ initialTab = "audit", currentUser, onNavigat
 
         {tab === "pipeline" && <PipelineBuilder />}
 
-        {tab === "settings" && <SettingsPanel />}
+        {tab === "settings"      && <SettingsPanel />}
+        {tab === "observability" && <ObservabilityDashboard />}
       </div>
     </div>
   );

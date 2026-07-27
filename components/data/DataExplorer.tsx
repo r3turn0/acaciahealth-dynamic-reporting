@@ -18,12 +18,16 @@ import {
   Boxes,
   Check,
   Lock,
+  Sparkles,
 } from "lucide-react";
-import schemaConfig from "@/lib/config/schemaConfig.json";
+import schemaConfig    from "@/lib/config/schemaConfig.json";
 import {
   addTableToDraft,
   useDatasetDraft,
 } from "@/lib/access/datasetDraft";
+import { SemanticSearchPanel } from "@/components/discover/SemanticSearchPanel";
+import { downloadDataset, estimateCSVBytes } from "@/lib/utils/download";
+import { logExport } from "@/lib/services/observabilityStore";
 
 // Try to load the seeded full table list; fall back to schemaConfig keys.
 let allTablesJson: string[] = [];
@@ -145,7 +149,8 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
   const [data, setData]         = useState<DataPage | null>(null);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState<string | null>(null);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters]   = useState(false);
+  const [showSemanticSearch, setShowSemanticSearch] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchData = useCallback(async (
@@ -286,23 +291,30 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
 
   function exportCSV() {
     if (!data) return;
-    const header = data.columns.join(",");
-    const rows   = data.rows.map((r) =>
-      data.columns.map((c) => {
-        const v = r[c];
-        if (v === null || v === undefined) return "";
-        const s = String(v);
-        return s.includes(",") || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
-      }).join(",")
-    );
-    const csv   = [header, ...rows].join("\n");
-    const blob  = new Blob([csv], { type: "text/csv" });
-    const url   = URL.createObjectURL(blob);
-    const a     = document.createElement("a");
-    a.href      = url;
-    a.download  = `${selectedTable}_page${data.page}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const t0 = performance.now();
+    try {
+      downloadDataset(data.rows as Record<string, unknown>[], `${selectedTable}_page${data.page}`, "csv");
+      const dur = Math.round(performance.now() - t0);
+      logExport({
+        format:        "csv",
+        rowCount:      data.rows.length,
+        columnCount:   data.columns.length,
+        fileSizeBytes: estimateCSVBytes(data.rows.length, data.columns.length),
+        reportName:    selectedTable,
+        durationMs:    dur,
+        success:       true,
+      });
+    } catch (e) {
+      logExport({
+        format:        "csv",
+        rowCount:      data.rows.length,
+        columnCount:   data.columns.length,
+        fileSizeBytes: 0,
+        reportName:    selectedTable,
+        success:       false,
+        error:         e instanceof Error ? e.message : "Unknown error",
+      });
+    }
   }
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
@@ -370,6 +382,19 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
         {/* Actions */}
         <div className="flex items-center gap-2 sm:ml-auto shrink-0">
           <button
+            onClick={() => setShowSemanticSearch((s) => !s)}
+            className={cn(
+              "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-colors",
+              showSemanticSearch
+                ? "bg-primary/15 border-primary/40 text-primary"
+                : "border-border text-muted-foreground hover:text-foreground hover:bg-accent/30"
+            )}
+            title="Semantic search — find tables by meaning, not just name"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Search
+          </button>
+          <button
             onClick={() => setShowFilters((s) => !s)}
             className={cn(
               "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-colors",
@@ -419,6 +444,20 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
           </button>
         </div>
       </div>
+
+      {/* Semantic Search Panel */}
+      {showSemanticSearch && (
+        <div className="bg-muted/20 border border-border rounded-xl p-4">
+          <SemanticSearchPanel
+            onSelectTable={(id) => {
+              // Strip schema prefix for table selector compatibility
+              const tableName = id.includes(".") ? id.split(".").pop()! : id;
+              handleTableChange(tableName);
+              setShowSemanticSearch(false);
+            }}
+          />
+        </div>
+      )}
 
       {/* Stats bar */}
       {data && (
