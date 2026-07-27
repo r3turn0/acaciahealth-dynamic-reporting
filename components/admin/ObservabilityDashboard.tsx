@@ -43,6 +43,7 @@ import {
   type SearchLog,
   type ExportLog,
 } from "@/lib/services/observabilityStore";
+import { MetadataValidationPanel } from "@/components/admin/MetadataValidationPanel";
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
@@ -239,6 +240,11 @@ export function ObservabilityDashboard() {
           </div>
         </section>
       )}
+
+      {/* ── Metadata Validation ─────────────────────────────────────────────── */}
+      <section className="border border-border rounded-xl p-4">
+        <MetadataValidationPanel />
+      </section>
 
       {/* ── Export Stats ────────────────────────────────────────────────────── */}
       {exportEvents.length > 0 && (

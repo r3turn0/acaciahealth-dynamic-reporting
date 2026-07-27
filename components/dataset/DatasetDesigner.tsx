@@ -424,14 +424,20 @@ function InferencePopup({
 function DiscoveryPanel({
   canvasTables,
   onAddToCanvas,
+  sourceTables,
+  isRefreshing,
+  onRefresh,
 }: {
-  canvasTables: Set<string>;
+  canvasTables:  Set<string>;
   onAddToCanvas: (t: TableDef) => void;
+  sourceTables:  TableDef[];
+  isRefreshing:  boolean;
+  onRefresh:     () => void;
 }) {
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const filtered = SOURCE_TABLES.filter(
+  const filtered = sourceTables.filter(
     (t) =>
       t.name.toLowerCase().includes(search.toLowerCase()) ||
       t.businessDescription.toLowerCase().includes(search.toLowerCase())
@@ -442,8 +448,8 @@ function DiscoveryPanel({
       {/* Stats strip */}
       <div className="grid grid-cols-3 gap-2">
         {[
-          { label: "Source Tables", value: SOURCE_TABLES.length },
-          { label: "Total Columns", value: SOURCE_TABLES.reduce((n, t) => n + t.columnCount, 0) },
+          { label: "Source Tables", value: sourceTables.length },
+          { label: "Total Columns", value: sourceTables.reduce((n, t) => n + t.columnCount, 0) },
           { label: "Total Records", value: "7.8M+" },
         ].map((s) => (
           <div key={s.label} className="bg-muted/15 border border-border rounded-lg px-3 py-2.5 text-center">
@@ -453,15 +459,29 @@ function DiscoveryPanel({
         ))}
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search tables, descriptions…"
-          className="w-full pl-9 pr-3 py-2 text-sm bg-muted/20 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground"
-        />
+      {/* Search + refresh */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tables, descriptions…"
+            className="w-full pl-9 pr-3 py-2 text-sm bg-muted/20 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground"
+          />
+        </div>
+        <button
+          onClick={onRefresh}
+          disabled={isRefreshing}
+          title="Refresh catalog from live schema"
+          className={cn(
+            "flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors shrink-0",
+            isRefreshing && "opacity-50 cursor-not-allowed"
+          )}
+        >
+          <RefreshCw className={cn("w-3.5 h-3.5", isRefreshing && "animate-spin")} />
+          {isRefreshing ? "Refreshing…" : "Refresh"}
+        </button>
       </div>
 
       {/* Table list */}
@@ -987,6 +1007,51 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
   const [pendingPair, setPendingPair] = useState<{ src: DragColumn; tgt: DragColumn } | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
+  // ── Live discovery catalog (merges SOURCE_TABLES with live DB schema) ─────────
+  const [discoveryTables, setDiscoveryTables] = useState<TableDef[]>(SOURCE_TABLES);
+  const [isRefreshingCatalog, setIsRefreshingCatalog] = useState(false);
+
+  const refreshCatalog = useCallback(async () => {
+    setIsRefreshingCatalog(true);
+    try {
+      const res = await fetch("/api/schema/tables");
+      if (!res.ok) return;
+      const json = await res.json() as {
+        source: string;
+        tables: { table_schema: string; table_name: string; qualified_name: string }[];
+      };
+      if (json.source === "no_db" || !json.tables.length) return;
+
+      // Build a lookup of existing SOURCE_TABLE names (unqualified, lowercase)
+      const existingNames = new Set(SOURCE_TABLES.map((t) => t.name.toLowerCase()));
+
+      // Tables present in the live DB but not in SOURCE_TABLES
+      const newTables: TableDef[] = json.tables
+        .filter((r) => !existingNames.has(r.table_name.toLowerCase()))
+        .map((r) => ({
+          name:                r.table_name,
+          schema:              r.table_schema,
+          recordCount:         0,
+          columnCount:         0,
+          primaryKeys:         [],
+          foreignKeys:         [],
+          businessDescription: `Live table discovered from ${r.table_schema} schema.`,
+          columns:             [],
+        }));
+
+      setDiscoveryTables([...SOURCE_TABLES, ...newTables]);
+      if (newTables.length > 0) {
+        showToast(`Catalog refreshed — ${newTables.length} additional table(s) from live DB`);
+      } else {
+        showToast("Catalog is in sync with the live database");
+      }
+    } catch {
+      // Non-critical — keep showing SOURCE_TABLES
+    } finally {
+      setIsRefreshingCatalog(false);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const canvasSet = new Set(canvasTables.map((t) => t.name));
 
   function showToast(msg: string, ok = true) {
@@ -1214,6 +1279,9 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
               <DiscoveryPanel
                 canvasTables={canvasSet}
                 onAddToCanvas={handleAddToCanvas}
+                sourceTables={discoveryTables}
+                isRefreshing={isRefreshingCatalog}
+                onRefresh={refreshCatalog}
               />
             )}
             {tab === "canvas" && (
