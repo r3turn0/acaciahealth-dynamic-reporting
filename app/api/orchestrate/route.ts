@@ -1,12 +1,22 @@
 /**
- * POST /api/orchestrate  →  GATEWAY ADAPTER
+ * POST /api/orchestrate  →  GATEWAY ADAPTER  (DEPRECATED)
  *
  * The multi-agent orchestration pipeline now routes through QueryGateway.
  * source="natural_language" — all 9 stages enforced.
  * OrchestrationResult shape preserved for callers.
+ *
+ * @deprecated Use POST /api/gateway/query instead.
  */
 
 import { NextRequest, NextResponse } from "next/server";
+
+function withDeprecationHeaders(res: NextResponse): NextResponse {
+  res.headers.set("Deprecation", "true");
+  res.headers.set("Sunset", "2026-10-01");
+  res.headers.set("Link", '</api/gateway/query>; rel="successor-version"');
+  res.headers.set("X-Deprecated-By", "/api/gateway/query");
+  return res;
+}
 import { runQueryGateway } from "@/lib/gateway/QueryGateway";
 
 export async function POST(req: NextRequest) {
@@ -43,7 +53,7 @@ export async function POST(req: NextRequest) {
     });
 
     // Map GatewayResult back to legacy OrchestrationResult shape
-    return NextResponse.json({
+    return withDeprecationHeaders(NextResponse.json({
       query,
       plan: {
         sql: result.sql,
@@ -75,7 +85,7 @@ export async function POST(req: NextRequest) {
       demoMode: result.demoMode,
       elapsedMs: result.elapsedMs,
       requestId: result.requestId,
-    });
+    }));
   } catch (err) {
     console.error("[Gateway→orchestrate] error:", err);
     return NextResponse.json(

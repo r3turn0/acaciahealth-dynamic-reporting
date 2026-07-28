@@ -1,12 +1,22 @@
 /**
- * POST /api/generate-sql  →  GATEWAY ADAPTER
+ * POST /api/generate-sql  →  GATEWAY ADAPTER  (DEPRECATED)
  *
  * Vector-augmented NL → SQL. Now routes through QueryGateway (planOnly=true)
  * to enforce all 9 pipeline stages. Response shape preserved for callers.
  * source="natural_language" — full intent, semantic search, and validation enforced.
+ *
+ * @deprecated Use POST /api/gateway/query with planOnly=true instead.
  */
 
 import { NextRequest, NextResponse } from "next/server";
+
+function withDeprecationHeaders(res: NextResponse): NextResponse {
+  res.headers.set("Deprecation", "true");
+  res.headers.set("Sunset", "2026-10-01");
+  res.headers.set("Link", '</api/gateway/query>; rel="successor-version"');
+  res.headers.set("X-Deprecated-By", "/api/gateway/query");
+  return res;
+}
 import { runQueryGateway } from "@/lib/gateway/QueryGateway";
 
 export async function POST(req: NextRequest) {
@@ -37,7 +47,7 @@ export async function POST(req: NextRequest) {
     const confidence = result.confidence;
     const needsFix = confidence < 0.7 || !result.validation.valid;
 
-    return NextResponse.json({
+    return withDeprecationHeaders(NextResponse.json({
       sql: result.sql,
       explanation: result.explanation,
       confidence,
@@ -55,7 +65,7 @@ export async function POST(req: NextRequest) {
         intent: result.intent,
         lineage: result.lineage,
       },
-    });
+    }));
   } catch (err) {
     console.error("[Gateway→generate-sql] error:", err);
     return NextResponse.json({ error: "SQL generation failed" }, { status: 500 });
