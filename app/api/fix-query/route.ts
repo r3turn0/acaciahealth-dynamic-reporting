@@ -27,6 +27,7 @@ import { vectorSearch, formatVectorContext } from "@/lib/ai/vectorSearch";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { runSelfHealingPipeline } from "@/lib/sql/pipeline";
+import { retryWithSchemaIntelligence } from "@/lib/agents/SchemaAwareRetryAgent";
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
@@ -63,6 +64,9 @@ export async function POST(req: NextRequest) {
     dbErrorLogs = "",
     metadata: inlineMetadata,
     userFeedback = "",
+    start_date,
+    end_date,
+    branch_code,
   } = body as {
     userQuery: string;
     generatedSQL: string;
@@ -70,7 +74,17 @@ export async function POST(req: NextRequest) {
     dbErrorLogs: string;
     metadata?: unknown;
     userFeedback?: string;
+    start_date?: string;
+    end_date?: string;
+    branch_code?: string;
   };
+
+  // Default dates: last 30 days if not provided
+  const today = new Date();
+  const thirtyDaysAgo = new Date(today);
+  thirtyDaysAgo.setDate(today.getDate() - 30);
+  const startDate = start_date ?? thirtyDaysAgo.toISOString().split("T")[0];
+  const endDate   = end_date   ?? today.toISOString().split("T")[0];
 
   if (!generatedSQL.trim()) {
     return NextResponse.json({ error: "generatedSQL is required" }, { status: 400 });
@@ -98,7 +112,7 @@ export async function POST(req: NextRequest) {
     userQuery,
   });
 
-  // If deterministic tier fixed it, return immediately without an AI call
+  // Tier 1: If deterministic pipeline fixed it, return immediately
   if (pipelineResult.tier === "deterministic" && pipelineResult.valid) {
     return NextResponse.json({
       fixedSQL:    pipelineResult.sql,
@@ -111,7 +125,54 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Tier 3: Step 3: build prompt
+  // Tier 2: Phase 8-10 Schema-Aware Retry (failure classification + KG + learned mappings)
+  if (userQuery.trim() || generatedSQL.trim()) {
+    try {
+      const retryResult = await retryWithSchemaIntelligence({
+        userRequest: userQuery.trim() || generatedSQL.trim().slice(0, 200),
+        startDate,
+        endDate,
+        branchCode: branch_code,
+        failedSql: generatedSQL,
+        errorMessage: dbErrorLogs || apiError,
+      });
+
+      if (retryResult.succeeded && retryResult.correctedSql) {
+        return NextResponse.json({
+          fixedSQL:    retryResult.correctedSql,
+          explanation: retryResult.explanation,
+          confidence:  0.88,
+          changes: retryResult.attempts.flatMap((a) =>
+            a.success ? [{ type: "ai_retry", from: "failed_sql", to: "corrected_sql", reason: a.remediationStrategy }] : []
+          ),
+          autoRetry:   true,
+          tier:        "schema_aware_retry",
+          retry_info:  {
+            attempted:           true,
+            succeeded:           true,
+            totalAttempts:       retryResult.totalAttempts,
+            failureClass:        retryResult.failureClass,
+            learnedMappingsUsed: retryResult.learnedMappingsUsed,
+          },
+          meta: { model: "SchemaAwareRetryAgent", fallback: false },
+        });
+      }
+
+      // Retry agent exhausted — pass failure context to AI tier
+      if (retryResult.attempts.length > 0) {
+        const lastAttempt = retryResult.attempts[retryResult.attempts.length - 1];
+        // Inject failure context into user feedback so AI tier benefits from it
+        const failureContext = `[Failure class: ${retryResult.failureClass}] [Tried: ${retryResult.totalAttempts} correction(s)]\n` +
+          `Last strategy: ${lastAttempt.remediationStrategy}`;
+        if (!userFeedback) (body as Record<string, unknown>)["_retryContext"] = failureContext;
+      }
+    } catch (retryErr) {
+      console.error("[fix-query] SchemaAwareRetryAgent error:", retryErr);
+      // Fall through to AI tier
+    }
+  }
+
+  // Tier 3: AI fallback — build prompt with vector context + schema
   const parts: string[] = [];
   if (userQuery.trim()) parts.push(`USER INTENT:\n${userQuery}`);
   parts.push(`BROKEN SQL:\n${generatedSQL}`);
@@ -137,6 +198,7 @@ export async function POST(req: NextRequest) {
       changes: fix.changes ?? [],
       autoRetry: (fix.confidence ?? 0) >= 0.9,
       tier: "ai_fallback",
+      retry_info: { attempted: false, succeeded: false, totalAttempts: 0, failureClass: "unknown", learnedMappingsUsed: 0 },
       meta: { model: "gpt-4o" },
     });
   } catch (err) {
@@ -145,6 +207,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ...heuristic,
       autoRetry: heuristic.confidence >= 0.9,
+      tier: "heuristic",
+      retry_info: { attempted: false, succeeded: false, totalAttempts: 0, failureClass: "unknown", learnedMappingsUsed: 0 },
       meta: { model: "heuristic", fallback: true },
     });
   }
