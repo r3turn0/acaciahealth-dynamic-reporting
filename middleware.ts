@@ -1,77 +1,53 @@
 /**
  * middleware.ts
  *
- * Auth protection for all sensitive routes.
+ * Dev / preview (AZURE_AD_CLIENT_ID absent): all requests pass through.
+ * The app's /api/auth/validate flow handles login in this mode and
+ * NEXTAUTH_SECRET is not required.
  *
- * Strategy: blanket-protect /api/* then whitelist the two public paths
- * (/api/auth for NextAuth callbacks, /api/health for uptime probes).
- * The next-auth withAuth() middleware validates the JWT stored in the
- * HTTP-only session cookie and redirects unauthenticated requests to /login.
+ * Production (AZURE_AD_CLIENT_ID present): manually checks for a valid
+ * next-auth JWT using getToken and redirects to /login when missing.
  *
- * Protected:
- *   - /dashboard/* and every sub-route
- *   - /api/* — all API routes EXCEPT the whitelist below
- *
- * Public (no auth required):
- *   - /api/auth/*  — NextAuth sign-in / callback / CSRF
- *   - /api/health  — uptime probe (no sensitive data)
- *   - /login       — the login page itself
- *   - / (root)     — redirects to /login
+ * Public paths always bypass auth:
+ *   /api/auth/*  — NextAuth callbacks / CSRF
+ *   /api/health  — uptime probe
+ *   /login       — login page
  */
-import withAuth from "next-auth/middleware";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
 
-// Paths that are explicitly public and must never be auth-gated
-const PUBLIC_API_PREFIXES = [
-  "/api/auth/",   // NextAuth — sign-in, callback, CSRF, session
-  "/api/health",  // Uptime / liveness probe
-];
+const PUBLIC_PREFIXES = ["/api/auth/", "/api/health", "/login"];
 
-function isPublicApiPath(pathname: string): boolean {
-  return PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
-// Re-export next-auth's withAuth as default — it reads NEXTAUTH_SECRET automatically.
-export default withAuth(
-  function middleware(req: NextRequest) {
-    // Allow public API paths through without session check
-    if (isPublicApiPath(req.nextUrl.pathname)) {
-      return NextResponse.next();
-    }
-    // All other matched routes: withAuth already verified the token.
-    // If the token was missing, withAuth redirected to /login before reaching here.
-    return NextResponse.next();
-  },
-  {
-    callbacks: {
-      // Return true to allow the request through after token verification.
-      // Returning false would produce a 401; we prefer the redirect-to-login default.
-      authorized: ({ token, req }) => {
-        // Always allow public API paths
-        if (isPublicApiPath(req.nextUrl.pathname)) return true;
-        // Require a valid token for everything else in the matcher
-        return !!token;
-      },
-    },
-    pages: {
-      signIn: "/login",
-    },
+const isAzureConfigured =
+  !!process.env.AZURE_AD_CLIENT_ID &&
+  !!process.env.AZURE_AD_CLIENT_SECRET &&
+  !!process.env.AZURE_AD_TENANT_ID;
+
+export default async function middleware(req: NextRequest) {
+  // Dev / preview: no auth check needed
+  if (!isAzureConfigured) return NextResponse.next();
+
+  // Public paths: always allow
+  if (isPublicPath(req.nextUrl.pathname)) return NextResponse.next();
+
+  // Production: verify next-auth JWT
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  if (!token) {
+    const loginUrl = new URL("/login", req.url);
+    loginUrl.searchParams.set("callbackUrl", req.nextUrl.pathname);
+    return NextResponse.redirect(loginUrl);
   }
-);
+
+  return NextResponse.next();
+}
 
 export const config = {
   matcher: [
-    /*
-     * Match:
-     *   - /dashboard and all sub-paths
-     *   - /api/* (all API routes)
-     *
-     * Exclude (Next.js internals — never run middleware on these):
-     *   - /_next/static/*
-     *   - /_next/image/*
-     *   - /favicon.ico, /robots.txt, /sitemap.xml
-     */
     "/dashboard/:path*",
     "/api/:path*",
   ],
