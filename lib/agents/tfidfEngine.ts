@@ -227,7 +227,8 @@ export function buildTFIDFIndex(
   const tableIds = tables.map((t) => t.id);
   const N        = tables.length;
 
-  // Raw fields per table for highlight / exact-match scoring
+  // Raw fields per table for highlight / exact-match scoring.
+  // searchTokens are included so matchedTerms captures pre-indexed synonyms.
   const rawFields: Record<string, string[]> = {};
   for (const t of tables) {
     rawFields[t.id] = [
@@ -235,6 +236,9 @@ export function buildTFIDFIndex(
       t.description ?? "",
       ...t.columns.map((c) => c.displayName),
       ...t.columns.map((c) => c.description ?? ""),
+      ...(Array.isArray((t as { searchTokens?: string[] }).searchTokens)
+        ? (t as { searchTokens: string[] }).searchTokens
+        : []),
     ].filter(Boolean);
   }
 
@@ -403,7 +407,42 @@ export function hybridSearch(
     const rawScore = Math.min(1, exactScore + synonymScore + semanticScore);
     if (rawScore < 0.01) continue;
 
-    const matchedTerms   = originalTokens.filter((t) => docVec.has(t));
+    // A term is "matched" when any of the following is true:
+    //   1. The token is a key in the document's TF-IDF vector (direct corpus match).
+    //   2. The token appears as a substring in any raw metadata field string.
+    //   3. Any corpus token starts with the query token (e.g. "admission" matches "admissions").
+    //   4. As a fallback for pure-semantic results, map each original token back through its
+    //      synonym expansions and record those that landed in docVec — this guarantees that
+    //      any result with score > 0 has at least one matchedTerm.
+    const fieldText    = fields.join(" ").toLowerCase();
+    const corpusTokens = docVec ? [...docVec.keys()] : [];
+
+    const directMatches = originalTokens.filter((t) =>
+      docVec.has(t) ||
+      fieldText.includes(t) ||
+      corpusTokens.some((ct) => ct.startsWith(t) || t.startsWith(ct))
+    );
+
+    // Semantic fallback: for each original token, collect the expanded synonyms that
+    // actually appear in the document vector; label them back under the original token.
+    const semanticFallback: string[] = [];
+    if (directMatches.length === 0 && rawScore > 0) {
+      for (const tok of originalTokens) {
+        const expansions: string[] = [];
+        if (SYNONYM_MAP[tok]) expansions.push(...SYNONYM_MAP[tok]);
+        if (REVERSE_SYNONYM[tok]) expansions.push(...REVERSE_SYNONYM[tok]);
+        const expandedToks = expansions.flatMap((s) => tokenise(s));
+        const hit = expandedToks.some((et) => docVec.has(et));
+        if (hit) semanticFallback.push(tok);
+      }
+    }
+
+    const matchedTerms = directMatches.length > 0
+      ? directMatches
+      : semanticFallback.length > 0
+        ? semanticFallback
+        // Last resort: if there's a non-zero semantic score, report the query itself
+        : rawScore > 0 ? [...originalTokens] : [];
     const matchedSynonyms: string[] = [];
     for (const { canonical, synonyms } of matchedSynonymGroups) {
       if (fields.some((f) => f.toLowerCase().includes(canonical))) {

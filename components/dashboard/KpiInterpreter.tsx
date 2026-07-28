@@ -494,6 +494,12 @@ export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
     }
   }, []);
 
+  // Auto-load reports on first mount so the selector is immediately populated
+  // without requiring a manual button click.
+  useEffect(() => {
+    loadReports();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // When preselectedKpi changes (user clicked a KPI card in another tab),
   // auto-load reports and highlight the matching report.
   useEffect(() => {
@@ -507,7 +513,7 @@ export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
         // Interpretation will auto-trigger via the selectedReport effect below
       }
     } else {
-      // Trigger a load with auto-selection
+      // Reports not yet loaded — load with auto-selection
       loadReports(preselectedKpi);
     }
   }, [preselectedKpi]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -597,23 +603,12 @@ export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-4">
         <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-          <Sparkles className="w-6 h-6 text-primary" />
+          <Loader2 className="w-6 h-6 text-primary animate-spin" />
         </div>
         <div className="text-center">
-          <p className="text-sm font-medium text-foreground">KPI Interpreter</p>
-          <p className="text-xs text-muted-foreground mt-1 max-w-xs leading-relaxed">
-            Load your saved reports, select one, and the AI will generate a structured business
-            insights JSON with trends, alerts, and recommendations.
-          </p>
+          <p className="text-sm font-medium text-foreground">Loading reports…</p>
+          <p className="text-xs text-muted-foreground mt-1">Fetching your saved report library.</p>
         </div>
-        <button
-          onClick={() => loadReports()}
-          disabled={loadingReports}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
-        >
-          {loadingReports ? <Loader2 className="w-4 h-4 animate-spin" /> : <BookOpen className="w-4 h-4" />}
-          Load Saved Reports
-        </button>
       </div>
     );
   }
