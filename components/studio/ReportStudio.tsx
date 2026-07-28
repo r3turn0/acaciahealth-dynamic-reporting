@@ -198,7 +198,29 @@ export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportSt
           setSql(json.executed_sql);
         }
       }
-      setResult(json);
+      // Normalize the gateway response into the ReportResult shape expected by ResultsTable.
+      // The gateway returns { rows, columns, rowCount, ... } but ResultsTable expects
+      // { data, summary: { columns, row_count }, ... }.
+      const rows: Record<string, unknown>[] = json.rows ?? json.data ?? [];
+      const cols: string[] = json.columns ?? (rows[0] ? Object.keys(rows[0]) : []);
+      const normalized: ReportResult = {
+        report_name: currentPlan?.kpi_detected
+          ? `${currentPlan.kpi_detected} Report`
+          : "Custom Query",
+        generated_at: new Date().toISOString(),
+        kpi: currentPlan?.kpi_detected ?? "custom",
+        sql_used: json.executed_sql ?? sql,
+        data: rows,
+        summary: {
+          row_count: json.rowCount ?? rows.length,
+          columns: cols,
+          aggregates: undefined,
+        },
+        cache_hit: json.cache_hit ?? false,
+        demo_mode: json.demo_mode ?? false,
+        execution_ms: json.execution_ms,
+      };
+      setResult(normalized);
     } catch (e) {
       setExecError(e instanceof Error ? e.message : "Network error");
     } finally {

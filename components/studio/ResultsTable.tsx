@@ -137,14 +137,18 @@ export function ResultsTable({ result }: ResultsTableProps) {
   const [expandedCell, setExpandedCell] = useState<{ col: string; value: string } | null>(null);
 
   // Columns that are likely to contain long narrative text
+  const summaryCols: string[] =
+    result.summary?.columns ??
+    (result.data[0] ? Object.keys(result.data[0]) : []);
   const narrativeCols = useMemo(
     () =>
       new Set(
-        result.summary.columns.filter((c) =>
+        summaryCols.filter((c) =>
           /narrative|assessment|note|comment|description|text|reason/i.test(c)
         )
       ),
-    [result.summary.columns]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [summaryCols.join(",")]
   );
 
   const TRUNCATE_LENGTH = 120;
