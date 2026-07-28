@@ -24,6 +24,15 @@ import { executeQuery, isDbConfigured } from "@/lib/services/db";
 import { parameterizeDates } from "@/lib/services/dateParams";
 import { buildCacheKey, getCache, setCache } from "@/lib/services/cache";
 import { buildSemanticQuerySystemPrompt } from "@/lib/ai/insightAgentPrompt";
+import {
+  recordQueryAttempt,
+  markQuerySuccess,
+  learnFromSuccess,
+  learnFromFailure,
+  classifyFailure,
+  hashSql,
+} from "@/lib/services/queryHistoryStore";
+import { retryWithSchemaIntelligence } from "@/lib/agents/SchemaAwareRetryAgent";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -105,6 +114,16 @@ export interface GatewayResult {
   demoMode: boolean;
   /** Total elapsed ms */
   elapsedMs: number;
+  /** Schema-aware retry info (Phase 9) */
+  retryInfo?: {
+    attempted: boolean;
+    succeeded: boolean;
+    totalAttempts: number;
+    failureClass: string;
+    learnedMappingsUsed: Array<{ term: string; suggestion: string; confidence: number }>;
+  };
+  /** History entry id for the initial attempt */
+  historyId?: string;
 }
 
 export interface IntentResult {
@@ -623,20 +642,36 @@ async function runSQLValidationAgent(
   };
 }
 
-// ── Stage 6: ExecutionEngine ──────────────────────────────────────────────────
+// ── Stage 6: ExecutionEngine (with Phase 9 Schema-Aware Retry) ───────────────
+
+interface ExecutionEngineResult {
+  execution: ExecutionResult | null;
+  stageResult: StageResult;
+  executedSql: string;
+  retryInfo?: {
+    attempted: boolean;
+    succeeded: boolean;
+    totalAttempts: number;
+    failureClass: string;
+    learnedMappingsUsed: Array<{ term: string; suggestion: string; confidence: number }>;
+  };
+  historyId?: string;
+}
 
 async function runExecutionEngine(
   sql: string,
   startDate: string,
   endDate: string,
   auditId: string,
-  planOnly: boolean
-): Promise<{ execution: ExecutionResult | null; stageResult: StageResult }> {
+  planOnly: boolean,
+  userRequest?: string
+): Promise<ExecutionEngineResult> {
   const t0 = Date.now();
 
   if (planOnly) {
     return {
       execution: null,
+      executedSql: sql,
       stageResult: makeStage("ExecutionEngine", "skipped", Date.now() - t0, "planOnly=true — execution skipped"),
     };
   }
@@ -661,9 +696,27 @@ async function runExecutionEngine(
         truncated: false,
         auditLogId: auditId,
       },
+      executedSql: sql,
       stageResult: makeStage("ExecutionEngine", "ok", Date.now() - t0, "Demo mode — seeded data returned"),
     };
   }
+
+  // Record the initial attempt in query history
+  const historyId = await recordQueryAttempt({
+    user_request: userRequest ?? sql.slice(0, 200),
+    query_text: sql,
+    status: "retry", // Will be updated to success/failure after execution
+    retry_version: 0,
+    failure_reason: null,
+    remediation_strategy: null,
+    error_message: null,
+    execution_ms: 0,
+    schema_hash: hashSql(sql),
+    final_success_query: null,
+    learned_mappings_snapshot: null,
+  }).catch(() => undefined as string | undefined);
+
+  // ── First execution attempt ────────────────────────────────────────────────
 
   try {
     const rows = await executeQuery(sql, {
@@ -673,26 +726,143 @@ async function runExecutionEngine(
 
     const MAX_ROWS = 100_000;
     const truncated = rows.length >= MAX_ROWS;
+    const executionMs = Date.now() - t0;
+
+    // Record success in history
+    if (historyId) {
+      await markQuerySuccess(historyId, sql, executionMs).catch(() => {});
+    }
+    // Learn from success
+    if (userRequest) {
+      await learnFromSuccess(userRequest, sql).catch(() => {});
+    }
 
     return {
       execution: {
         rows: rows.slice(0, MAX_ROWS),
         columns: rows.length > 0 ? Object.keys(rows[0]) : [],
         rowCount: rows.length,
-        executionMs: Date.now() - t0,
+        executionMs,
         truncated,
         auditLogId: auditId,
       },
+      executedSql: sql,
+      historyId,
       stageResult: makeStage(
-        "ExecutionEngine", "ok", Date.now() - t0,
+        "ExecutionEngine", "ok", executionMs,
         `${rows.length} rows returned${truncated ? " (truncated at 100k)" : ""}`
       ),
     };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  } catch (firstErr) {
+    const firstErrMsg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+
+    // Record the failure
+    if (userRequest) {
+      await learnFromFailure(userRequest, sql, firstErrMsg).catch(() => {});
+    }
+
+    // ── Phase 9: Schema-Aware Retry ──────────────────────────────────────────
+    if (userRequest) {
+      try {
+        const retryResult = await retryWithSchemaIntelligence({
+          userRequest,
+          startDate,
+          endDate,
+          failedSql: sql,
+          errorMessage: firstErrMsg,
+          originalHistoryId: historyId,
+        });
+
+        if (retryResult.succeeded && retryResult.correctedSql) {
+          // Execute the corrected SQL
+          const retryT0 = Date.now();
+          try {
+            const retryRows = await executeQuery(retryResult.correctedSql, {
+              StartDate: startDate,
+              EndDate: endDate,
+            }) as Record<string, unknown>[];
+
+            const MAX_ROWS = 100_000;
+            const truncated = retryRows.length >= MAX_ROWS;
+            const retryMs = Date.now() - retryT0;
+
+            // Learn from this corrected success
+            await learnFromSuccess(userRequest, retryResult.correctedSql).catch(() => {});
+
+            return {
+              execution: {
+                rows: retryRows.slice(0, MAX_ROWS),
+                columns: retryRows.length > 0 ? Object.keys(retryRows[0]) : [],
+                rowCount: retryRows.length,
+                executionMs: retryMs,
+                truncated,
+                auditLogId: auditId,
+              },
+              executedSql: retryResult.correctedSql,
+              historyId,
+              retryInfo: {
+                attempted: true,
+                succeeded: true,
+                totalAttempts: retryResult.totalAttempts,
+                failureClass: retryResult.failureClass,
+                learnedMappingsUsed: retryResult.learnedMappingsUsed,
+              },
+              stageResult: makeStage(
+                "ExecutionEngine", "ok", Date.now() - t0,
+                `Succeeded after ${retryResult.totalAttempts} retry attempt(s) — ${retryRows.length} rows`
+              ),
+            };
+          } catch (retryExecErr) {
+            // Retry SQL also failed — fall through to final error
+            const retryErrMsg = retryExecErr instanceof Error ? retryExecErr.message : String(retryExecErr);
+            return {
+              execution: null,
+              executedSql: retryResult.correctedSql,
+              historyId,
+              retryInfo: {
+                attempted: true,
+                succeeded: false,
+                totalAttempts: retryResult.totalAttempts,
+                failureClass: retryResult.failureClass,
+                learnedMappingsUsed: retryResult.learnedMappingsUsed,
+              },
+              stageResult: makeStage(
+                "ExecutionEngine", "error", Date.now() - t0,
+                `Original error: ${firstErrMsg} | Retry also failed: ${retryErrMsg}`
+              ),
+            };
+          }
+        }
+
+        // Retry loop exhausted or aborted
+        return {
+          execution: null,
+          executedSql: sql,
+          historyId,
+          retryInfo: {
+            attempted: true,
+            succeeded: false,
+            totalAttempts: retryResult.totalAttempts,
+            failureClass: retryResult.failureClass,
+            learnedMappingsUsed: retryResult.learnedMappingsUsed,
+          },
+          stageResult: makeStage(
+            "ExecutionEngine", "error", Date.now() - t0,
+            `Execution failed (original + ${retryResult.totalAttempts} retry attempts): ${firstErrMsg}`
+          ),
+        };
+      } catch (retryAgentErr) {
+        // Retry agent itself threw (non-SQL error) — fall through to plain error
+        console.error("[QueryGateway] RetryAgent threw:", retryAgentErr);
+      }
+    }
+
+    // No retry available (no userRequest, or retry agent threw)
     return {
       execution: null,
-      stageResult: makeStage("ExecutionEngine", "error", Date.now() - t0, `Execution error: ${msg}`),
+      executedSql: sql,
+      historyId,
+      stageResult: makeStage("ExecutionEngine", "error", Date.now() - t0, `Execution error: ${firstErrMsg}`),
     };
   }
 }
@@ -715,7 +885,7 @@ function runFeedbackAgent(
   );
 }
 
-// ── Stage 8: LearningRepository ───────────────────────────────────────────────
+// ── Stage 8: LearningRepository (Phase 10) ───────────────────────────────────
 
 function runLearningRepository(
   query: string,
@@ -728,7 +898,7 @@ function runLearningRepository(
 ): StageResult {
   const t0 = Date.now();
 
-  // ONLY store validated, accepted queries
+  // ONLY store validated, accepted queries in the in-process approved pattern store
   if (!validation.valid || !execution) {
     return makeStage("LearningRepository", "skipped", Date.now() - t0, "Invalid or unexecuted query — not stored");
   }
@@ -746,7 +916,24 @@ function runLearningRepository(
     accepted: false, // Requires human acceptance before becoming approved
   });
 
-  return makeStage("LearningRepository", "ok", Date.now() - t0, "Query stored pending governance acceptance");
+  // Phase 10: also persist to durable query history store (fire-and-forget)
+  recordQueryAttempt({
+    user_request: query,
+    query_text: sql,
+    status: "success",
+    retry_version: 0,
+    failure_reason: null,
+    remediation_strategy: null,
+    error_message: null,
+    execution_ms: execution.executionMs,
+    schema_hash: hashSql(sql),
+    final_success_query: sql,
+    learned_mappings_snapshot: null,
+  }).catch((err: unknown) => {
+    console.error("[QueryGateway] Failed to persist to query history:", (err as Error).message);
+  });
+
+  return makeStage("LearningRepository", "ok", Date.now() - t0, "Query stored — in-process + durable history");
 }
 
 // ── Stage 9: ContinuousImprovementAgent ───────────────────────────────────────
@@ -858,14 +1045,21 @@ export async function runQueryGateway(req: GatewayRequest): Promise<GatewayResul
     });
   }
 
-  // Stage 6 — ExecutionEngine
+  // Stage 6 — ExecutionEngine (with Phase 9 Schema-Aware Retry)
   const auditId = logAudit({
     source: req.source, role: req.role ?? "analyst", sql: normalizedSql,
     confidence: sqlConfidence, executionMs: 0, rowCount: 0, approved: validation.valid,
     errors: validation.errors,
   });
-  const { execution, stageResult: s6 } = await runExecutionEngine(
-    normalizedSql, req.startDate, req.endDate, auditId, req.planOnly ?? false
+  const {
+    execution,
+    stageResult: s6,
+    executedSql,
+    retryInfo,
+    historyId,
+  } = await runExecutionEngine(
+    normalizedSql, req.startDate, req.endDate, auditId, req.planOnly ?? false,
+    req.source !== "sql_editor" ? req.query : undefined // Pass NL query for retry context
   );
   pipeline.push(s6);
 
@@ -886,12 +1080,16 @@ export async function runQueryGateway(req: GatewayRequest): Promise<GatewayResul
   // Overall confidence: weighted average across stages
   const overallConfidence = (intent.confidence * 0.2 + sqlConfidence * 0.5 + (validation.valid ? 1 : 0) * 0.3);
 
+  // Use the executedSql (possibly corrected by retry agent) as the final SQL
+  const finalSql = executedSql ?? normalizedSql;
+
   // Cache successful results
   const result = buildResult({
-    requestId, source: req.source, sql: normalizedSql, explanation,
+    requestId, source: req.source, sql: finalSql, explanation,
     confidence: overallConfidence, intent, semantic, approvedPattern, validation,
     execution, pipeline, role: req.role ?? "analyst",
     auditId, demoMode: !isDbConfigured(), elapsedMs: Date.now() - globalStart,
+    retryInfo, historyId,
   });
 
   if (validation.valid && execution && req.source !== "sql_editor") {
@@ -922,6 +1120,8 @@ function buildResult(p: {
   auditId: string;
   demoMode: boolean;
   elapsedMs: number;
+  retryInfo?: GatewayResult["retryInfo"];
+  historyId?: string;
 }): GatewayResult {
   // Extract lineage from SQL
   const tablesUsed = [...p.sql.matchAll(/(?:FROM|JOIN)\s+([\w.]+)/gi)]
