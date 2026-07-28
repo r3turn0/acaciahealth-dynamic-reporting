@@ -1,23 +1,36 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import dynamic from "next/dynamic";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { DashboardHome } from "@/components/dashboard/DashboardHome";
 
-// ── Consolidated module imports ───────────────────────────────────────────────
-// Each hub merges previously-separate screens into one governed surface.
+// ── Lazy-loaded hub components (R-12) ─────────────────────────────────────────
+// All heavy tab components are dynamically imported so they don't inflate the
+// initial JS bundle. Each gets a shared skeleton fallback during load.
 
-import { DataExplorer }       from "@/components/data/DataExplorer";
-import { DatasetStudioHub }   from "@/components/dataset/DatasetStudioHub";
-import { ReportStudio }       from "@/components/studio/ReportStudio";
-import { BiStudio }           from "@/components/bi/BiStudio";
-import { KpiIntelligenceHub } from "@/components/kpi/KpiIntelligenceHub";
-import { SchemaHub }          from "@/components/schema/SchemaHub";
-import { AdministrationHub }  from "@/components/admin/AdministrationHub";
+function TabSkeleton() {
+  return (
+    <div className="flex flex-col gap-4 animate-pulse w-full" aria-busy="true" aria-label="Loading">
+      <div className="h-10 rounded-lg bg-muted w-72" />
+      <div className="h-64 rounded-xl bg-muted w-full" />
+      <div className="h-48 rounded-xl bg-muted w-full" />
+    </div>
+  );
+}
+
+const DataExplorer      = dynamic(() => import("@/components/data/DataExplorer").then(m => ({ default: m.DataExplorer })),           { loading: () => <TabSkeleton />, ssr: false });
+const DatasetStudioHub  = dynamic(() => import("@/components/dataset/DatasetStudioHub").then(m => ({ default: m.DatasetStudioHub })), { loading: () => <TabSkeleton />, ssr: false });
+const ReportStudio      = dynamic(() => import("@/components/studio/ReportStudio").then(m => ({ default: m.ReportStudio })),         { loading: () => <TabSkeleton />, ssr: false });
+const BiStudio          = dynamic(() => import("@/components/bi/BiStudio").then(m => ({ default: m.BiStudio })),                     { loading: () => <TabSkeleton />, ssr: false });
+const KpiIntelligenceHub = dynamic(() => import("@/components/kpi/KpiIntelligenceHub").then(m => ({ default: m.KpiIntelligenceHub })), { loading: () => <TabSkeleton />, ssr: false });
+const SchemaHub         = dynamic(() => import("@/components/schema/SchemaHub").then(m => ({ default: m.SchemaHub })),               { loading: () => <TabSkeleton />, ssr: false });
+const AdministrationHub = dynamic(() => import("@/components/admin/AdministrationHub").then(m => ({ default: m.AdministrationHub })), { loading: () => <TabSkeleton />, ssr: false });
 
 import { LoginPage }    from "@/components/auth/LoginPage";
 import type { AuthUser } from "@/components/auth/LoginPage";
 import type { LoadedReport } from "@/components/studio/ReportStudio";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 
@@ -343,88 +356,104 @@ export default function Home() {
           </div>
         </header>
 
-        {/* Page content */}
+        {/* Page content — wrapped in ErrorBoundary (R-19) so tab crashes don't unmount the shell */}
         <main className="flex-1 overflow-y-auto px-5 md:px-6 py-6">
+        <ErrorBoundary label="the dashboard">
 
           {/* 1. Home */}
           {primary === "home" && (
-            <DashboardHome
-              onNavigate={navigate}
-              onOpenReport={(report) => {
-                setLoadedReport({ sql: report.sql, prompt: report.prompt, kpi: report.kpi, name: report.name });
-                navigate("reports");
-              }}
-            />
+            <Suspense fallback={<TabSkeleton />}>
+              <DashboardHome
+                onNavigate={navigate}
+                onOpenReport={(report) => {
+                  setLoadedReport({ sql: report.sql, prompt: report.prompt, kpi: report.kpi, name: report.name });
+                  navigate("reports");
+                }}
+              />
+            </Suspense>
           )}
 
           {/* 2. Discover Data */}
           {primary === "discover" && (
             <div className="max-w-7xl mx-auto w-full">
-              <DataExplorer onOpenBuilder={() => navigate("dataset-studio")} />
+              <Suspense fallback={<TabSkeleton />}>
+                <DataExplorer onOpenBuilder={() => navigate("dataset-studio")} />
+              </Suspense>
             </div>
           )}
 
           {/* 3. Dataset Studio — unified: Designer + DataContract + BI dataset */}
           {primary === "dataset-studio" && (
             <div className="max-w-7xl mx-auto w-full">
-              <DatasetStudioHub
-                initialTab={subTab as "build" | "validate" | "publish" | "history" | undefined}
-                onNavigate={navigate}
-              />
+              <Suspense fallback={<TabSkeleton />}>
+                <DatasetStudioHub
+                  initialTab={subTab as "build" | "validate" | "publish" | "history" | undefined}
+                  onNavigate={navigate}
+                />
+              </Suspense>
             </div>
           )}
 
           {/* 4. Reports — unified: ReportStudio (with internal Saved tab) + BI Studio */}
           {primary === "reports" && (
             <div className="max-w-7xl mx-auto w-full">
-              {subTab === "bi" ? (
-                <BiStudio />
-              ) : (
-                <ReportStudio
-                  initialReport={loadedReport}
-                  initialTab={subTab === "saved" ? "saved" : undefined}
-                  onNavigate={navigate}
-                />
-              )}
+              <Suspense fallback={<TabSkeleton />}>
+                {subTab === "bi" ? (
+                  <BiStudio />
+                ) : (
+                  <ReportStudio
+                    initialReport={loadedReport}
+                    initialTab={subTab === "saved" ? "saved" : undefined}
+                    onNavigate={navigate}
+                  />
+                )}
+              </Suspense>
             </div>
           )}
 
           {/* 5. KPI Intelligence — Interpreter + Intelligence + Registry + Governance */}
           {primary === "kpi" && (
             <div className="max-w-7xl mx-auto w-full">
-              <KpiIntelligenceHub
-                initialTab={kpiTab}
-                preselectedKpi={preselectedKpi}
-                userRole={user.role as "Admin" | "Analyst" | "Viewer"}
-                onNavigate={navigate}
-                onClearPreselected={() => setPreselectedKpi(null)}
-              />
+              <Suspense fallback={<TabSkeleton />}>
+                <KpiIntelligenceHub
+                  initialTab={kpiTab}
+                  preselectedKpi={preselectedKpi}
+                  userRole={user.role as "Admin" | "Analyst" | "Viewer"}
+                  onNavigate={navigate}
+                  onClearPreselected={() => setPreselectedKpi(null)}
+                />
+              </Suspense>
             </div>
           )}
 
           {/* 6. Schema Hub — sole metadata authority */}
           {primary === "schema" && (
-            <SchemaHub
-              onNavigate={navigate}
-              initialTab={
-                subTab === "metadata" ? "metadata" :
-                subTab === "registry" ? "registry" :
-                "explorer"
-              }
-            />
+            <Suspense fallback={<TabSkeleton />}>
+              <SchemaHub
+                onNavigate={navigate}
+                initialTab={
+                  subTab === "metadata" ? "metadata" :
+                  subTab === "registry" ? "registry" :
+                  "explorer"
+                }
+              />
+            </Suspense>
           )}
 
           {/* 7. Administration — unified: Security + Sessions + Audit + Agents + Pipeline + Settings */}
           {primary === "administration" && (
             <div className="max-w-6xl mx-auto w-full">
-              <AdministrationHub
-                initialTab={subTab as "audit" | "security" | "sessions" | "agents" | "pipeline" | "settings" | undefined}
-                currentUser={user}
-                onNavigate={navigate}
-              />
+              <Suspense fallback={<TabSkeleton />}>
+                <AdministrationHub
+                  initialTab={subTab as "audit" | "security" | "sessions" | "agents" | "pipeline" | "settings" | undefined}
+                  currentUser={user}
+                  onNavigate={navigate}
+                />
+              </Suspense>
             </div>
           )}
 
+        </ErrorBoundary>
         </main>
       </div>
     </div>

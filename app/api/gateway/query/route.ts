@@ -34,8 +34,12 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { runQueryGateway, type GatewayRequest } from "@/lib/gateway/QueryGateway";
 import { GatewayQueryBodySchema } from "@/lib/validation/apiSchemas";
+import { checkRateLimit } from "@/lib/middleware/rateLimiter";
 
 export async function POST(req: NextRequest) {
+  const rl = checkRateLimit(req, { limit: 40, window: 60, prefix: "gateway-query" });
+  if (!rl.success) return rl.response;
+
   const globalStart = Date.now();
 
   try {

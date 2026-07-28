@@ -18,11 +18,15 @@ import { NextRequest } from "next/server";
 import { streamText } from "ai";
 import { getModel } from "@/lib/ai/gateway";
 import type { BusinessInsights } from "@/app/api/kpi/interpret/route";
-import { buildConversationalSystemPrompt } from "@/lib/ai/insightAgentPrompt";
+import { buildCompactConversationalPrompt } from "@/lib/ai/insightAgentPrompt";
+import { edgeCheckRateLimit } from "@/lib/middleware/edgeRateLimiter";
 
 export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
+  const rateLimited = edgeCheckRateLimit(req, { limit: 20, window: 60, prefix: "kpi-followup" });
+  if (rateLimited) return rateLimited;
+
   let question = "";
 
   try {
@@ -43,7 +47,7 @@ export async function POST(req: NextRequest) {
       return new Response("insights context is required", { status: 400 });
     }
 
-    const systemPrompt = buildConversationalSystemPrompt();
+    const { systemPrompt } = buildCompactConversationalPrompt();
 
     const dateContext =
       start_date && end_date

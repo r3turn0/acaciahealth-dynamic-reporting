@@ -23,6 +23,19 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { chatJSON } from "@/lib/ai/gateway";
+
+/**
+ * DEPRECATED — use POST /api/generate-query/correct instead.
+ * This route is kept for backward compatibility with WorkspacePage and FeedbackModal.
+ * It will be removed in a future release.
+ */
+function withDeprecationHeaders(res: NextResponse): NextResponse {
+  res.headers.set("Deprecation", "true");
+  res.headers.set("Sunset", "2026-10-01");
+  res.headers.set("Link", '</api/generate-query/correct>; rel="successor-version"');
+  res.headers.set("X-Deprecated-By", "/api/generate-query/correct");
+  return res;
+}
 import { vectorSearch, formatVectorContext } from "@/lib/ai/vectorSearch";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -191,7 +204,7 @@ export async function POST(req: NextRequest) {
       changes: { type: string; from: string; to: string; reason?: string }[];
     }>(SYSTEM_PROMPT, userPrompt);
 
-    return NextResponse.json({
+    return withDeprecationHeaders(NextResponse.json({
       fixedSQL: fix.fixedSQL ?? generatedSQL,
       explanation: fix.explanation ?? "",
       confidence: fix.confidence ?? 0.5,
@@ -200,17 +213,17 @@ export async function POST(req: NextRequest) {
       tier: "ai_fallback",
       retry_info: { attempted: false, succeeded: false, totalAttempts: 0, failureClass: "unknown", learnedMappingsUsed: 0 },
       meta: { model: "gpt-4o" },
-    });
+    }));
   } catch (err) {
     console.error("[fix-query] AI call failed:", err);
     const heuristic = heuristicFix(generatedSQL, dbErrorLogs, metadata);
-    return NextResponse.json({
+    return withDeprecationHeaders(NextResponse.json({
       ...heuristic,
       autoRetry: heuristic.confidence >= 0.9,
       tier: "heuristic",
       retry_info: { attempted: false, succeeded: false, totalAttempts: 0, failureClass: "unknown", learnedMappingsUsed: 0 },
       meta: { model: "heuristic", fallback: true },
-    });
+    }));
   }
 }
 

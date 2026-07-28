@@ -16,12 +16,16 @@
 import { NextRequest } from "next/server";
 import { streamText } from "ai";
 import { getModel } from "@/lib/ai/gateway";
-import { buildConversationalSystemPrompt } from "@/lib/ai/insightAgentPrompt";
+import { buildCompactConversationalPrompt } from "@/lib/ai/insightAgentPrompt";
 import { KpiAskBodySchema } from "@/lib/validation/apiSchemas";
+import { edgeCheckRateLimit } from "@/lib/middleware/edgeRateLimiter";
 
 export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
+  const rateLimited = edgeCheckRateLimit(req, { limit: 15, window: 60, prefix: "kpi-ask" });
+  if (rateLimited) return rateLimited;
+
   let raw: unknown;
   try {
     raw = await req.json();
@@ -39,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   const { question, context, kpi, start_date, end_date } = parsed.data;
 
-  const systemPrompt = buildConversationalSystemPrompt();
+  const { systemPrompt } = buildCompactConversationalPrompt();
 
   const dateContext =
     start_date && end_date

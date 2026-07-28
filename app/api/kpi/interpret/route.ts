@@ -17,7 +17,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import { getModel, getModelId } from "@/lib/ai/gateway";
-import { buildInterpretationSystemPrompt } from "@/lib/ai/insightAgentPrompt";
+import { buildCompactInterpretationPrompt } from "@/lib/ai/insightAgentPrompt";
+import { checkRateLimit } from "@/lib/middleware/rateLimiter";
 
 // ── Output schema ─────────────────────────────────────────────────────────────
 
@@ -63,6 +64,9 @@ export type BusinessInsights = z.infer<typeof BusinessInsightsSchema>;
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const rl = checkRateLimit(req, { limit: 20, window: 60, prefix: "kpi-interpret" });
+  if (!rl.success) return rl.response;
+
   try {
     const body = await req.json();
     const { report_name, kpi, start_date, end_date, data, columns } = body;
@@ -87,7 +91,7 @@ export async function POST(req: NextRequest) {
     // Cap rows sent to the model to avoid token limits
     const sample = data.slice(0, 200);
 
-    const systemPrompt = buildInterpretationSystemPrompt();
+    const { systemPrompt, apcsMetrics } = buildCompactInterpretationPrompt();
 
     const userMessage = `Analyse the following KPI report and return a BusinessInsights object.
 
@@ -121,6 +125,7 @@ Return a complete BusinessInsights JSON object.`;
         row_count: data.length,
         sample_count: sample.length,
         generated_at: new Date().toISOString(),
+        apcs: apcsMetrics,
       },
     });
   } catch (err) {

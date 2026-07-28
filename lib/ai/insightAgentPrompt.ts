@@ -289,7 +289,7 @@ Flag confidence as: HIGH CONFIDENCE | MEDIUM CONFIDENCE | LOW CONFIDENCE
 
 When quality concerns exist, explain: Issue · Impact · Limitation · Potential bias`;
 
-// ─����───────────────────────────────────────────────────────────────────────────
+// ─�����───────────────────────────────────────────────────────────────────────────
 // SECTION 13 — DEFAULT RESPONSE STRUCTURE
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -472,7 +472,7 @@ export function buildInterpretationSystemPrompt(): string {
   return [
     buildAgentIdentityBlock(),
     "",
-    "────────��────────────────────────────────────────",
+    "────────�����───────────────────────────────────────",
     "",
     buildAnalyticsBlock(),
     "",
@@ -775,7 +775,7 @@ export function buildSQLCorrectionSystemPrompt(
     "",
     "─────────────────────────────────────────────────",
     "KPI Definitions",
-    "──────────���──────────────────────────────────────",
+    "────────���─���──────────────────────────────────────",
     "```json",
     kpiJson,
     "```",
@@ -902,6 +902,33 @@ export function buildCompactCorrectionPrompt(
 ): APCSPromptResult {
   const full = buildSQLCorrectionSystemPrompt(schemaJson, kpiJson, semanticLayerJson, kgContext, failureContext);
   return _applyAPCS(full, schemaJson, retryContext);
+}
+
+/**
+ * Wrap buildInterpretationSystemPrompt with APCS compaction.
+ * Saves ~1,120 tokens per call on the identity + domain expertise blocks.
+ */
+export function buildCompactInterpretationPrompt(): APCSPromptResult {
+  const full = buildInterpretationSystemPrompt();
+  return _applyAPCS(full);
+}
+
+/**
+ * Wrap buildConversationalSystemPrompt with APCS compaction.
+ * Used by kpi/ask and kpi/followup streaming routes.
+ */
+export function buildCompactConversationalPrompt(): APCSPromptResult {
+  const full = buildConversationalSystemPrompt();
+  return _applyAPCS(full);
+}
+
+/**
+ * Wrap buildInsightsSystemPrompt with APCS compaction.
+ * Used by bi/copilot.
+ */
+export function buildCompactInsightsPrompt(): APCSPromptResult {
+  const full = buildInsightsSystemPrompt();
+  return _applyAPCS(full);
 }
 
 function _applyAPCS(
