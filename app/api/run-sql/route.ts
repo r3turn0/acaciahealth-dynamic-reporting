@@ -16,20 +16,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { runQueryGateway } from "@/lib/gateway/QueryGateway";
 import { parameterizeDates } from "@/lib/services/dateParams";
 import { BackendUnreachableError } from "@/lib/services/db";
+import { RunSqlBodySchema } from "@/lib/validation/apiSchemas";
 
 export async function POST(req: NextRequest) {
   const start = Date.now();
 
   try {
-    const body = await req.json();
-    const { sql, start_date, end_date, report_name, report_id, original_prompt } = body;
-
-    if (!sql || typeof sql !== "string") {
-      return NextResponse.json({ error: "sql is required" }, { status: 400 });
+    const raw = await req.json();
+    const parsed = RunSqlBodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid request body", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
     }
-    if (!start_date || !end_date) {
-      return NextResponse.json({ error: "start_date and end_date are required" }, { status: 400 });
-    }
+    const { sql, start_date, end_date, report_name, report_id, original_prompt } = parsed.data;
 
     // Normalize date params before passing to gateway
     const { sql: normalizedSql, replaced: dateParamsApplied } = parameterizeDates(sql);

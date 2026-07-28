@@ -17,30 +17,27 @@ import { NextRequest } from "next/server";
 import { streamText } from "ai";
 import { getModel } from "@/lib/ai/gateway";
 import { buildConversationalSystemPrompt } from "@/lib/ai/insightAgentPrompt";
+import { KpiAskBodySchema } from "@/lib/validation/apiSchemas";
 
 export const runtime = "edge";
 
 export async function POST(req: NextRequest) {
-  let question = "";
-  let context = "";
-  let kpi = "";
-  let start_date = "";
-  let end_date = "";
-
+  let raw: unknown;
   try {
-    const body = await req.json();
-    question  = typeof body.question  === "string" ? body.question.trim()  : "";
-    context   = typeof body.context   === "string" ? body.context           : "";
-    kpi       = typeof body.kpi       === "string" ? body.kpi               : "";
-    start_date = typeof body.start_date === "string" ? body.start_date     : "";
-    end_date   = typeof body.end_date   === "string" ? body.end_date       : "";
+    raw = await req.json();
   } catch {
-    return new Response("Invalid request body", { status: 400 });
+    return new Response("Invalid JSON body", { status: 400 });
   }
 
-  if (!question) {
-    return new Response("question is required", { status: 400 });
+  const parsed = KpiAskBodySchema.safeParse(raw);
+  if (!parsed.success) {
+    return new Response(
+      JSON.stringify({ error: "Invalid request", details: parsed.error.flatten().fieldErrors }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
   }
+
+  const { question, context, kpi, start_date, end_date } = parsed.data;
 
   const systemPrompt = buildConversationalSystemPrompt();
 

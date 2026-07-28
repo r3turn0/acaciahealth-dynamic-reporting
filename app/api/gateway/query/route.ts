@@ -32,25 +32,21 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { runQueryGateway, type GatewayRequest, type QuerySource } from "@/lib/gateway/QueryGateway";
-
-const VALID_SOURCES = new Set<QuerySource>([
-  "natural_language",
-  "sql_editor",
-  "dashboard_filter",
-  "report_builder",
-  "kpi_explorer",
-  "ai_copilot",
-  "ad_hoc",
-  "pipeline",
-  "scheduled",
-]);
+import { runQueryGateway, type GatewayRequest } from "@/lib/gateway/QueryGateway";
+import { GatewayQueryBodySchema } from "@/lib/validation/apiSchemas";
 
 export async function POST(req: NextRequest) {
   const globalStart = Date.now();
 
   try {
-    const body = await req.json();
+    const raw = await req.json();
+    const parsed = GatewayQueryBodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid request body", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
 
     const {
       query,
@@ -58,45 +54,12 @@ export async function POST(req: NextRequest) {
       startDate,
       endDate,
       branchCode,
-      role = "analyst",
+      role,
       rawSql,
-      planOnly = false,
+      planOnly,
       reportName,
       requestId,
-    } = body as GatewayRequest & { startDate: string; endDate: string };
-
-    // ── Input validation ──────────────────────────────────────────────────────
-
-    if (!query && !rawSql) {
-      return NextResponse.json(
-        { error: "query or rawSql is required" },
-        { status: 400 }
-      );
-    }
-
-    if (!source || !VALID_SOURCES.has(source)) {
-      return NextResponse.json(
-        {
-          error: `source is required and must be one of: ${[...VALID_SOURCES].join(", ")}`,
-        },
-        { status: 400 }
-      );
-    }
-
-    if (!startDate || !endDate) {
-      return NextResponse.json(
-        { error: "startDate and endDate are required (YYYY-MM-DD)" },
-        { status: 400 }
-      );
-    }
-
-    // ── Enforce: sql_editor must supply rawSql, not an NL question ───────────
-    if (source === "sql_editor" && !rawSql) {
-      return NextResponse.json(
-        { error: "source=sql_editor requires rawSql" },
-        { status: 400 }
-      );
-    }
+    } = parsed.data;
 
     // ── Run the 9-stage QueryGateway ──────────────────────────────────────────
     const gatewayReq: GatewayRequest = {
