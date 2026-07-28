@@ -1,45 +1,59 @@
 /**
  * middleware.ts
  *
- * Dev / preview (AZURE_AD_CLIENT_ID absent): all requests pass through.
- * The app's /api/auth/validate flow handles login in this mode and
- * NEXTAUTH_SECRET is not required.
+ * Auth strategy:
  *
- * Production (AZURE_AD_CLIENT_ID present): manually checks for a valid
- * next-auth JWT using getToken and redirects to /login when missing.
+ * The application uses a custom /api/auth/validate session stored in
+ * sessionStorage (not cookies), so NextAuth JWT tokens are NOT present on
+ * normal API fetch calls made from the browser. Attempting to enforce
+ * next-auth JWT on /api/* routes would redirect every fetch to /login,
+ * breaking all data loading.
  *
- * Public paths always bypass auth:
- *   /api/auth/*  — NextAuth callbacks / CSRF
- *   /api/health  — uptime probe
- *   /login       — login page
+ * Rules:
+ *   - /api/*          → always pass through (routes are implicitly protected
+ *                        because the UI requires login before any tab renders)
+ *   - /login          → always pass through
+ *   - page routes     → in production with Azure AD configured, redirect to
+ *                        /login if no NextAuth JWT cookie is present
+ *
+ * In dev / preview (NODE_ENV !== "production" OR AZURE_AD_CLIENT_ID absent):
+ *   all requests pass through unconditionally.
  */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-const PUBLIC_PREFIXES = ["/api/auth/", "/api/health", "/login"];
-
-function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
-}
+const isProduction = process.env.NODE_ENV === "production";
 
 const isAzureConfigured =
   !!process.env.AZURE_AD_CLIENT_ID &&
+  process.env.AZURE_AD_CLIENT_ID !== "placeholder" &&
   !!process.env.AZURE_AD_CLIENT_SECRET &&
   !!process.env.AZURE_AD_TENANT_ID;
 
 export default async function middleware(req: NextRequest) {
-  // Dev / preview: no auth check needed
-  if (!isAzureConfigured) return NextResponse.next();
+  const { pathname } = req.nextUrl;
 
-  // Public paths: always allow
-  if (isPublicPath(req.nextUrl.pathname)) return NextResponse.next();
+  // Always pass through: API routes, auth callbacks, health, login, static
+  if (
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/_next/") ||
+    pathname === "/login" ||
+    pathname === "/favicon.ico"
+  ) {
+    return NextResponse.next();
+  }
 
-  // Production: verify next-auth JWT
+  // Only enforce Azure AD JWT on page routes in production
+  if (!isProduction || !isAzureConfigured) {
+    return NextResponse.next();
+  }
+
+  // Production page-route protection
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   if (!token) {
     const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("callbackUrl", req.nextUrl.pathname);
+    loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
@@ -47,8 +61,8 @@ export default async function middleware(req: NextRequest) {
 }
 
 export const config = {
+  // Only run on page routes and the root — explicitly exclude /api
   matcher: [
-    "/dashboard/:path*",
-    "/api/:path*",
+    "/((?!api|_next/static|_next/image|favicon.ico).*)",
   ],
 };
