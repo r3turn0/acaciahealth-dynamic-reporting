@@ -491,9 +491,13 @@ function DiscoveryPanel({
           const isOnCanvas = canvasTables.has(t.name);
           return (
             <div key={t.name} className="border border-border rounded-lg overflow-hidden">
-              <button
+              {/* Use div + role to avoid button-in-button — HTML spec disallows nested interactive elements */}
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setExpanded(isExpanded ? null : t.name)}
-                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-muted/20 transition-colors text-left"
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded(isExpanded ? null : t.name); } }}
+                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-muted/20 transition-colors text-left cursor-pointer"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <Table2 className="w-3.5 h-3.5 text-primary shrink-0" />
@@ -515,7 +519,7 @@ function DiscoveryPanel({
                   )}
                   {isExpanded ? <ChevronDown className="w-3 h-3 text-muted-foreground" /> : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
                 </div>
-              </button>
+              </div>
 
               {isExpanded && (
                 <div className="px-3 pb-3 border-t border-border bg-muted/5">

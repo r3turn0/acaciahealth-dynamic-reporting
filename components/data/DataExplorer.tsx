@@ -200,37 +200,23 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
-  // Load the complete table list by querying sys.objects via the existing
-  // /api/run-sql endpoint — requires no new route file on the user's machine.
+  // Load the complete table list via /api/schema/tables — a dedicated endpoint
+  // that bypasses the security validator (schema introspection is always allowed).
   const loadTableList = useCallback(async () => {
     setTableListLoading(true);
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const res = await fetch("/api/run-sql", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sql: `SELECT s.name AS table_schema, o.name AS table_name,
-                  CASE o.type WHEN 'U' THEN 'BASE TABLE' WHEN 'V' THEN 'VIEW' ELSE 'OTHER' END AS table_type
-                FROM sys.objects o
-                JOIN sys.schemas s ON s.schema_id = o.schema_id
-                WHERE o.type IN ('U','V') AND o.is_ms_shipped = 0
-                ORDER BY o.type DESC, o.name`,
-          start_date: today,
-          end_date: today,
-          report_name: "__table_list__",
-        }),
-      });
-      const json = await res.json() as { data?: Record<string, string>[]; error?: string };
-      console.log("[v0] loadTableList response status:", res.status, "row count:", json.data?.length, "error:", json.error);
-      if (!res.ok) return;
-      const rows = (json.data ?? []) as { table_schema: string; table_name: string }[];
-      if (rows.length > 6) {
-        const names = rows.map((r) =>
-          !r.table_schema || r.table_schema === "dbo"
-            ? r.table_name
-            : `${r.table_schema}.${r.table_name}`
-        ).sort();
+      const res = await fetch("/api/schema/tables");
+      const json = await res.json() as {
+        source: string;
+        count: number;
+        tables: { table_schema: string; table_name: string; qualified_name: string }[];
+        error?: string;
+      };
+      if (!res.ok || !json.tables) return;
+      // Only swap to the live list when there are meaningfully more tables than
+      // the static fallback (avoids showing an empty list on DB-unreachable).
+      if (json.source === "live_db" && json.tables.length > 6) {
+        const names = json.tables.map((t) => t.qualified_name).sort();
         setTableList(names);
         setTableSource("live_db");
         try { localStorage.setItem("hchb_table_list", JSON.stringify(names)); } catch { /* noop */ }
