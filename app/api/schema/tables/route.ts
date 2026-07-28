@@ -4,6 +4,8 @@
  * from sys.objects. No dependency on schemaAgent or its cache.
  */
 
+export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
 import { executeRawQuery, isDbConfigured } from "@/lib/services/db";
 

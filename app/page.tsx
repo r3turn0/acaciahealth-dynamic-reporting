@@ -178,8 +178,12 @@ export default function Home() {
   // KPI pre-selection: set when user clicks "Interpret" on a saved report
   const [preselectedKpi, setPreselectedKpi] = useState<string | null>(null);
 
+  // NextAuth is only used when Azure AD is configured in production.
+  // In dev/preview (no AZURE_AD_CLIENT_ID) the custom /api/auth/validate
+  // flow owns authentication and stores the session in sessionStorage.
+  // We still call useSession() unconditionally (Rules of Hooks), but we only
+  // honour its result in production.
   const { data: nextAuthSession, status: nextAuthStatus } = useSession();
-
   useEffect(() => {
     setTodayLabel(
       new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -192,6 +196,8 @@ export default function Home() {
     }
   }, []);
 
+  // If NextAuth resolves an Azure AD session, promote it to the custom authUser
+  // so the rest of the app has a single AuthUser object to work with.
   useEffect(() => {
     if (nextAuthStatus === "authenticated" && nextAuthSession?.user && authUser === false) {
       const u: AuthUser = {
@@ -236,7 +242,14 @@ export default function Home() {
     setView("home");
   }
 
-  if (authUser === null || nextAuthStatus === "loading") return null;
+  // authUser === null means the sessionStorage read hasn't completed yet
+  // (it happens in a useEffect, so there's one render pass with null).
+  // Do NOT block on nextAuthStatus — in dev/preview it stays "unauthenticated"
+  // because Azure AD is not configured; the custom /api/auth/validate flow is
+  // the only gate in that environment.
+  if (authUser === null) return null;
+  // Show login wall when the custom session is absent AND NextAuth hasn't
+  // produced an authenticated session either.
   if (authUser === false && nextAuthStatus !== "authenticated") {
     return <LoginPage onAuthenticated={handleAuthenticated} />;
   }

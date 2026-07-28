@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 /**
  * /api/designer/datasets
  *

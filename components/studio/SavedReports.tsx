@@ -400,7 +400,7 @@ function VersionHistoryDrawer({
   );
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// ── Main Component ────────────────────���───────────────────────────────────────
 
 export function SavedReports({
   onLoad,
@@ -441,9 +441,10 @@ export function SavedReports({
       // Idempotent seed: populates SQL library reports if not yet present.
       await fetch("/api/kpi/seed-reports", { method: "POST" }).catch(() => {});
       const res = await fetch("/api/reports");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setReports(json.reports ?? []);
-    } catch { /* silent */ } finally {
+    } catch { /* silent — fallback to empty list */ } finally {
       setLoading(false);
     }
   }, []);

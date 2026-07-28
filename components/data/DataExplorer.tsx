@@ -173,8 +173,14 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
           : {}),
       });
       const res  = await fetch(`/api/data/${encodeURIComponent(table)}?${params}`);
+      if (!res.ok) {
+        // Guard against HTML error pages (e.g. middleware failures) before JSON.parse
+        const text = await res.text();
+        let msg = `HTTP ${res.status}`;
+        try { msg = (JSON.parse(text) as { error?: string }).error ?? msg; } catch { /* keep HTTP status */ }
+        throw new Error(msg);
+      }
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Failed to load");
       setData(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");

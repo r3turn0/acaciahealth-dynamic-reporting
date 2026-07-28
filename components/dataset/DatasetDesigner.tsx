@@ -1115,6 +1115,7 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
           targetType:   tgt.type,
         }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json() as { success: boolean; inference: InferenceResult };
       if (json.success && json.inference.detected) {
         setInferenceResult(json.inference);
@@ -1163,6 +1164,7 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
           createdBy:        "analyst",
         }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json() as { success: boolean; relationship: Relationship };
       if (json.success) {
         setRelationships((prev) => {
@@ -1172,8 +1174,8 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
         showToast(`Relationship ${json.relationship.id} accepted`);
         setTab("relationships");
       }
-    } catch {
-      showToast("Failed to save relationship", false);
+    } catch (err) {
+      showToast(`Failed to save relationship${err instanceof Error ? `: ${err.message}` : ""}`, false);
     } finally {
       setInferring(false);
       setInferenceResult(null);
@@ -1188,12 +1190,13 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "accept_rel", id }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json() as { success: boolean; relationship: Relationship };
       if (json.success) {
         setRelationships((prev) => prev.map((r) => r.id === id ? json.relationship : r));
         showToast(`${id} accepted`);
       }
-    } catch { showToast("Failed to update relationship", false); }
+    } catch (err) { showToast(`Failed to update relationship${err instanceof Error ? `: ${err.message}` : ""}`, false); }
   }
 
   async function handleRejectExisting(id: string) {
@@ -1203,12 +1206,13 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "reject_rel", id }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json() as { success: boolean; relationship: Relationship };
       if (json.success) {
         setRelationships((prev) => prev.map((r) => r.id === id ? json.relationship : r));
         showToast(`${id} rejected`);
       }
-    } catch { showToast("Failed to update relationship", false); }
+    } catch (err) { showToast(`Failed to update relationship${err instanceof Error ? `: ${err.message}` : ""}`, false); }
   }
 
   async function handlePublish(datasetId: string) {
@@ -1218,12 +1222,13 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "publish_dataset", datasetId }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json() as { success: boolean; dataset: SemanticDataset };
       if (json.success) {
         setDatasets((prev) => prev.map((d) => d.datasetId === datasetId ? json.dataset : d));
         showToast(`${json.dataset.datasetName} published`);
       }
-    } catch { showToast("Failed to publish dataset", false); }
+    } catch (err) { showToast(`Failed to publish dataset${err instanceof Error ? `: ${err.message}` : ""}`, false); }
   }
 
   async function handleCreateDataset(data: Partial<SemanticDataset>) {
@@ -1233,12 +1238,13 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "create_dataset", ...data }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json() as { success: boolean; dataset: SemanticDataset };
       if (json.success) {
         setDatasets((prev) => [...prev, json.dataset]);
         showToast(`Dataset "${json.dataset.datasetName}" created`);
       }
-    } catch { showToast("Failed to create dataset", false); }
+    } catch (err) { showToast(`Failed to create dataset${err instanceof Error ? `: ${err.message}` : ""}`, false); }
   }
 
   const TABS: { id: DesignerTab; label: string; icon: React.ElementType; count?: number }[] = [

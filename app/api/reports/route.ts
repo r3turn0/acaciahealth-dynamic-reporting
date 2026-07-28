@@ -2,9 +2,11 @@
  * GET  /api/reports       — list all saved reports
  * POST /api/reports       — create a new saved report
  *
- * Delegates to reportService (AppDataClient / PostgreSQL).
+ * Delegates to reportService (in-memory fallback when no DB is configured).
  * The analytics data source (MSSQL) is never touched here.
  */
+
+export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { listReports, createReport } from "@/lib/services/reportService";
