@@ -55,6 +55,7 @@ type View =
   | "admin-sessions"
   | "admin-agents"
   | "admin-pipeline"
+  | "admin-query-history"
   | "admin-settings"
   // Legacy aliases — redirect to unified views
   | "dashboard"
@@ -109,6 +110,7 @@ const VIEW_TITLES: Partial<Record<View, { title: string; subtitle: string }>> = 
   "admin-sessions":          { title: "Administration",        subtitle: "Session Manager — active sessions, device compliance, revocation" },
   "admin-agents":            { title: "Administration",        subtitle: "Agent Registry — registered agents, versioning, and capabilities" },
   "admin-pipeline":          { title: "Administration",        subtitle: "Pipeline Builder — dynamic multi-agent pipeline construction" },
+  "admin-query-history":     { title: "Administration",        subtitle: "Retry Intelligence — query history, failure analysis, and learned term mappings" },
   "admin-settings":          { title: "Administration",        subtitle: "Settings — environment, connections, and configuration" },
 };
 

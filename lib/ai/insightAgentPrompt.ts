@@ -289,7 +289,7 @@ Flag confidence as: HIGH CONFIDENCE | MEDIUM CONFIDENCE | LOW CONFIDENCE
 
 When quality concerns exist, explain: Issue · Impact · Limitation · Potential bias`;
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─��───────────────────────────────────────────────────────────────────────────
 // SECTION 13 — DEFAULT RESPONSE STRUCTURE
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -461,7 +461,8 @@ export function buildConversationalSystemPrompt(): string {
 export function buildSemanticQuerySystemPrompt(
   schemaJson: string,
   kpiJson: string,
-  semanticLayerJson: string
+  semanticLayerJson: string,
+  kgContext?: KnowledgeGraphContext
 ): string {
   return [
     buildAgentIdentityBlock(),
@@ -516,6 +517,8 @@ export function buildSemanticQuerySystemPrompt(
     "- For COMPARISON: include the comparison dimension in groupBy.",
     "- For RANKING / TOP_N: always set orderBy direction and limit.",
     "",
+    // Phase 3: inject pre-resolved Knowledge Graph context
+    ...(kgContext ? [buildKGContextBlock(kgContext)] : []),
     "─────────────────────────────────────────────────",
     "AcaciaHealth Schema",
     "─────────────────────────────────────────────────",
@@ -544,11 +547,13 @@ export function buildSemanticQuerySystemPrompt(
 /**
  * Compose the system prompt for the NL → T-SQL query planner.
  * Healthcare-grounded, schema-aware, includes all safety rules.
+ * Optionally accepts Knowledge Graph context (Phase 3) for pre-resolved mappings.
  */
 export function buildSQLPlannerSystemPrompt(
   schemaJson: string,
   kpiJson: string,
-  semanticLayerJson: string
+  semanticLayerJson: string,
+  kgContext?: KnowledgeGraphContext
 ): string {
   return [
     buildAgentIdentityBlock(),
@@ -585,6 +590,8 @@ export function buildSQLPlannerSystemPrompt(
     "    0.3-0.49 Significant guessing",
     "    0.0-0.29 Cannot answer — flag for clarification",
     "",
+    // Phase 3: inject pre-resolved Knowledge Graph context when available
+    ...(kgContext ? [buildKGContextBlock(kgContext)] : []),
     "─────────────────────────────────────────────────",
     "AcaciaHealth Schema",
     "─────────────────────────────────────────────────",
@@ -609,6 +616,29 @@ export function buildSQLPlannerSystemPrompt(
     "─────────────────────────────────────────────────",
     "EXAMPLE T-SQL PATTERN",
     "─────────────────────────────────────────────────",
+    "AcaciaHealth Schema",
+    "─────────────────────────────────────────────────",
+    "```json",
+    schemaJson,
+    "```",
+    "",
+    "─────────────────────────────────────────────────",
+    "KPI Definitions",
+    "─────────────────────────────────────────────────",
+    "```json",
+    kpiJson,
+    "```",
+    "",
+    "─────────────────────────────────────────────────",
+    "Semantic Layer (business term → physical mapping)",
+    "─────────────────────────────────────────────────",
+    "```json",
+    semanticLayerJson,
+    "```",
+    "",
+    "─────────────────────��───────────────────────────",
+    "EXAMPLE T-SQL PATTERN",
+    "───────────────────────────────────���─────────────",
     "",
     "SELECT TOP 10000",
     "    RTRIM(b.branch_name) AS branch_name,",
@@ -626,11 +656,19 @@ export function buildSQLPlannerSystemPrompt(
 
 /**
  * Compose the system prompt for the SQL correction / debugging endpoint.
+ * Optionally accepts Knowledge Graph context and failure classification
+ * from the SchemaAwareRetryAgent (Phase 8-9).
  */
 export function buildSQLCorrectionSystemPrompt(
   schemaJson: string,
   kpiJson: string,
-  semanticLayerJson: string
+  semanticLayerJson: string,
+  kgContext?: KnowledgeGraphContext,
+  failureContext?: {
+    failureClass: string;
+    remediationStrategy: string;
+    previousAttempts: number;
+  }
 ): string {
   return [
     buildAgentIdentityBlock(),
@@ -654,6 +692,22 @@ export function buildSQLCorrectionSystemPrompt(
     "- Add WITH (NOLOCK) if missing on high-row tables.",
     "- Ensure RTRIM() is used on all branch code comparisons.",
     "",
+    // Phase 8-9: inject failure classification and remediation strategy
+    ...(failureContext ? [
+      "─────────────────────────────────────────────────",
+      "Failure Analysis (Phase 8)",
+      "─────────────────────────────────────────────────",
+      "",
+      `Failure class: ${failureContext.failureClass}`,
+      `Remediation strategy: ${failureContext.remediationStrategy}`,
+      `Previous attempts: ${failureContext.previousAttempts}`,
+      "",
+      "Apply the remediation strategy above. Do NOT repeat the same fix.",
+      "The corrected SQL must be structurally different from all prior attempts.",
+      "",
+    ] : []),
+    // Phase 3: inject KG context for alias/table resolution
+    ...(kgContext ? [buildKGContextBlock(kgContext)] : []),
     "─────────────────────────────────────────────────",
     "AcaciaHealth Schema",
     "─────────────────────────────────────────────────",

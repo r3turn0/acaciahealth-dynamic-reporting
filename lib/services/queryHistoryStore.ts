@@ -415,6 +415,68 @@ export async function getQueryHistory(
 }
 
 /**
+ * Paginated history query with optional status filter and search.
+ * Used by the /api/query-history route.
+ */
+export async function getQueryHistory(options: {
+  limit?: number;
+  offset?: number;
+  status?: QueryStatus;
+  search?: string;
+} = {}): Promise<QueryHistoryEntry[]> {
+  const { limit = 50, offset = 0, status, search } = options;
+  await ensureTables();
+
+  const pool = await appClient.getPool();
+  if (pool) {
+    try {
+      const conditions: string[] = [];
+      const params: unknown[] = [];
+      let i = 1;
+
+      if (status) { conditions.push(`status = $${i++}`); params.push(status); }
+      if (search) { conditions.push(`LOWER(user_request) LIKE $${i++}`); params.push(`%${search.toLowerCase()}%`); }
+
+      const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+      params.push(limit, offset);
+      const sql = `SELECT * FROM query_history ${where} ORDER BY created_at DESC LIMIT $${i++} OFFSET $${i}`;
+      const res = await pool.query(sql, params);
+      return res.rows as QueryHistoryEntry[];
+    } catch (err) {
+      console.error("[queryHistoryStore] getQueryHistory failed:", (err as Error).message);
+    }
+  }
+
+  let results = [..._historyStore].reverse();
+  if (status) results = results.filter((e) => e.status === status);
+  if (search) results = results.filter((e) => e.user_request.toLowerCase().includes(search.toLowerCase()));
+  return results.slice(offset, offset + limit);
+}
+
+/** Alias used by API routes. */
+export const getQueryHistoryStats = getQueryStats;
+
+/**
+ * Delete a learned mapping by user_term.
+ */
+export async function deleteLearnedMapping(userTerm: string): Promise<void> {
+  await ensureTables();
+
+  const pool = await appClient.getPool();
+  if (pool) {
+    try {
+      await pool.query(`DELETE FROM learned_mappings WHERE LOWER(user_term) = $1`, [userTerm.toLowerCase()]);
+      return;
+    } catch (err) {
+      console.error("[queryHistoryStore] deleteLearnedMapping failed:", (err as Error).message);
+    }
+  }
+
+  const idx = _mappingsStore.findIndex((m) => m.user_term.toLowerCase() === userTerm.toLowerCase());
+  if (idx >= 0) _mappingsStore.splice(idx, 1);
+}
+
+/**
  * Look up all previous attempts for a given user request.
  * Used to check for duplicate retry SQL hashes.
  */
@@ -460,14 +522,19 @@ export async function getTriedSqlHashes(userRequest: string): Promise<Set<string
 
 /**
  * Record or update a learned term → object mapping.
- * On success: increment success_count, recalculate confidence.
- * On failure: increment failure_count, recalculate confidence.
+ *
+ * Call forms:
+ *   upsertLearnedMapping(term, object, "success"|"failure")   — auto-calc confidence
+ *   upsertLearnedMapping(term, object, confidence, "success")  — manual confidence
  */
 export async function upsertLearnedMapping(
   userTerm: string,
   actualObject: string,
-  outcome: "success" | "failure"
+  outcomeOrConfidence: "success" | "failure" | number,
+  explicitOutcome?: "success" | "failure"
 ): Promise<LearnedMapping> {
+  const outcome: "success" | "failure" =
+    typeof outcomeOrConfidence === "string" ? outcomeOrConfidence : (explicitOutcome ?? "success");
   await ensureTables();
 
   const last_used = new Date().toISOString();

@@ -28,11 +28,12 @@ import { SessionManager }          from "@/components/security/SessionManager";
 import { AgentRegistry }           from "@/components/agents/AgentRegistry";
 import { PipelineBuilder }         from "@/components/pipeline/PipelineBuilder";
 import { ObservabilityDashboard }  from "@/components/admin/ObservabilityDashboard";
+import { QueryHistoryPanel }       from "@/components/admin/QueryHistoryPanel";
 import type { AuthUser }           from "@/components/auth/LoginPage";
 
 // ── Tab definitions ───────────────────────────────────────────────────────────
 
-type AdminTab = "audit" | "security" | "sessions" | "agents" | "pipeline" | "settings" | "observability";
+type AdminTab = "audit" | "security" | "sessions" | "agents" | "pipeline" | "settings" | "observability" | "query-history";
 
 const TABS: { id: AdminTab; label: string; icon: React.ElementType; adminOnly?: boolean; description: string }[] = [
   {
@@ -78,21 +79,27 @@ const TABS: { id: AdminTab; label: string; icon: React.ElementType; adminOnly?: 
     icon:        BarChart2,
     description: "Live platform diagnostics — API logs, search health, query execution, export activity, and zero-result tracker",
   },
+  {
+    id:          "query-history",
+    label:       "Retry Intelligence",
+    icon:        Activity,
+    description: "Phase 8-10 — Query history, failure analysis engine, schema-aware retry, and learned term mappings",
+  },
 ];
 
 interface AdministrationHubProps {
-  initialTab?:  AdminTab;
+  initialTab?:  AdminTab | string;
   currentUser:  AuthUser;
   onNavigate:   (view: string) => void;
 }
 
 export function AdministrationHub({ initialTab = "audit", currentUser, onNavigate }: AdministrationHubProps) {
-  const [tab, setTab] = useState<AdminTab>(initialTab);
+  const [tab, setTab] = useState<AdminTab>((initialTab as AdminTab) ?? "audit");
   const isAdmin = currentUser.role === "Admin";
 
   // Respond to sidebar sub-item clicks that change initialTab while this hub is already mounted
   useEffect(() => {
-    if (initialTab) setTab(initialTab);
+    if (initialTab) setTab(initialTab as AdminTab);
   }, [initialTab]);
 
   const visibleTabs = TABS.filter((t) => !t.adminOnly || isAdmin);
@@ -146,8 +153,9 @@ export function AdministrationHub({ initialTab = "audit", currentUser, onNavigat
 
         {tab === "pipeline" && <PipelineBuilder />}
 
-        {tab === "settings"      && <SettingsPanel />}
-        {tab === "observability" && <ObservabilityDashboard />}
+        {tab === "settings"       && <SettingsPanel />}
+        {tab === "observability"  && <ObservabilityDashboard />}
+        {tab === "query-history"  && <QueryHistoryPanel />}
       </div>
     </div>
   );

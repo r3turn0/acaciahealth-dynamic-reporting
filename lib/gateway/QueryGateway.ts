@@ -505,23 +505,50 @@ async function runSQLGeneratorAgent(
     try {
       const { generateText } = await import("ai");
       const { getModel } = await import("@/lib/ai/gateway");
-      const schemaConfig = (await import("@/lib/config/schemaConfig.json")).default;
-      const kpiConfig    = (await import("@/lib/config/kpiConfig.json")).default;
+      const schemaConfig  = (await import("@/lib/config/schemaConfig.json")).default;
+      const kpiConfig     = (await import("@/lib/config/kpiConfig.json")).default;
       const semanticLayer = (await import("@/lib/config/semanticLayer.json")).default;
+
+      // Phase 3: resolve user query against the Knowledge Graph before calling LLM
+      const { inferQueryContext } = await import("@/lib/agents/schemaAgent");
+      const { getLearnedMappings } = await import("@/lib/services/queryHistoryStore");
+      const [kgResult, learnedMappings] = await Promise.all([
+        inferQueryContext(query).catch(() => null),
+        getLearnedMappings(50).catch(() => [] as Array<{ user_term: string; actual_object: string; confidence: number; success_count: number; failure_count: number; last_used: string; id: string }>),
+      ]);
+
+      // Build KG context for the prompt
+      const kgContext = kgResult ? {
+        resolvedTables: kgResult.resolvedTables,
+        resolvedColumns: kgResult.resolvedColumns,
+        businessTerms: kgResult.businessTerms,
+        joinPaths: kgResult.joinPaths,
+        confidence: kgResult.confidence,
+        learnedMappings: learnedMappings
+          .filter((m) => m.confidence >= 0.6)
+          .map((m) => ({ term: m.user_term, suggestion: m.actual_object, confidence: m.confidence })),
+      } : undefined;
 
       const systemPrompt = buildSemanticQuerySystemPrompt(
         JSON.stringify(schemaConfig, null, 2),
         JSON.stringify(kpiConfig, null, 2),
-        JSON.stringify(semanticLayer, null, 2)
+        JSON.stringify(semanticLayer, null, 2),
+        kgContext
       );
+
+      // Enrich user prompt with KG-resolved context
+      const kgTableList = kgResult?.resolvedTables.slice(0, 5).map((t) =>
+        `${t.table_name} [conf=${t.table_confidence.toFixed(2)}]`
+      ).join(", ") ?? semantic.resolvedTables.join(", ");
 
       const userPrompt = [
         `Generate a T-SQL SELECT query for:`,
         `"${query}"`,
         ``,
-        `Resolved tables: ${semantic.resolvedTables.join(", ")}`,
+        `KG-Resolved tables: ${kgTableList || semantic.resolvedTables.join(", ")}`,
+        kgResult?.resolvedColumns.length ? `Resolved columns: ${kgResult.resolvedColumns.join(", ")}` : "",
+        kgResult?.joinPaths.length ? `Known join paths: ${kgResult.joinPaths.join("; ")}` : `Join paths: ${semantic.joinPaths.join("; ") || "none"}`,
         `KPI definitions: ${semantic.kpiDefinitions.join("; ") || "none"}`,
-        `Join paths: ${semantic.joinPaths.join("; ") || "none"}`,
         `Date range: @StartDate = ${startDate}, @EndDate = ${endDate}`,
         branchCode ? `Branch filter: RTRIM(epi_branchcode) = RTRIM('${branchCode}')` : "",
         ``,
@@ -529,7 +556,7 @@ async function runSQLGeneratorAgent(
         `- SELECT TOP 10000`,
         `- WHERE clause MUST include @StartDate and @EndDate`,
         `- NEVER use SELECT *`,
-        `- Only use tables from the resolved list above`,
+        `- Only use tables from the KG-resolved list above`,
         `- RTRIM() on all branch code comparisons`,
         `- WITH (NOLOCK) on large tables`,
         ``,
@@ -1165,6 +1192,8 @@ function buildResult(p: {
     },
     demoMode: p.demoMode,
     elapsedMs: p.elapsedMs,
+    retryInfo: p.retryInfo,
+    historyId: p.historyId,
   };
 }
 

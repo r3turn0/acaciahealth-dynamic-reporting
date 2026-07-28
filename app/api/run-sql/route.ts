@@ -63,6 +63,9 @@ export async function POST(req: NextRequest) {
       date_params_applied: dateParamsApplied,
       executed_sql: result.sql,
       demo_mode: result.demoMode,
+      // Phase 9: expose retry intelligence to the client
+      retry_info: result.retryInfo ?? null,
+      history_id: result.historyId ?? null,
       gateway: {
         requestId: result.requestId,
         confidence: result.confidence,

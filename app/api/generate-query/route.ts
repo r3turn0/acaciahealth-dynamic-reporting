@@ -57,6 +57,9 @@ export async function POST(req: NextRequest) {
       cache_hit: false,
       elapsed_ms: Date.now() - start,
       ai_powered: result.pipeline.find((s) => s.stage === "SQLGeneratorAgent")?.status === "ok",
+      // Phase 9: expose retry intelligence to the client
+      retry_info: result.retryInfo ?? null,
+      history_id: result.historyId ?? null,
       gateway: {
         requestId: result.requestId,
         confidence: result.confidence,

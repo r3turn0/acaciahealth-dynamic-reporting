@@ -41,6 +41,10 @@ import {
   type FailureClass,
 } from "@/lib/services/queryHistoryStore";
 import { inferQueryContext } from "@/lib/agents/schemaAgent";
+import {
+  buildSQLCorrectionSystemPrompt,
+  type KnowledgeGraphContext,
+} from "@/lib/ai/insightAgentPrompt";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -178,6 +182,27 @@ export async function retryWithSchemaIntelligence(
     ? mappingSuggestions.map((s) => `  "${s.term}" → "${s.suggestion}" (confidence: ${(s.confidence * 100).toFixed(0)}%)`).join("\n")
     : allMappings.filter((m) => m.confidence >= 0.7).slice(0, 5).map((m) => `  "${m.user_term}" → "${m.actual_object}" (confidence: ${(m.confidence * 100).toFixed(0)}%)`).join("\n");
 
+  // Build KG context for correction prompt injection
+  const kgContext: KnowledgeGraphContext | undefined = contextResult ? {
+    resolvedTables: contextResult.resolvedTables,
+    resolvedColumns: contextResult.resolvedColumns,
+    businessTerms: contextResult.businessTerms,
+    joinPaths: contextResult.joinPaths,
+    confidence: contextResult.confidence,
+    learnedMappings: mappingSuggestions.map((s) => ({
+      term: s.term,
+      suggestion: s.suggestion,
+      confidence: s.confidence,
+    })),
+  } : undefined;
+
+  // Pre-load schema/kpi/semantic configs for correction prompt
+  const [schemaConfig, kpiConfig, semanticLayer] = await Promise.all([
+    import("@/lib/config/schemaConfig.json").then((m) => JSON.stringify(m.default, null, 2)).catch(() => "{}"),
+    import("@/lib/config/kpiConfig.json").then((m) => JSON.stringify(m.default, null, 2)).catch(() => "{}"),
+    import("@/lib/config/semanticLayer.json").then((m) => JSON.stringify(m.default, null, 2)).catch(() => "{}"),
+  ]);
+
   let currentSql = input.failedSql;
   let currentError = input.errorMessage;
   let lastRemediationStrategy = "";
@@ -230,9 +255,21 @@ export async function retryWithSchemaIntelligence(
     let confidence = 0;
 
     try {
+      const systemPrompt = buildSQLCorrectionSystemPrompt(
+        schemaConfig,
+        kpiConfig,
+        semanticLayer,
+        kgContext,
+        {
+          failureClass: failureClass as string,
+          remediationStrategy,
+          previousAttempts: attempt - 1,
+        }
+      );
+
       const { text } = await generateText({
         model: getModel("capable"),
-        system: buildRetrySystemPrompt(contextSummary, learnedMappingSummary),
+        system: systemPrompt,
         prompt: buildRetryUserPrompt(input, attempt, remediationStrategy, triedHashes),
         maxOutputTokens: 1024,
         temperature: 0.1 + attempt * 0.05, // Slightly higher temp on later attempts for diversity
