@@ -1082,6 +1082,10 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
 
   useEffect(() => { void loadData(); }, [loadData]);
 
+  // Auto-refresh the live DB catalog on mount so the Discovery panel shows all tables
+  // immediately (not only after user manually clicks Refresh)
+  useEffect(() => { void refreshCatalog(); }, [refreshCatalog]);
+
   // Canvas: add table from discovery
   function handleAddToCanvas(t: TableDef) {
     setCanvasTables((prev) => prev.find((x) => x.name === t.name) ? prev : [...prev, t]);

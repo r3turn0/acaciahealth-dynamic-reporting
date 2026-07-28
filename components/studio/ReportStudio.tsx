@@ -30,16 +30,13 @@ interface ReportStudioProps {
 
 export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportStudioProps) {
   const [tab, setTab] = useState<StudioTab>(initialTab ?? "ask");
-  // Dates initialized empty to avoid SSR/client mismatch; populated in useEffect
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-
-  useEffect(() => {
-    const end = new Date();
-    const start = new Date(end.getTime() - 28 * 24 * 60 * 60 * 1000);
-    setStartDate(start.toISOString().split("T")[0]);
-    setEndDate(end.toISOString().split("T")[0]);
-  }, []);
+  // Lazy initializers — safe in a client component; avoids SSR/client mismatch
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 28);
+    return d.toISOString().split("T")[0];
+  });
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
 
   // SQL Editor state — pre-populate from initialReport if provided
   const [sql, setSql] = useState(initialReport?.sql ?? "");

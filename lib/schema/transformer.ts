@@ -13,17 +13,13 @@ import type {
 } from "./types";
 import { createHash } from "crypto";
 
-// Lazy import so tagger is not bundled on the client-side transformer path
-let _taggerModule: typeof import("@/lib/agents/tableTagger") | null = null;
+// Static import of tableTagger — server-side only, pure TypeScript, no browser APIs
+import * as _tableTaggerModule from "@/lib/agents/tableTagger";
 function getTagger() {
-  if (!_taggerModule) {
-    try {
-      _taggerModule = require("@/lib/agents/tableTagger");
-    } catch {
-      // tagger unavailable in this environment — silently skip
-    }
-  }
-  return _taggerModule;
+  // Guard: only run on the server; the transformer may be imported client-side for
+  // type-check purposes, but tagAllTables must never be called in the browser.
+  if (typeof window !== "undefined") return null;
+  return _tableTaggerModule;
 }
 
 // ── Graph construction ────────────────────────────────────────────────────────

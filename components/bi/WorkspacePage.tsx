@@ -76,6 +76,14 @@ function TabPanel({ tab, onToast }: TabPanelProps) {
   const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Date range — required by /api/datasets/query (startDate + endDate)
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split("T")[0];
+  });
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
+
   // ── Generate SQL ────────────────────────────────────────────────────────────
   async function generateSQL() {
     const q = tab.userQuery.trim();
@@ -159,7 +167,7 @@ function TabPanel({ tab, onToast }: TabPanelProps) {
       const res = await fetch("/api/datasets/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sql }),
+        body: JSON.stringify({ sql, startDate, endDate }),
       });
       const json = await res.json();
       const durationMs = Date.now() - start;
@@ -220,7 +228,7 @@ function TabPanel({ tab, onToast }: TabPanelProps) {
       const res = await fetch("/api/datasets/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sql: fixedSQL }),
+        body: JSON.stringify({ sql: fixedSQL, startDate, endDate }),
       });
       const json = await res.json();
       const durationMs = Date.now() - start;
@@ -299,6 +307,27 @@ function TabPanel({ tab, onToast }: TabPanelProps) {
 
   return (
     <div className="flex flex-col gap-4 relative min-h-0">
+      {/* Date range pickers */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Clock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+          <span className="text-xs text-muted-foreground">Date range:</span>
+        </div>
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="h-7 px-2 text-xs bg-muted/40 border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+        <span className="text-xs text-muted-foreground">to</span>
+        <input
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="h-7 px-2 text-xs bg-muted/40 border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+        />
+      </div>
+
       {/* Query input */}
       <div className="bg-card border border-border rounded-xl p-5 flex flex-col gap-3">
         <div className="flex items-center gap-2">
