@@ -53,6 +53,17 @@ export interface Table {
   meta: TableMeta;
   isMemoryOptimized?: boolean;
   temporalType?: string;
+  /** Healthcare semantic tags assigned by tableTagger (e.g. ["admissions","billing"]) */
+  tags?: string[];
+}
+
+/** A single entry in the healthcare thesaurus. */
+export interface TagEntry {
+  id: string;
+  label: string;
+  color: string;
+  description: string;
+  terms: string[];
 }
 
 export interface GraphEdge {

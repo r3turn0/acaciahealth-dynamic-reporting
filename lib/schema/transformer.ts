@@ -13,6 +13,19 @@ import type {
 } from "./types";
 import { createHash } from "crypto";
 
+// Lazy import so tagger is not bundled on the client-side transformer path
+let _taggerModule: typeof import("@/lib/agents/tableTagger") | null = null;
+function getTagger() {
+  if (!_taggerModule) {
+    try {
+      _taggerModule = require("@/lib/agents/tableTagger");
+    } catch {
+      // tagger unavailable in this environment — silently skip
+    }
+  }
+  return _taggerModule;
+}
+
 // ── Graph construction ────────────────────────────────────────────────────────
 
 function buildGraph(tables: Table[]): Graph {
@@ -233,16 +246,28 @@ export function transformToSchemaModel(
   tables: Table[],
   rawMeta?: RawMetadata
 ): SchemaModel {
+  // Augment each table with auto-assigned healthcare tags (server-side only)
+  const tagger = getTagger();
+  const preTagged = tables.every((t) => t.tags !== undefined);
+  const tagStore = (tagger && !preTagged) ? tagger.tagAllTables(tables) : null;
+  const taggedTables: Table[] = tables.map((t) => {
+    if (tagStore && !t.tags) {
+      const entry = tagStore[t.id];
+      return entry ? { ...t, tags: entry.tags } : t;
+    }
+    return t;
+  });
+
   const tableMap: Record<string, Table> = {};
-  for (const t of tables) {
+  for (const t of taggedTables) {
     tableMap[t.id] = t;
   }
 
-  const graph = buildGraph(tables);
+  const graph = buildGraph(taggedTables);
   const joinPaths = bfsJoinPaths(graph);
-  const searchIndex = buildSearchIndex(tables, rawMeta?.searchIndex);
-  const domains = buildDomains(tables, rawMeta?.domains);
-  const entityHints = buildEntityHints(tables);
+  const searchIndex = buildSearchIndex(taggedTables, rawMeta?.searchIndex);
+  const domains = buildDomains(taggedTables, rawMeta?.domains);
+  const entityHints = buildEntityHints(taggedTables);
 
   return {
     tables: tableMap,

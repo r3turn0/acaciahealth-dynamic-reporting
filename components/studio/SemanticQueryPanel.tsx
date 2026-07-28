@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import type { SemanticResponse, LogicalPlan, IntentType } from "@/lib/agents/semanticQueryEngine";
 import type { QueryPlan } from "./AskAI";
+import { recordQuery } from "@/lib/agents/queryLearner";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -43,12 +44,16 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 const EXAMPLE_QUERIES = [
-  "Top 5 nurses by patient visit count",
-  "Show admissions trend by month for Q1 2026",
-  "Compare revenue by branch last 30 days",
-  "Average visits per patient by discipline",
+  "LUPA rate by branch last 30 days",
+  "Admissions trend by SOC month for Q1 2026",
+  "Average visits per PDGM period by discipline",
   "Which branch had the highest census this week?",
-  "Summarize all discharges this quarter",
+  "HH-CAHPS scores compared to national benchmark",
+  "Revenue by PDGM period — routine vs. hospice",
+  "Top 10 diagnoses by ICD code this quarter",
+  "OASIS completion rate by clinician",
+  "Claim submission lag by branch last 90 days",
+  "Patients with more than 8 skilled nurse visits per episode",
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -313,9 +318,20 @@ export function SemanticQueryPanel({
         setError(json.error ?? "Semantic pipeline failed");
         return;
       }
-      setResponse(json as SemanticResponse);
+      const semanticRes = json as SemanticResponse;
+      setResponse(semanticRes);
       setElapsed(json.elapsed_ms ?? null);
       setShowPipeline(true);
+
+      // Record this successful query in the adaptive learner so future searches
+      // can boost frequently-resolved tables and tags (client-side, sessionStorage only)
+      if (semanticRes.intent?.type !== "CLARIFICATION") {
+        const resolvedTableIds = semanticRes.context?.table
+          ? [semanticRes.context.table]
+          : (semanticRes.logicalPlan?.table ? [semanticRes.logicalPlan.table] : []);
+        const resolvedTags = semanticRes.context?.metrics ?? [];
+        recordQuery(q, resolvedTableIds, resolvedTags);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
@@ -518,14 +534,14 @@ export function SemanticQueryPanel({
             )}
           </div>
 
-          {/* Run as SQL button */}
+          {/* Send to Editor button — sends the logical plan to the SQL editor without immediately running */}
           {response.logicalPlan && onPlanReady && !isClarification && (
             <button
               onClick={() => onPlanReady(semanticToQueryPlan(response))}
               className="self-start flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
             >
-              <Play className="w-3.5 h-3.5" />
-              Run as SQL
+              <ArrowRight className="w-3.5 h-3.5" />
+              Send to Editor
             </button>
           )}
         </div>
