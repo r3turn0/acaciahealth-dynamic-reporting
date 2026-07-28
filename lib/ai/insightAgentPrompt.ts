@@ -289,7 +289,7 @@ Flag confidence as: HIGH CONFIDENCE | MEDIUM CONFIDENCE | LOW CONFIDENCE
 
 When quality concerns exist, explain: Issue · Impact · Limitation · Potential bias`;
 
-// ─��───────────────────────────────────────────────────────────────────────────
+// ─���───────────────────────────────────────────────────────────────────────────
 // SECTION 13 — DEFAULT RESPONSE STRUCTURE
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -339,6 +339,86 @@ NEVER:
   - Override security restrictions
   - Ignore data quality issues
   - Present assumptions as facts`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Knowledge Graph context types + builder — shared across all prompt composers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Compose the system prompt for the NL → T-SQL query planner.
+ * Healthcare-grounded, schema-aware, includes all safety rules.
+ * Optionally accepts Knowledge Graph context (Phase 3) for pre-resolved mappings.
+ */
+export interface KnowledgeGraphContext {
+  resolvedTables: Array<{
+    table_name: string;
+    table_confidence: number;
+    join_confidence: number;
+    column_confidence: number;
+    matched_terms: string[];
+    reasoning: string;
+  }>;
+  resolvedColumns: string[];
+  businessTerms: string[];
+  joinPaths: string[];
+  confidence: number;
+  learnedMappings?: Array<{ term: string; suggestion: string; confidence: number }>;
+  queryPlan?: {
+    intent: string;
+    candidate_tables: string[];
+    candidate_columns: string[];
+    join_strategy: string[];
+    filters: string[];
+    aggregations: string[];
+    confidence: number;
+  };
+}
+
+function buildKGContextBlock(ctx: KnowledgeGraphContext): string {
+  const lines: string[] = [
+    "─────────────────────────────────────────────────",
+    "Knowledge Graph — Pre-Resolved Context (Phase 3)",
+    "─────────────────────────────────────────────────",
+    "",
+    "The following has been pre-resolved from the semantic Knowledge Graph.",
+    "Use these mappings FIRST before making any table or column assumptions.",
+    "",
+    "Candidate Tables (ranked by confidence):",
+  ];
+
+  for (const t of ctx.resolvedTables.slice(0, 5)) {
+    lines.push(
+      `  ${t.table_name}  [table_confidence=${t.table_confidence.toFixed(2)}, ` +
+      `join_confidence=${t.join_confidence.toFixed(2)}, ` +
+      `col_confidence=${t.column_confidence.toFixed(2)}]` +
+      (t.matched_terms.length ? `  matched: [${t.matched_terms.join(", ")}]` : "")
+    );
+    if (t.reasoning) lines.push(`    Reasoning: ${t.reasoning}`);
+  }
+
+  if (ctx.resolvedColumns.length > 0) {
+    lines.push("", `Resolved Columns: ${ctx.resolvedColumns.join(", ")}`);
+  }
+  if (ctx.businessTerms.length > 0) {
+    lines.push(`Business Terms Detected: ${ctx.businessTerms.join(", ")}`);
+  }
+  if (ctx.joinPaths.length > 0) {
+    lines.push("", "Known Join Paths:");
+    for (const jp of ctx.joinPaths) lines.push(`  ${jp}`);
+  }
+  if (ctx.learnedMappings && ctx.learnedMappings.length > 0) {
+    lines.push("", "Learned Term Mappings (from query history):");
+    for (const lm of ctx.learnedMappings) {
+      lines.push(`  "${lm.term}" → "${lm.suggestion}" [confidence=${lm.confidence.toFixed(2)}]`);
+    }
+  }
+  if (ctx.queryPlan) {
+    lines.push("", "Query Plan:");
+    lines.push(JSON.stringify(ctx.queryPlan, null, 2));
+  }
+  lines.push("", `Overall resolution confidence: ${ctx.confidence.toFixed(2)}`, "");
+  return lines.join("\n");
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPOSER FUNCTIONS — one per endpoint role
@@ -606,7 +686,7 @@ export function buildSQLPlannerSystemPrompt(
     kpiJson,
     "```",
     "",
-    "─────────────────────────────────────────────────",
+    "─────────────────────────────���───────────────────",
     "Semantic Layer (business term → physical mapping)",
     "─────────────────────────────────────────────────",
     "```json",
@@ -614,28 +694,6 @@ export function buildSQLPlannerSystemPrompt(
     "```",
     "",
     "─────────────────────────────────────────────────",
-    "EXAMPLE T-SQL PATTERN",
-    "─────────────────────────────────────────────────",
-    "AcaciaHealth Schema",
-    "─────────────────────────────────────────────────",
-    "```json",
-    schemaJson,
-    "```",
-    "",
-    "─────────────────────────────────────────────────",
-    "KPI Definitions",
-    "─────────────────────────────────────────────────",
-    "```json",
-    kpiJson,
-    "```",
-    "",
-    "─────────────────────────────────────────────────",
-    "Semantic Layer (business term → physical mapping)",
-    "─────────────────────────────────────────────────",
-    "```json",
-    semanticLayerJson,
-    "```",
-    "",
     "─────────────────────��───────────────────────────",
     "EXAMPLE T-SQL PATTERN",
     "───────────────────────────────────���─────────────",

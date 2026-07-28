@@ -198,7 +198,7 @@ function ResultCard({
         <div className="flex items-center gap-1 flex-wrap">
           <Tag className="w-3 h-3 text-muted-foreground shrink-0" />
           {result.matchedTags.slice(0, 4).map((t) => (
-            <TagChip key={t} tagId={t} active={false} onClick={(e) => { (e as unknown as Event).stopPropagation?.(); }} />
+            <TagChip key={t} tagId={t} active={false} onClick={() => { /* no-op — prevent result click propagation handled by parent */ }} />
           ))}
         </div>
       )}

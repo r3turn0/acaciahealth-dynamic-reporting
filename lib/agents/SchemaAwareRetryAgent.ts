@@ -39,12 +39,11 @@ import {
   getLearnedMappings,
   type RetryAttempt,
   type FailureClass,
+  type QueryHistoryEntry,
 } from "@/lib/services/queryHistoryStore";
 import { inferQueryContext } from "@/lib/agents/schemaAgent";
-import {
-  buildSQLCorrectionSystemPrompt,
-  type KnowledgeGraphContext,
-} from "@/lib/ai/insightAgentPrompt";
+import { buildSQLCorrectionSystemPrompt } from "@/lib/ai/insightAgentPrompt";
+import type { KnowledgeGraphContext } from "@/lib/ai/insightAgentPrompt";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -159,7 +158,7 @@ export async function retryWithSchemaIntelligence(
 
   // Fetch prior attempts to build known hash set
   const priorAttempts = await getAttemptsForRequest(input.userRequest);
-  const triedHashes = new Set(priorAttempts.map((a) => hashSql(a.query_text)));
+  const triedHashes = new Set<string>(priorAttempts.map((a: QueryHistoryEntry) => hashSql(a.query_text)));
   triedHashes.add(hashSql(input.failedSql)); // Include the current failure
 
   // Record the original failure

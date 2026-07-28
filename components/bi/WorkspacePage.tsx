@@ -477,7 +477,10 @@ function TabPanel({ tab, onToast }: TabPanelProps) {
       </div>
 
       {/* Error panel */}
-      {tab.status === "error" && tab.apiError && (
+      {tab.status === "error" && tab.apiError && (() => {
+        // Capture status to avoid TypeScript narrowing to "error" inside the JSX block
+        const tabStatus = tab.status as string;
+        return (
         <div className="bg-card border border-destructive/30 rounded-xl p-4 flex flex-col gap-3">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-destructive/15 text-destructive shrink-0">
@@ -512,15 +515,15 @@ function TabPanel({ tab, onToast }: TabPanelProps) {
                   onToast("Auto-fix failed — check connection");
                 }
               }}
-              disabled={tab.status === "fixing"}
+              disabled={tabStatus === "fixing"}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-chart-3/40 bg-chart-3/8 text-chart-3 text-xs font-medium hover:bg-chart-3/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              {tab.status === "fixing" ? (
+              {tabStatus === "fixing" ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <Sparkles className="w-3.5 h-3.5" />
               )}
-              {tab.status === "fixing" ? "Analyzing…" : "Auto-Fix"}
+              {tabStatus === "fixing" ? "Analyzing…" : "Auto-Fix"}
             </button>
 
             <button
@@ -543,7 +546,8 @@ function TabPanel({ tab, onToast }: TabPanelProps) {
             )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* AI Fix Panel */}
       {tab.showFixPanel && tab.fixedSQL && (

@@ -330,7 +330,7 @@ function buildKnowledgeGraph(
     // colRef could be "TABLE.column" or just "column"
     const parts = colRef.includes(".") ? colRef.split(".") : [null, colRef];
     const [tbl, col] = parts;
-    if (tbl) {
+    if (tbl && col) {
       const colId = `col::${tbl.toUpperCase()}::${col.toUpperCase()}`;
       if (nodeIndex[colId]) {
         addEdge({ from: termId, to: colId, type: "maps_to", confidence: 0.9 });
@@ -371,7 +371,7 @@ function buildKnowledgeGraph(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 3: Context Inference — resolve ambiguous user terms
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────���───────────────────
 
 /**
  * Resolve a natural language query to candidate tables with confidence scores.

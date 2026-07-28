@@ -388,43 +388,22 @@ export async function markQuerySuccess(
 }
 
 /**
- * Retrieve the most recent query history entries, optionally filtered by status.
+ * Retrieve query history entries.
+ * Supports both simple (limit, status) and paginated (options object) call forms.
+ *
+ *   getQueryHistory(50)                       — latest 50 entries
+ *   getQueryHistory({ limit, offset, status, search })  — paginated + filtered
  */
 export async function getQueryHistory(
-  limit = 100,
-  status?: QueryStatus
+  limitOrOptions?: number | { limit?: number; offset?: number; status?: QueryStatus; search?: string }
 ): Promise<QueryHistoryEntry[]> {
-  await ensureTables();
+  const options: { limit: number; offset: number; status?: QueryStatus; search?: string } =
+    typeof limitOrOptions === "number"
+      ? { limit: limitOrOptions, offset: 0 }
+      : { limit: 50, offset: 0, ...(limitOrOptions ?? {}) };
 
-  const pool = await appClient.getPool();
-  if (pool) {
-    try {
-      const whereClause = status ? `WHERE status = $2` : "";
-      const params: unknown[] = status ? [limit, status] : [limit];
-      const sql = `SELECT * FROM query_history ${whereClause} ORDER BY created_at DESC LIMIT $1`;
-      const res = await pool.query(sql, params);
-      return res.rows as QueryHistoryEntry[];
-    } catch (err) {
-      console.error("[queryHistoryStore] getQueryHistory failed:", (err as Error).message);
-    }
-  }
+  const { limit, offset, status, search } = options;
 
-  let results = [..._historyStore].reverse();
-  if (status) results = results.filter((e) => e.status === status);
-  return results.slice(0, limit);
-}
-
-/**
- * Paginated history query with optional status filter and search.
- * Used by the /api/query-history route.
- */
-export async function getQueryHistory(options: {
-  limit?: number;
-  offset?: number;
-  status?: QueryStatus;
-  search?: string;
-} = {}): Promise<QueryHistoryEntry[]> {
-  const { limit = 50, offset = 0, status, search } = options;
   await ensureTables();
 
   const pool = await appClient.getPool();
@@ -435,7 +414,7 @@ export async function getQueryHistory(options: {
       let i = 1;
 
       if (status) { conditions.push(`status = $${i++}`); params.push(status); }
-      if (search) { conditions.push(`LOWER(user_request) LIKE $${i++}`); params.push(`%${search.toLowerCase()}%`); }
+      if (search)  { conditions.push(`LOWER(user_request) LIKE $${i++}`); params.push(`%${search.toLowerCase()}%`); }
 
       const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
       params.push(limit, offset);
@@ -449,166 +428,8 @@ export async function getQueryHistory(options: {
 
   let results = [..._historyStore].reverse();
   if (status) results = results.filter((e) => e.status === status);
-  if (search) results = results.filter((e) => e.user_request.toLowerCase().includes(search.toLowerCase()));
+  if (search)  results = results.filter((e) => e.user_request.toLowerCase().includes(search.toLowerCase()));
   return results.slice(offset, offset + limit);
-}
-
-/** Alias used by API routes. */
-export const getQueryHistoryStats = getQueryStats;
-
-/**
- * Delete a learned mapping by user_term.
- */
-export async function deleteLearnedMapping(userTerm: string): Promise<void> {
-  await ensureTables();
-
-  const pool = await appClient.getPool();
-  if (pool) {
-    try {
-      await pool.query(`DELETE FROM learned_mappings WHERE LOWER(user_term) = $1`, [userTerm.toLowerCase()]);
-      return;
-    } catch (err) {
-      console.error("[queryHistoryStore] deleteLearnedMapping failed:", (err as Error).message);
-    }
-  }
-
-  const idx = _mappingsStore.findIndex((m) => m.user_term.toLowerCase() === userTerm.toLowerCase());
-  if (idx >= 0) _mappingsStore.splice(idx, 1);
-}
-
-/**
- * Look up all previous attempts for a given user request.
- * Used to check for duplicate retry SQL hashes.
- */
-export async function getAttemptsForRequest(
-  userRequest: string
-): Promise<QueryHistoryEntry[]> {
-  await ensureTables();
-
-  const pool = await appClient.getPool();
-  if (pool) {
-    try {
-      const res = await pool.query(
-        `SELECT * FROM query_history WHERE user_request = $1 ORDER BY retry_version ASC`,
-        [userRequest]
-      );
-      return res.rows as QueryHistoryEntry[];
-    } catch (err) {
-      console.error("[queryHistoryStore] getAttemptsForRequest failed:", (err as Error).message);
-    }
-  }
-
-  return _historyStore
-    .filter((e) => e.user_request === userRequest)
-    .sort((a, b) => a.retry_version - b.retry_version);
-}
-
-/**
- * Get the set of SQL hashes already tried for a user request.
- * Used to enforce the "never retry same SQL" golden rule.
- */
-export async function getTriedSqlHashes(userRequest: string): Promise<Set<string>> {
-  const attempts = await getAttemptsForRequest(userRequest);
-  const hashes = new Set<string>();
-  for (const a of attempts) {
-    hashes.add(hashSql(a.query_text));
-  }
-  return hashes;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Learned Mappings: CRUD
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Record or update a learned term → object mapping.
- *
- * Call forms:
- *   upsertLearnedMapping(term, object, "success"|"failure")   — auto-calc confidence
- *   upsertLearnedMapping(term, object, confidence, "success")  — manual confidence
- */
-export async function upsertLearnedMapping(
-  userTerm: string,
-  actualObject: string,
-  outcomeOrConfidence: "success" | "failure" | number,
-  explicitOutcome?: "success" | "failure"
-): Promise<LearnedMapping> {
-  const outcome: "success" | "failure" =
-    typeof outcomeOrConfidence === "string" ? outcomeOrConfidence : (explicitOutcome ?? "success");
-  await ensureTables();
-
-  const last_used = new Date().toISOString();
-
-  const pool = await appClient.getPool();
-  if (pool) {
-    try {
-      const existingRes = await pool.query(
-        `SELECT * FROM learned_mappings WHERE user_term = $1 AND actual_object = $2`,
-        [userTerm, actualObject]
-      );
-
-      if (existingRes.rows.length > 0) {
-        const existing = existingRes.rows[0] as LearnedMapping;
-        const success_count = existing.success_count + (outcome === "success" ? 1 : 0);
-        const failure_count = existing.failure_count + (outcome === "failure" ? 1 : 0);
-        const total = success_count + failure_count;
-        const confidence = total > 0 ? success_count / total : 0.5;
-
-        const res = await pool.query(
-          `UPDATE learned_mappings
-              SET success_count = $1, failure_count = $2, confidence = $3, last_used = $4
-            WHERE user_term = $5 AND actual_object = $6
-            RETURNING *`,
-          [success_count, failure_count, confidence, last_used, userTerm, actualObject]
-        );
-        return res.rows[0] as LearnedMapping;
-      } else {
-        const id = `lm_${_genId()}`;
-        const success_count = outcome === "success" ? 1 : 0;
-        const failure_count = outcome === "failure" ? 1 : 0;
-        const confidence = outcome === "success" ? 0.75 : 0.25;
-
-        const res = await pool.query(
-          `INSERT INTO learned_mappings
-             (id, user_term, actual_object, confidence, success_count, failure_count, last_used)
-           VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-          [id, userTerm, actualObject, confidence, success_count, failure_count, last_used]
-        );
-        return res.rows[0] as LearnedMapping;
-      }
-    } catch (err) {
-      console.error("[queryHistoryStore] upsertLearnedMapping failed:", (err as Error).message);
-    }
-  }
-
-  // In-memory fallback
-  const existing = _mappingsStore.find(
-    (m) => m.user_term === userTerm && m.actual_object === actualObject
-  );
-  if (existing) {
-    if (outcome === "success") existing.success_count++;
-    else existing.failure_count++;
-    const total = existing.success_count + existing.failure_count;
-    existing.confidence = total > 0 ? existing.success_count / total : 0.5;
-    existing.last_used = last_used;
-    return { ...existing };
-  } else {
-    const entry: LearnedMapping = {
-      id: `lm_${_genId()}`,
-      user_term: userTerm,
-      actual_object: actualObject,
-      confidence: outcome === "success" ? 0.75 : 0.25,
-      success_count: outcome === "success" ? 1 : 0,
-      failure_count: outcome === "failure" ? 1 : 0,
-      last_used,
-    };
-    _mappingsStore.push(entry);
-    if (_mappingsStore.length > MAX_MAPPINGS) {
-      _mappingsStore.sort((a, b) => b.success_count - a.success_count);
-      _mappingsStore.splice(MAX_MAPPINGS);
-    }
-    return { ...entry };
-  }
 }
 
 /**
@@ -855,7 +676,7 @@ export async function buildQueryPlanOutput(params: {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────��───────────────
 // Statistics
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -952,4 +773,126 @@ export async function getQueryStats(): Promise<QueryHistoryStats> {
     top_learned_mappings: topMappings,
     success_rate: _historyStore.length > 0 ? successes / _historyStore.length : 0,
   };
+}
+
+/** Alias used by API routes. */
+export const getQueryHistoryStats = getQueryStats;
+
+/**
+ * Retrieve all prior query attempts for a given user request string.
+ * Used by SchemaAwareRetryAgent to build the tried-hashes set.
+ */
+export async function getAttemptsForRequest(userRequest: string): Promise<QueryHistoryEntry[]> {
+  await ensureTables();
+  const pool = await appClient.getPool();
+  if (pool) {
+    try {
+      const res = await pool.query(
+        `SELECT * FROM query_history WHERE LOWER(user_request) = $1 ORDER BY created_at DESC`,
+        [userRequest.toLowerCase()]
+      );
+      return res.rows as QueryHistoryEntry[];
+    } catch (err) {
+      console.error("[queryHistoryStore] getAttemptsForRequest failed:", (err as Error).message);
+    }
+  }
+  return _historyStore.filter((e) => e.user_request.toLowerCase() === userRequest.toLowerCase());
+}
+
+/**
+ * Record or update a learned term → object mapping.
+ *
+ * Call forms:
+ *   upsertLearnedMapping(term, object, "success"|"failure")
+ *   upsertLearnedMapping(term, object, confidence, "success"|"failure")
+ */
+export async function upsertLearnedMapping(
+  userTerm: string,
+  actualObject: string,
+  outcomeOrConfidence: "success" | "failure" | number,
+  explicitOutcome?: "success" | "failure"
+): Promise<LearnedMapping> {
+  const outcome: "success" | "failure" =
+    typeof outcomeOrConfidence === "string" ? outcomeOrConfidence : (explicitOutcome ?? "success");
+
+  await ensureTables();
+  const pool = await appClient.getPool();
+
+  if (pool) {
+    try {
+      const res = await pool.query(
+        `SELECT * FROM learned_mappings WHERE LOWER(user_term) = $1 AND LOWER(actual_object) = $2`,
+        [userTerm.toLowerCase(), actualObject.toLowerCase()]
+      );
+      const existing = res.rows[0] as LearnedMapping | undefined;
+
+      if (existing) {
+        const successCount  = outcome === "success" ? (existing.success_count ?? 0) + 1 : (existing.success_count ?? 0);
+        const failureCount  = outcome === "failure" ? (existing.failure_count ?? 0) + 1 : (existing.failure_count ?? 0);
+        const total         = successCount + failureCount;
+        const newConfidence = total > 0 ? parseFloat((successCount / total).toFixed(4)) : existing.confidence;
+
+        const updated = await pool.query(
+          `UPDATE learned_mappings
+           SET success_count = $1, failure_count = $2, confidence = $3, last_used = NOW()
+           WHERE LOWER(user_term) = $4 AND LOWER(actual_object) = $5
+           RETURNING *`,
+          [successCount, failureCount, newConfidence, userTerm.toLowerCase(), actualObject.toLowerCase()]
+        );
+        return updated.rows[0] as LearnedMapping;
+      } else {
+        const confidence = outcome === "success" ? 0.7 : 0.3;
+        const inserted = await pool.query(
+          `INSERT INTO learned_mappings (user_term, actual_object, confidence, success_count, failure_count, last_used)
+           VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *`,
+          [userTerm, actualObject, confidence, outcome === "success" ? 1 : 0, outcome === "failure" ? 1 : 0]
+        );
+        return inserted.rows[0] as LearnedMapping;
+      }
+    } catch (err) {
+      console.error("[queryHistoryStore] upsertLearnedMapping failed:", (err as Error).message);
+    }
+  }
+
+  // In-memory fallback
+  const existing = _mappingsStore.find(
+    (m) => m.user_term.toLowerCase() === userTerm.toLowerCase() && m.actual_object.toLowerCase() === actualObject.toLowerCase()
+  );
+  if (existing) {
+    if (outcome === "success") existing.success_count = (existing.success_count ?? 0) + 1;
+    else existing.failure_count = (existing.failure_count ?? 0) + 1;
+    const total = (existing.success_count ?? 0) + (existing.failure_count ?? 0);
+    existing.confidence = total > 0 ? (existing.success_count ?? 0) / total : existing.confidence;
+    existing.last_used  = new Date().toISOString();
+    return existing;
+  }
+  const newMapping: LearnedMapping = {
+    id: `lm_${Date.now()}`,
+    user_term: userTerm,
+    actual_object: actualObject,
+    confidence: outcome === "success" ? 0.7 : 0.3,
+    success_count: outcome === "success" ? 1 : 0,
+    failure_count: outcome === "failure" ? 1 : 0,
+    last_used: new Date().toISOString(),
+  };
+  _mappingsStore.push(newMapping);
+  return newMapping;
+}
+
+/**
+ * Delete a learned mapping by user_term.
+ */
+export async function deleteLearnedMapping(userTerm: string): Promise<void> {
+  await ensureTables();
+  const pool = await appClient.getPool();
+  if (pool) {
+    try {
+      await pool.query(`DELETE FROM learned_mappings WHERE LOWER(user_term) = $1`, [userTerm.toLowerCase()]);
+      return;
+    } catch (err) {
+      console.error("[queryHistoryStore] deleteLearnedMapping failed:", (err as Error).message);
+    }
+  }
+  const idx = _mappingsStore.findIndex((m) => m.user_term.toLowerCase() === userTerm.toLowerCase());
+  if (idx >= 0) _mappingsStore.splice(idx, 1);
 }

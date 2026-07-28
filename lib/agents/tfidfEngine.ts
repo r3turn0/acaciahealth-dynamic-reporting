@@ -236,8 +236,8 @@ export function buildTFIDFIndex(
       t.description ?? "",
       ...t.columns.map((c) => c.displayName),
       ...t.columns.map((c) => c.description ?? ""),
-      ...(Array.isArray((t as { searchTokens?: string[] }).searchTokens)
-        ? (t as { searchTokens: string[] }).searchTokens
+      ...(Array.isArray((t as unknown as { searchTokens?: string[] }).searchTokens)
+        ? ((t as unknown as { searchTokens: string[] }).searchTokens)
         : []),
     ].filter(Boolean);
   }

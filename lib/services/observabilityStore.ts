@@ -282,9 +282,9 @@ export function getLogs(options?: {
 
 export function getZeroResultQueries(limit = 20): SearchLog[] {
   return getLogs({ type: "search", limit: 500 })
-    .filter((e) => (e.meta as SearchLog | undefined)?.zeroResults)
+    .filter((e) => (e.meta as unknown as SearchLog | undefined)?.zeroResults)
     .slice(0, limit)
-    .map((e) => e.meta as SearchLog);
+    .map((e) => e.meta as unknown as SearchLog);
 }
 
 export function getHealthSummary(): {
