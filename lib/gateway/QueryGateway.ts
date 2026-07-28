@@ -529,12 +529,21 @@ async function runSQLGeneratorAgent(
           .map((m) => ({ term: m.user_term, suggestion: m.actual_object, confidence: m.confidence })),
       } : undefined;
 
-      const systemPrompt = buildSemanticQuerySystemPrompt(
+      const { buildCompactSemanticQueryPrompt } = await import("@/lib/ai/insightAgentPrompt");
+      const { systemPrompt, apcsMetrics } = buildCompactSemanticQueryPrompt(
         JSON.stringify(schemaConfig, null, 2),
         JSON.stringify(kpiConfig, null, 2),
         JSON.stringify(semanticLayer, null, 2),
         kgContext
       );
+
+      if (apcsMetrics.compressed) {
+        console.log(
+          `[QueryGateway/Stage4] APCS: ${apcsMetrics.originalTokens}t → ` +
+          `${apcsMetrics.compactedTokens}t (-${apcsMetrics.reductionPct}%) ` +
+          `layers=[${apcsMetrics.layersApplied.join(",")}]`
+        );
+      }
 
       // Enrich user prompt with KG-resolved context
       const kgTableList = kgResult?.resolvedTables.slice(0, 5).map((t) =>

@@ -42,7 +42,9 @@ import {
   type QueryHistoryEntry,
 } from "@/lib/services/queryHistoryStore";
 import { inferQueryContext } from "@/lib/agents/schemaAgent";
-import { buildSQLCorrectionSystemPrompt } from "@/lib/ai/insightAgentPrompt";
+import {
+  buildCompactCorrectionPrompt,
+} from "@/lib/ai/insightAgentPrompt";
 import type { KnowledgeGraphContext } from "@/lib/ai/insightAgentPrompt";
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -254,7 +256,7 @@ export async function retryWithSchemaIntelligence(
     let confidence = 0;
 
     try {
-      const systemPrompt = buildSQLCorrectionSystemPrompt(
+      const { systemPrompt, apcsMetrics } = buildCompactCorrectionPrompt(
         schemaConfig,
         kpiConfig,
         semanticLayer,
@@ -263,8 +265,24 @@ export async function retryWithSchemaIntelligence(
           failureClass: failureClass as string,
           remediationStrategy,
           previousAttempts: attempt - 1,
+        },
+        {
+          querySignature: input.userRequest,
+          retryHistory: priorAttempts.map((a: QueryHistoryEntry) => ({
+            userRequest: a.user_request,
+            failureReason: a.failure_reason ?? undefined,
+            fixStrategy:   a.remediation_strategy ?? undefined,
+          })),
         }
       );
+
+      // Log APCS savings for observability
+      if (apcsMetrics.compressed) {
+        console.log(
+          `[SchemaAwareRetryAgent] APCS: ${apcsMetrics.originalTokens}t → ${apcsMetrics.compactedTokens}t ` +
+          `(-${apcsMetrics.reductionPct}%) layers=[${apcsMetrics.layersApplied.join(",")}]`
+        );
+      }
 
       const { text } = await generateText({
         model: getModel("capable"),

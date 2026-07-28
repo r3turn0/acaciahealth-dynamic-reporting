@@ -289,7 +289,7 @@ Flag confidence as: HIGH CONFIDENCE | MEDIUM CONFIDENCE | LOW CONFIDENCE
 
 When quality concerns exist, explain: Issue · Impact · Limitation · Potential bias`;
 
-// ─���───────────────────────────────────────────────────────────────────────────
+// ─����───────────────────────────────────────────────────────────────────────────
 // SECTION 13 — DEFAULT RESPONSE STRUCTURE
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -472,7 +472,7 @@ export function buildInterpretationSystemPrompt(): string {
   return [
     buildAgentIdentityBlock(),
     "",
-    "─────────────────────────────────────────────────",
+    "────────��────────────────────────────────────────",
     "",
     buildAnalyticsBlock(),
     "",
@@ -775,7 +775,7 @@ export function buildSQLCorrectionSystemPrompt(
     "",
     "─────────────────────────────────────────────────",
     "KPI Definitions",
-    "─────────────────────────────────────────────────",
+    "──────────���──────────────────────────────────────",
     "```json",
     kpiJson,
     "```",
@@ -825,4 +825,131 @@ export function buildInsightsSystemPrompt(): string {
     "- Ground every claim in the data provided. Never invent figures.",
     "- Return JSON: { insight: string }",
   ].join("\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APCS-AWARE WRAPPERS
+// Run each prompt builder through the 10-layer compaction pipeline before
+// the result reaches the AI model. Token reduction 30–90% on large prompts.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface APCSPromptResult {
+  /** The (potentially compacted) system prompt to pass to the AI */
+  systemPrompt: string;
+  /** APCS metrics — token savings, layers applied, schema hash */
+  apcsMetrics: {
+    originalTokens: number;
+    compactedTokens: number;
+    reductionPct: number;
+    layersApplied: string[];
+    schemaHash: string | null;
+    schemaCacheHit: boolean;
+    ragRefs: string[];
+    compressed: boolean;
+  };
+}
+
+/**
+ * Wrap buildSemanticQuerySystemPrompt with APCS compaction.
+ * Call this instead of buildSemanticQuerySystemPrompt for AI endpoints.
+ */
+export function buildCompactSemanticQueryPrompt(
+  schemaJson: string,
+  kpiJson: string,
+  semanticLayerJson: string,
+  kgContext?: KnowledgeGraphContext
+): APCSPromptResult {
+  const full = buildSemanticQuerySystemPrompt(schemaJson, kpiJson, semanticLayerJson, kgContext);
+  return _applyAPCS(full, schemaJson);
+}
+
+/**
+ * Wrap buildSQLPlannerSystemPrompt with APCS compaction.
+ */
+export function buildCompactSQLPlannerPrompt(
+  schemaJson: string,
+  kpiJson: string,
+  semanticLayerJson: string,
+  kgContext?: KnowledgeGraphContext
+): APCSPromptResult {
+  const full = buildSQLPlannerSystemPrompt(schemaJson, kpiJson, semanticLayerJson, kgContext);
+  return _applyAPCS(full, schemaJson);
+}
+
+/**
+ * Wrap buildSQLCorrectionSystemPrompt with APCS compaction.
+ */
+export function buildCompactCorrectionPrompt(
+  schemaJson: string,
+  kpiJson: string,
+  semanticLayerJson: string,
+  kgContext?: KnowledgeGraphContext,
+  failureContext?: {
+    failureClass: string;
+    remediationStrategy: string;
+    previousAttempts: number;
+  },
+  retryContext?: {
+    querySignature?: string;
+    retryHistory?: Array<{
+      userRequest: string;
+      failedTable?: string;
+      successTable?: string;
+      failureReason?: string;
+      fixStrategy?: string;
+    }>;
+  }
+): APCSPromptResult {
+  const full = buildSQLCorrectionSystemPrompt(schemaJson, kpiJson, semanticLayerJson, kgContext, failureContext);
+  return _applyAPCS(full, schemaJson, retryContext);
+}
+
+function _applyAPCS(
+  systemPrompt: string,
+  schemaJson?: string,
+  retryContext?: {
+    querySignature?: string;
+    retryHistory?: Array<{
+      userRequest: string;
+      failedTable?: string;
+      successTable?: string;
+      failureReason?: string;
+      fixStrategy?: string;
+    }>;
+  }
+): APCSPromptResult {
+  try {
+    // Lazy import to avoid circular deps — APCS lives in same lib/ai directory
+    const { applyAPCS } = require("./apcs/APCSPipeline") as typeof import("./apcs/APCSPipeline");
+    const result = applyAPCS({
+      systemPrompt,
+      schemaJson,
+      querySignature: retryContext?.querySignature,
+      retryHistory: retryContext?.retryHistory,
+    });
+
+    return {
+      systemPrompt: result.prompt,
+      apcsMetrics: {
+        originalTokens:  result.payload.originalTokens,
+        compactedTokens: result.payload.compactedTokens,
+        reductionPct:    result.payload.reductionPct,
+        layersApplied:   result.payload.layersApplied,
+        schemaHash:      result.payload.schemaHash,
+        schemaCacheHit:  result.payload.schemaCacheHit,
+        ragRefs:         result.payload.ragRefs,
+        compressed:      result.compressed,
+      },
+    };
+  } catch {
+    // APCS failure is non-fatal — return uncompressed prompt
+    return {
+      systemPrompt,
+      apcsMetrics: {
+        originalTokens: 0, compactedTokens: 0, reductionPct: 0,
+        layersApplied: [], schemaHash: null, schemaCacheHit: false,
+        ragRefs: [], compressed: false,
+      },
+    };
+  }
 }

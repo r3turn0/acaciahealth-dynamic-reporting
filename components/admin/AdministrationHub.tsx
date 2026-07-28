@@ -29,11 +29,12 @@ import { AgentRegistry }           from "@/components/agents/AgentRegistry";
 import { PipelineBuilder }         from "@/components/pipeline/PipelineBuilder";
 import { ObservabilityDashboard }  from "@/components/admin/ObservabilityDashboard";
 import { QueryHistoryPanel }       from "@/components/admin/QueryHistoryPanel";
+import { APCSPanel }               from "@/components/admin/APCSPanel";
 import type { AuthUser }           from "@/components/auth/LoginPage";
 
 // ── Tab definitions ───────────────────────────────────────────────────────────
 
-type AdminTab = "audit" | "security" | "sessions" | "agents" | "pipeline" | "settings" | "observability" | "query-history";
+type AdminTab = "audit" | "security" | "sessions" | "agents" | "pipeline" | "settings" | "observability" | "query-history" | "apcs";
 
 const TABS: { id: AdminTab; label: string; icon: React.ElementType; adminOnly?: boolean; description: string }[] = [
   {
@@ -84,6 +85,12 @@ const TABS: { id: AdminTab; label: string; icon: React.ElementType; adminOnly?: 
     label:       "Retry Intelligence",
     icon:        Activity,
     description: "Phase 8-10 — Query history, failure analysis engine, schema-aware retry, and learned term mappings",
+  },
+  {
+    id:          "apcs",
+    label:       "Prompt Compaction",
+    icon:        BarChart2,
+    description: "Advanced Prompt Compaction System — 10-layer token optimization with lossless reconstruction, RAG store, failure memory, and learned facts",
   },
 ];
 
@@ -156,6 +163,7 @@ export function AdministrationHub({ initialTab = "audit", currentUser, onNavigat
         {tab === "settings"       && <SettingsPanel />}
         {tab === "observability"  && <ObservabilityDashboard />}
         {tab === "query-history"  && <QueryHistoryPanel />}
+        {tab === "apcs"           && <APCSPanel />}
       </div>
     </div>
   );
