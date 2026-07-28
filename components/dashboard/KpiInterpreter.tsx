@@ -566,10 +566,63 @@ export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
         }),
       });
       const runJson = await runRes.json();
-      const rows: Record<string, unknown>[] = runJson.data ?? [];
+      let rows: Record<string, unknown>[] = runJson.data ?? [];
+
+      // ── Zero-row retry: rewrite SQL and re-execute ────────────────────────
+      if (rows.length === 0 && selectedReport.sql) {
+        setInterpretStage("No data returned — rewriting SQL query...");
+
+        try {
+          const fixRes = await fetch("/api/fix-query", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userQuery: selectedReport.prompt || selectedReport.name,
+              generatedSQL: selectedReport.sql,
+              apiError: "Query returned 0 rows",
+              dbErrorLogs: "Zero rows returned — date range or filter conditions may be too restrictive",
+              start_date: dateRange.start,
+              end_date: dateRange.end,
+            }),
+          });
+
+          if (fixRes.ok) {
+            const fixJson = await fixRes.json();
+            const rewrittenSql: string = fixJson.fixedSQL ?? "";
+
+            if (rewrittenSql && rewrittenSql !== selectedReport.sql) {
+              setInterpretStage("Retrying with rewritten SQL...");
+
+              const retryRes = await fetch("/api/run-sql", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  sql: rewrittenSql,
+                  start_date: dateRange.start,
+                  end_date: dateRange.end,
+                  report_name: selectedReport.name,
+                  original_prompt: selectedReport.prompt,
+                }),
+              });
+
+              if (retryRes.ok) {
+                const retryJson = await retryRes.json();
+                const retryRows: Record<string, unknown>[] = retryJson.rows ?? [];
+                if (retryRows.length > 0) {
+                  rows = retryRows;
+                }
+              }
+            }
+          }
+        } catch {
+          // Rewrite failed — fall through with 0 rows (demo fallback in interpret API)
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       const columns: string[] = rows.length > 0 ? Object.keys(rows[0]) : [];
 
-      setInterpretStage(`Analysing ${rows.length} rows with AI...`);
+      setInterpretStage(`Analysing ${rows.length} row${rows.length !== 1 ? "s" : ""} with AI...`);
 
       const intRes = await fetch("/api/kpi/interpret", {
         method: "POST",
