@@ -112,15 +112,15 @@
 
   --radius: 0.5rem;
 
-  /* Sidebar */
-  --sidebar: oklch(0.275 0.07 145);
-  --sidebar-foreground: oklch(0.97 0.012 140);
-  --sidebar-primary: oklch(0.72 0.13 150);
-  --sidebar-primary-foreground: oklch(0.22 0.055 145);
-  --sidebar-accent: oklch(0.34 0.075 145);
-  --sidebar-accent-foreground: oklch(1 0 0);
-  --sidebar-border: oklch(1 0 0 / 14%);
-  --sidebar-ring: oklch(0.72 0.13 150);
+  /* Sidebar — light mint surface with high-contrast green text */
+  --sidebar: oklch(0.94 0.035 145);
+  --sidebar-foreground: oklch(0.28 0.055 145);
+  --sidebar-primary: oklch(0.43 0.12 145);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.86 0.065 145);
+  --sidebar-accent-foreground: oklch(0.25 0.065 145);
+  --sidebar-border: oklch(0.82 0.045 145);
+  --sidebar-ring: oklch(0.43 0.12 145);
 }
 
 @layer base {
