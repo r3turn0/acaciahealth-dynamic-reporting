@@ -34,11 +34,12 @@ export function analyzeEvent(event: ActivityEvent): DetectionResult {
     if (existing) { matched.push(existing); continue; }
     detected.push({ id: crypto.randomUUID(), name: classifier.name, businessCategory: classifier.category, description: `Detected from ${event.entityName} metadata.`, sourceDatasetId: event.entityType === "dataset" ? event.entityId : undefined, sourceReportId: event.entityType === "report" ? event.entityId : undefined, formula: "Pending analyst approval", thresholds: {}, isAIRecommended: true, confidence: Math.min(0.99, 0.78 + hits.length * 0.07), status: "detected", aliases: hits, lineage: [event.sourceSystem, event.entityName, classifier.name], createdAt: new Date().toISOString() });
   }
-  const impacted = [...matched, ...detected].map((k) => k.name);
+  const uniqueMatched = [...new Map(matched.map((kpi) => [kpi.id, kpi])).values()];
+  const impacted = [...new Set([...uniqueMatched, ...detected].map((k) => k.name))];
   const alerts: IntelligenceAlert[] = impacted.length ? [{ id: crypto.randomUUID(), title: detected.length ? `${detected.length} potential KPI${detected.length > 1 ? "s" : ""} detected` : `${impacted.length} KPI${impacted.length > 1 ? "s" : ""} impacted`, description: `${event.entityName} triggered KPI intelligence analysis.`, severity: severityFor(event.eventType), category: event.entityType === "dataset" ? "datasets" : "kpi", status: "open", entityType: event.entityType, entityId: event.entityId, entityName: event.entityName, sourceSystem: "KPI Detection Agent", correlationKey: `${event.entityType}:${event.entityId}`, impactedAssets: impacted, resolutionActions: detected.length ? ["Review recommendations", "Approve KPI", "Configure thresholds"] : ["Review impact analysis", "Validate KPI calculations"], metadata: { eventId: event.id, confidence: detected[0]?.confidence }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }] : [];
   detected.forEach((kpi) => intelligenceStore.addKpi(kpi));
   alerts.forEach((alert) => intelligenceStore.addAlert(alert));
-  return { eventId: event.id, detected, matched, alerts };
+  return { eventId: event.id, detected, matched: uniqueMatched, alerts };
 }
 
 export function ingestEvent(input: Omit<ActivityEvent, "id" | "eventDate"> & Partial<Pick<ActivityEvent, "id" | "eventDate">>): DetectionResult {
