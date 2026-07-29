@@ -31,6 +31,7 @@ import { LoginPage }    from "@/components/auth/LoginPage";
 import type { AuthUser } from "@/components/auth/LoginPage";
 import type { LoadedReport } from "@/components/studio/ReportStudio";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 
@@ -354,6 +355,7 @@ export default function Home() {
               <Calendar className="w-3.5 h-3.5" />
               {todayLabel}
             </div>
+            <ThemeToggle />
             <button
               className="p-1.5 rounded-md hover:bg-muted transition-colors relative"
               aria-label="Notifications"
