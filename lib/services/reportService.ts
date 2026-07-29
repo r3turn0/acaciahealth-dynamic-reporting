@@ -121,7 +121,8 @@ function seedDemos() {
       ...base(),
       version_history: v1("Admissions by Service Line"),
       sql: `;WITH bucket_map AS (
-    SELECT * FROM (VALUES
+    SELECT m.sl_name, m.sl_id, m.branch_code, m.bucket
+    FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
         ('HOSPICE', 2, 'XO1', 'ACACIA HOSPICE AND PALLIATIVE SERVICES OC'),
@@ -181,7 +182,8 @@ ORDER BY service_line, service_line_id`,
       ...base(),
       version_history: v1("Admissions by Care Type (Home Health)"),
       sql: `;WITH bucket_map AS (
-    SELECT * FROM (VALUES
+    SELECT m.sl_name, m.sl_id, m.branch_code, m.bucket
+    FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
         ('HOSPICE', 2, 'XO1', 'ACACIA HOSPICE AND PALLIATIVE SERVICES OC'),
@@ -419,7 +421,8 @@ ORDER BY bucket_sort, bucket`,
     ) AS v(service_line, epi_slid, epi_branchcode, branch_name)
 ),
 dc_class AS (
-    SELECT * FROM (VALUES
+    SELECT c.dr_code, c.dc_class
+    FROM (VALUES
         ('DTH', 'Death'),
         ('EXP', 'Death'),
         ('REV', 'LiveDC-PatientInitiated'),
@@ -491,7 +494,8 @@ ORDER BY bucket_sort, bucket`,
     ) AS v(service_line, epi_slid, epi_branchcode, branch_name)
 ),
 dc_class AS (
-    SELECT * FROM (VALUES
+    SELECT c.dr_code, c.dc_class
+    FROM (VALUES
         ('DTH','Death'),('EXP','Death'),
         ('REV','LiveDC-PatientInitiated'),('TRH','LiveDC-PatientInitiated'),
         ('EXT','LiveDC-HospiceInitiated'),('NLT','LiveDC-HospiceInitiated'),
@@ -563,7 +567,8 @@ ORDER BY bucket_sort, dc_class`,
     ) AS v(service_line, epi_slid, epi_branchcode, branch_name)
 ),
 dc_class AS (
-    SELECT * FROM (VALUES
+    SELECT c.dr_code, c.dc_class
+    FROM (VALUES
         ('DTH','Death'),('EXP','Death'),
         ('REV','LiveDC-PatientInitiated'),('TRH','LiveDC-PatientInitiated'),
         ('EXT','LiveDC-HospiceInitiated'),('NLT','LiveDC-HospiceInitiated'),
@@ -698,7 +703,7 @@ ORDER BY service_line, branch`,
       ...base(),
       version_history: v1("Hospice Census Equivalent — by Branch"),
       sql: `WITH dim_branch AS (
-    SELECT *
+    SELECT d.service_line, d.epi_slid, d.epi_branchcode, d.branch_name
     FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
@@ -769,7 +774,7 @@ FROM census`,
       ...base(),
       version_history: v1("Hospice Census Equivalent — HH+Palliative"),
       sql: `;WITH dim_branch AS (
-    SELECT *
+    SELECT d.service_line, d.epi_slid, d.epi_branchcode, d.branch_name
     FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
@@ -839,7 +844,7 @@ FROM hh_pal`,
       ...base(),
       version_history: v1("Hospice Census Equivalent — Total"),
       sql: `;WITH dim_branch AS (
-    SELECT *
+    SELECT d.service_line, d.epi_slid, d.epi_branchcode, d.branch_name
     FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
@@ -951,7 +956,7 @@ GROUP BY
       version_history: v1("Census — Current by Branch"),
       sql: `WITH dim_branch AS
 (
-    SELECT *
+    SELECT d.service_line, d.epi_slid, d.epi_branchcode, d.branch_name
     FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
@@ -1026,7 +1031,7 @@ ORDER BY
       version_history: v1("ADC — Patient Days by Branch"),
       sql: `;WITH dim_branch AS
 (
-    SELECT *
+    SELECT d.service_line, d.epi_slid, d.epi_branchcode, d.branch_name
     FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
@@ -1345,7 +1350,7 @@ ORDER BY bucket`,
       version_history: v1("QA Compliance"),
       sql: `;WITH dim_branch AS
 (
-    SELECT *
+    SELECT d.service_line, d.epi_slid, d.epi_branchcode, d.branch_name
     FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
@@ -1644,7 +1649,8 @@ ORDER BY bucket_sort, ar.branch_code`,
       version_history: v1("Unbilled and AR — AR Over 90 Days"),
       sql: `;WITH dim_branch (service_line, epi_slid, epi_branchcode, branch_name) AS
 (
-    SELECT * FROM (VALUES
+    SELECT v.service_line, v.epi_slid, v.epi_branchcode, v.branch_name
+    FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
         ('HOSPICE', 2, 'XO1', 'ACACIA HOSPICE AND PALLIATIVE SERVICES OC'),
@@ -1702,7 +1708,8 @@ ORDER BY bucket_sort, branch_code`,
       version_history: v1("Unbilled and AR — Unbilled Line Items"),
       sql: `;WITH dim_branch (service_line, epi_slid, epi_branchcode, branch_name) AS
 (
-    SELECT * FROM (VALUES
+    SELECT v.service_line, v.epi_slid, v.epi_branchcode, v.branch_name
+    FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
         ('HOSPICE', 2, 'XO1', 'ACACIA HOSPICE AND PALLIATIVE SERVICES OC'),
@@ -1877,7 +1884,8 @@ ORDER BY bucket_sort, bucket`,
 ),
 lupa_codes AS
 (
-    SELECT * FROM (VALUES
+    SELECT c.code
+    FROM (VALUES
         ('LUPA'),
         ('L')
     ) AS c(code)
@@ -2032,7 +2040,7 @@ ORDER BY bucket_sort, bucket`,
       version_history: v1("Referrals and NTUC — Summary"),
       sql: `;WITH bucket_map AS
 (
-    SELECT *
+    SELECT m.service_line, m.service_line_id, m.branch_code, m.bucket
     FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
@@ -2137,7 +2145,7 @@ ORDER BY bucket_sort, bucket`,
       version_history: v1("Referrals and NTUC — Non-Admit Reasons"),
       sql: `;WITH bucket_map AS
 (
-    SELECT *
+    SELECT v.sl_name, v.sl_id, v.branch_code, v.bucket
     FROM (VALUES
         ('HOME HEALTH',1,'PO1','ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH',1,'HL1','ACACIA HOME HEALTH SERVICES'),
@@ -2513,7 +2521,7 @@ ORDER BY bucket_sort, c.branch_code`,
       version_history: v1("Census and ADC — Current Census"),
       sql: `;WITH dim_branch AS
 (
-    SELECT *
+    SELECT d.service_line, d.epi_slid, d.epi_branchcode, d.branch_name
     FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
@@ -2580,7 +2588,7 @@ ORDER BY
       version_history: v1("Census and ADC — Patient Days and ADC"),
       sql: `;WITH dim_branch AS
 (
-    SELECT *
+    SELECT d.service_line, d.epi_slid, d.epi_branchcode, d.branch_name
     FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),

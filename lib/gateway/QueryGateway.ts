@@ -519,7 +519,8 @@ async function runSQLGeneratorAgent(
   // AI generation
   if (isAiConfigured()) {
     try {
-      const { generateText } = await import("ai");
+      const { generateText, Output } = await import("ai");
+      const { z } = await import("zod");
       const { getModel } = await import("@/lib/ai/gateway");
       const schemaConfig  = (await import("@/lib/config/schemaConfig.json")).default;
       const kpiConfig     = (await import("@/lib/config/kpiConfig.json")).default;
@@ -588,21 +589,27 @@ async function runSQLGeneratorAgent(
         `Return JSON: { "sql": "...", "explanation": "...", "confidence": 0.0-1.0 }`,
       ].filter(Boolean).join("\n");
 
-      const { text } = await generateText({
+      const { output: gen } = await generateText({
         model: getModel("default"),
         system: systemPrompt,
         prompt: userPrompt,
+        output: Output.object({
+          name: "sql_report_query",
+          description: "A validated T-SQL report query and generation metadata.",
+          schema: z.object({
+            sql: z.string().min(1),
+            explanation: z.string().min(1),
+            confidence: z.number().min(0).max(1),
+          }),
+        }),
         maxOutputTokens: 1024,
         temperature: 0.05,
       });
 
-      const clean = text.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "").trim();
-      const gen = JSON.parse(clean) as { sql: string; explanation: string; confidence: number };
-
       return {
-        sql: gen.sql ?? "",
-        explanation: gen.explanation ?? "",
-        confidence: gen.confidence ?? 0.8,
+        sql: gen.sql,
+        explanation: gen.explanation,
+        confidence: gen.confidence,
         stageResult: makeStage("SQLGeneratorAgent", "ok", Date.now() - t0, "AI-generated SQL from approved metadata"),
       };
     } catch (err) {

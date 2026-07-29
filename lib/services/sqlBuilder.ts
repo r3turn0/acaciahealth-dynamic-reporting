@@ -163,31 +163,8 @@ export function buildDatasetSQL(opts: BuildDatasetSQLOptions): BuildSQLResult {
         : raw;
     });
   } else {
-    // Auto-select: first column of each table (safe fallback, avoids SELECT *)
-    warnings.push("No columns specified — selecting first column of each table. Specify columns for production use.");
-    selectClauses = uniqueTables.map((tbl) => {
-      const tblAlias = alias(aliases, tbl);
-      return `${tblAlias}.*`; // overridden below — we still need a list
-    });
-    // Actually emit a TOP-N with a column comment rather than SELECT *
-    const selectPart = uniqueTables
-      .map((tbl) => `${alias(aliases, tbl)}.*`)
-      .join(",\n       ");
-
-    const baseAlias = alias(aliases, baseTable);
-    const joinClauses = joins
-      .map((j) => buildJoinClause(j, aliases))
-      .join("\n");
-
-    const wherePart = whereClause ? `\nWHERE ${whereClause}` : "";
-
-    const sql =
-      `SELECT TOP ${limit}\n       ${selectPart}\n` +
-      `FROM   ${baseTable} ${baseAlias}\n` +
-      (joinClauses ? joinClauses + "\n" : "") +
-      wherePart;
-
-    return { sql, aliases, warnings, valid: warnings.filter((w) => w.startsWith("ERROR")).length === 0 };
+    warnings.push("ERROR: No columns specified — select explicit columns before generating SQL.");
+    return { sql: "", aliases, warnings, valid: false };
   }
 
   // ── Assemble SELECT ──────────────────────────────────────────────────────
