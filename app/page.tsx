@@ -26,6 +26,7 @@ const BiStudio          = dynamic(() => import("@/components/bi/BiStudio").then(
 const KpiIntelligenceHub = dynamic(() => import("@/components/kpi/KpiIntelligenceHub").then(m => ({ default: m.KpiIntelligenceHub })), { loading: () => <TabSkeleton />, ssr: false });
 const SchemaHub         = dynamic(() => import("@/components/schema/SchemaHub").then(m => ({ default: m.SchemaHub })),               { loading: () => <TabSkeleton />, ssr: false });
 const AdministrationHub = dynamic(() => import("@/components/admin/AdministrationHub").then(m => ({ default: m.AdministrationHub })), { loading: () => <TabSkeleton />, ssr: false });
+const IntelligenceCenter = dynamic(() => import("@/components/intelligence/IntelligenceCenter").then(m => ({ default: m.IntelligenceCenter })), { loading: () => <TabSkeleton />, ssr: false });
 
 import { LoginPage }    from "@/components/auth/LoginPage";
 import type { AuthUser } from "@/components/auth/LoginPage";
@@ -58,6 +59,7 @@ type View =
   | "kpi-registry"
   | "kpi-governance"
   | "kpi-admin"
+  | "intelligence"
   | "schema"
   | "schema-metadata"
   | "schema-registry"
@@ -111,6 +113,7 @@ const VIEW_TITLES: Partial<Record<View, { title: string; subtitle: string }>> = 
   "kpi-registry":            { title: "KPI Intelligence",      subtitle: "KPI Registry — single source of truth for all KPI definitions and formulas" },
   "kpi-governance":          { title: "KPI Intelligence",      subtitle: "KPI Governance — version, approve, and publish KPI definitions" },
   "kpi-admin":               { title: "KPI Intelligence",      subtitle: "KPI Governance — version, approve, and publish KPI definitions" },
+  intelligence:               { title: "Intelligence Center",   subtitle: "Correlated alerts, KPI detection, activity, and operational health" },
   // Schema Hub
   schema:                    { title: "Schema Hub",            subtitle: "Schema Explorer — single metadata authority for the platform" },
   "schema-metadata":         { title: "Schema Hub",            subtitle: "Metadata Engine — AI schema inference, column roles, and join path grounding" },
@@ -163,6 +166,7 @@ function getPrimaryView(view: View): string {
   if (view.startsWith("dataset"))                                                return "dataset-studio";
   if (view.startsWith("reports") || view === "studio" || view === "bi")         return "reports";
   if (view.startsWith("kpi"))                                                    return "kpi";
+  if (view === "intelligence")                                                   return "intelligence";
   if (view.startsWith("schema") || view === "metadata" || view === "registry")  return "schema";
   if (view.startsWith("admin") || view === "audit" || view === "sessions" || view === "agents" || view === "pipeline" || view === "settings") return "administration";
   return "home";
@@ -457,8 +461,17 @@ export default function Home() {
             </div>
           )}
 
-          {/* 6. Schema Hub — sole metadata authority */}
-          {primary === "schema" && (
+  {/* Intelligence Center — alerts, KPI detection, activity, and monitoring */}
+  {primary === "intelligence" && (
+  <div className="mx-auto w-full max-w-[1500px]">
+  <Suspense fallback={<TabSkeleton />}>
+  <IntelligenceCenter />
+  </Suspense>
+  </div>
+  )}
+
+  {/* 6. Schema Hub — sole metadata authority */}
+  {primary === "schema" && (
             <Suspense fallback={<TabSkeleton />}>
               <SchemaHub
                 onNavigate={navigate}

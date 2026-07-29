@@ -24,6 +24,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { embedText, pgVectorLiteral } from "@/lib/ai/embeddings";
 import { getPgVectorPool, isPgVectorConfigured } from "@/lib/db/pgvectorClient";
+import { ingestEvent } from "@/lib/intelligence/detection";
 
 const SaveReportBodySchema = z.object({
   name: z.string().min(1),
@@ -102,5 +103,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ report }, { status: 201 });
+  const intelligence = ingestEvent({
+    eventType: "Report Saved",
+    entityType: "report",
+    entityId: id,
+    entityName: data.name,
+    actionBy: "Current User",
+    sourceSystem: "Report Studio",
+    metadata: { columns: data.columns, rowCount: data.rowCount, userQuery: data.userQuery },
+  });
+
+  return NextResponse.json({ report, intelligence }, { status: 201 });
 }

@@ -9,6 +9,7 @@ import {
   Layers,
   BarChart3,
   TrendingUp,
+  BellRing,
   Database,
   ShieldCheck,
   Sparkles,
@@ -37,6 +38,7 @@ export type PrimaryView =
   | "dataset-studio"
   | "reports"
   | "kpi"
+  | "intelligence"
   | "schema"
   | "administration";
 
@@ -105,6 +107,12 @@ const PRIMARY_NAV: NavItem[] = [
       { id: "kpi-registry",     label: "KPI Registry"     },
       { id: "kpi-governance",   label: "KPI Governance"   },
     ],
+  },
+  {
+    id:    "intelligence",
+    label: "Intelligence Center",
+    icon:  BellRing,
+    badge: "Live",
   },
   {
     id:    "schema",
@@ -205,6 +213,7 @@ export function Sidebar({ activeView, userRole: _userRole, onNavigate }: Sidebar
     if (view.startsWith("dataset") || view === "designer" || view === "contracts" || view === "bi-data") return "dataset-studio";
     if (view.startsWith("reports") || view === "studio" || view === "saved" || view === "bi")           return "reports";
     if (view.startsWith("kpi") || view === "kpiadmin")            return "kpi";
+    if (view === "intelligence")                                   return "intelligence";
     if (view.startsWith("schema") || view === "metadata" || view === "registry") return "schema";
     if (view.startsWith("admin") || view === "audit" || view === "sessions" || view === "agents" || view === "pipeline" || view === "settings") return "administration";
     return "home";
