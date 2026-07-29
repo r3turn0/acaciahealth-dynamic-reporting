@@ -250,19 +250,35 @@ function EntryRow({ entry }: { entry: AuditEntry }) {
 export function AuditDashboard() {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>({ user: "", category: "", severity: "", result: "" });
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const params = new URLSearchParams();
       if (filters.user) params.set("user", filters.user);
       if (filters.category) params.set("category", filters.category);
       if (filters.severity) params.set("severity", filters.severity);
       if (filters.result) params.set("result", filters.result);
-      const res = await fetch(`/api/audit/logs?${params}`);
-      const data = await res.json();
-      setEntries(data.entries ?? []);
+
+      const res = await fetch(`/api/audit/logs?${params}`, {
+        headers: { Accept: "application/json" },
+      });
+      const body = await res.text();
+
+      if (!res.ok) {
+        throw new Error(`Audit log request failed (${res.status})`);
+      }
+      if (!body.trim()) {
+        throw new Error("The audit service returned an empty response");
+      }
+
+      const data = JSON.parse(body) as { entries?: AuditEntry[] };
+      setEntries(Array.isArray(data.entries) ? data.entries : []);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Unable to load audit events");
     } finally {
       setLoading(false);
     }
@@ -326,8 +342,21 @@ export function AuditDashboard() {
         </div>
       )}
 
-      {/* Stats */}
-      <StatsBar entries={entries} />
+  {loadError && (
+  <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+  <span>{loadError}. Existing audit events remain visible.</span>
+  <button
+  type="button"
+  onClick={load}
+  className="shrink-0 rounded-md border border-destructive/30 px-3 py-1.5 font-medium hover:bg-destructive/10"
+  >
+  Try again
+  </button>
+  </div>
+  )}
+
+  {/* Stats */}
+  <StatsBar entries={entries} />
 
       {/* Filters */}
       <FilterBar filters={filters} onChange={setFilters} />
