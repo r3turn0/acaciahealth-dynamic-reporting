@@ -86,32 +86,35 @@ function historyToAuditEntry(h: {
 function gatewayToAuditEntry(g: {
   id: string;
   ts: string;
-  requestId: string;
   source: string;
-  query: string;
+  role: string;
   sql: string;
-  durationMs: number;
+  confidence: number;
+  executionMs: number;
   rowCount: number;
   approved: boolean;
   errors: string[];
 }): AuditEntry {
-  const blocked = !g.approved && g.errors.length > 0;
+  const sql = typeof g.sql === "string" ? g.sql : "";
+  const errors = Array.isArray(g.errors) ? g.errors : [];
+  const blocked = !g.approved && errors.length > 0;
+
   return {
     id: g.id,
     timestamp: g.ts,
     category: "query",
     event: blocked ? "QUERY_BLOCKED" : "QUERY_RUN",
     user: "system",
-    role: "analyst",
-    resource: g.query.slice(0, 80),
+    role: g.role || "analyst",
+    resource: sql.slice(0, 80) || "Query request",
     ip: "—",
     location: "—",
     device: "—",
     result: blocked ? "blocked" : "success",
     severity: blocked ? "warn" : "info",
     details: blocked
-      ? `Blocked by security validation: ${g.errors.join("; ")}. Source: ${g.source}.`
-      : `${g.rowCount} rows returned in ${g.durationMs}ms. Source: ${g.source}. SQL: ${g.sql.slice(0, 100)}${g.sql.length > 100 ? "…" : ""}`,
+      ? `Blocked by security validation: ${errors.join("; ")}. Source: ${g.source}.`
+      : `${g.rowCount ?? 0} rows returned in ${g.executionMs ?? 0}ms. Source: ${g.source}. SQL: ${sql.slice(0, 100)}${sql.length > 100 ? "…" : ""}`,
     immutable: true,
   };
 }
