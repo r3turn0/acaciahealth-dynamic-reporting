@@ -40,6 +40,9 @@ export interface NamedParam {
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 500;
+// Hard ceiling: if the entire connect-with-retry sequence hasn't resolved in
+// this many ms, abort and throw BackendUnreachableError immediately.
+const CONNECT_TIMEOUT_MS = 5_000;
 
 // Connection error codes that are safe to retry (transient network/handshake).
 const RETRYABLE_CODES = new Set([
@@ -205,22 +208,43 @@ async function getPool(): Promise<sql.ConnectionPool> {
 
   // Coalesce concurrent connection attempts.
   if (!globalForDb.__mssql_connecting) {
-    globalForDb.__mssql_connecting = connectWithRetry()
+    // Wrap the entire retry sequence in a hard timeout so a permanently
+    // unreachable host fails fast instead of blocking for many seconds.
+    const connectPromise = connectWithRetry();
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new BackendUnreachableError(
+          `Connection timed out after ${CONNECT_TIMEOUT_MS}ms. SQL Server is not reachable from this environment.`
+        )),
+        CONNECT_TIMEOUT_MS
+      )
+    );
+
+    globalForDb.__mssql_connecting = Promise.race([connectPromise, timeoutPromise])
       .then((pool) => {
         globalForDb.__mssql_pool = pool;
         return pool;
       })
       .catch((err) => {
+        // Clear the pool reference so the next request tries fresh.
+        globalForDb.__mssql_pool = undefined;
         const code = (err as { code?: string }).code ?? "";
         // DNS/refused/timeout → surface a clear "unreachable" error.
-        if (["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "ETIMEDOUT", "ESOCKET"].includes(code)) {
-          throw new BackendUnreachableError(
-            `Cannot reach SQL Server (${code}). Verify the host is correct and reachable from where the app runs.`
-          );
+        if (
+          err instanceof BackendUnreachableError ||
+          ["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "ETIMEDOUT", "ESOCKET"].includes(code)
+        ) {
+          throw err instanceof BackendUnreachableError
+            ? err
+            : new BackendUnreachableError(
+                `Cannot reach SQL Server (${code}). Verify the host is correct and reachable from where the app runs.`
+              );
         }
         throw err;
       })
       .finally(() => {
+        // Always clear the in-flight promise so subsequent requests don't
+        // wait on a permanently-failed connection attempt.
         globalForDb.__mssql_connecting = undefined;
       });
   }

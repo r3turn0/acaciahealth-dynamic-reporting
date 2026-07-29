@@ -20,8 +20,24 @@
 
 import { chatJSON, isAiConfigured } from "@/lib/ai/gateway";
 import { validateQuery } from "@/lib/services/queryGuard";
-import { executeQuery, isDbConfigured } from "@/lib/services/db";
+import { executeQuery, isDbConfigured, BackendUnreachableError } from "@/lib/services/db";
 import { parameterizeDates } from "@/lib/services/dateParams";
+
+// Hard ceiling for a single SQL execution attempt inside the gateway.
+// Keeps the API route from hanging indefinitely when the DB is unreachable.
+const EXECUTION_TIMEOUT_MS = 12_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`[QueryGateway] ${label} timed out after ${ms}ms`)),
+        ms
+      )
+    ),
+  ]);
+}
 import { buildCacheKey, getCache, setCache } from "@/lib/services/cache";
 import { buildSemanticQuerySystemPrompt } from "@/lib/ai/insightAgentPrompt";
 import {
@@ -641,7 +657,7 @@ async function runSQLValidationAgent(
 
   // Performance: unbounded table scan
   if (!upper.includes("TOP ")) {
-    warnings.push("No TOP clause — consider adding TOP 10000 for large table protection");
+    warnings.push("No TOP clause �� consider adding TOP 10000 for large table protection");
   }
 
   // RBAC: check semantic context — any table not in approved list
@@ -755,10 +771,11 @@ async function runExecutionEngine(
   // ── First execution attempt ────────────────────────────────────────────────
 
   try {
-    const rows = await executeQuery(sql, {
-      StartDate: startDate,
-      EndDate: endDate,
-    }) as Record<string, unknown>[];
+    const rows = await withTimeout(
+      executeQuery(sql, { StartDate: startDate, EndDate: endDate }),
+      EXECUTION_TIMEOUT_MS,
+      "executeQuery"
+    ) as Record<string, unknown>[];
 
     const MAX_ROWS = 100_000;
     const truncated = rows.length >= MAX_ROWS;
@@ -792,6 +809,37 @@ async function runExecutionEngine(
   } catch (firstErr) {
     const firstErrMsg = firstErr instanceof Error ? firstErr.message : String(firstErr);
 
+    // If the DB is outright unreachable (network/socket error or timeout),
+    // skip the schema retry entirely — it will also fail — and fall through
+    // to the demo data path immediately.
+    if (firstErr instanceof BackendUnreachableError || /timed out after \d+ms/.test(firstErrMsg)) {
+      const { formatReport } = await import("@/lib/services/formatter");
+      const report = formatReport(
+        "Gateway Demo",
+        { date_range: { start_date: startDate, end_date: endDate } },
+        buildDemoRows(sql, startDate, endDate),
+        "demo",
+        sql
+      );
+      const rows = (report.data ?? []) as Record<string, unknown>[];
+      return {
+        execution: {
+          rows,
+          columns: rows.length > 0 ? Object.keys(rows[0]) : [],
+          rowCount: rows.length,
+          executionMs: Date.now() - t0,
+          truncated: false,
+          auditLogId: auditId,
+        },
+        executedSql: sql,
+        historyId,
+        stageResult: makeStage(
+          "ExecutionEngine", "fallback", Date.now() - t0,
+          `DB unreachable — demo data returned (${firstErrMsg.slice(0, 80)})`
+        ),
+      };
+    }
+
     // Record the failure
     if (userRequest) {
       await learnFromFailure(userRequest, sql, firstErrMsg).catch(() => {});
@@ -813,10 +861,11 @@ async function runExecutionEngine(
           // Execute the corrected SQL
           const retryT0 = Date.now();
           try {
-            const retryRows = await executeQuery(retryResult.correctedSql, {
-              StartDate: startDate,
-              EndDate: endDate,
-            }) as Record<string, unknown>[];
+            const retryRows = await withTimeout(
+              executeQuery(retryResult.correctedSql, { StartDate: startDate, EndDate: endDate }),
+              EXECUTION_TIMEOUT_MS,
+              "executeQuery(retry)"
+            ) as Record<string, unknown>[];
 
             const MAX_ROWS = 100_000;
             const truncated = retryRows.length >= MAX_ROWS;
@@ -1119,12 +1168,17 @@ export async function runQueryGateway(req: GatewayRequest): Promise<GatewayResul
   // Use the executedSql (possibly corrected by retry agent) as the final SQL
   const finalSql = executedSql ?? normalizedSql;
 
+  // demoMode: true when the DB is not configured, or when the execution engine
+  // fell back to demo data due to an unreachable DB.
+  const fellBackToDemo = s6.status === "fallback" && s6.note?.includes("DB unreachable");
+  const demoMode = !isDbConfigured() || !!fellBackToDemo;
+
   // Cache successful results
   const result = buildResult({
     requestId, source: req.source, sql: finalSql, explanation,
     confidence: overallConfidence, intent, semantic, approvedPattern, validation,
     execution, pipeline, role: req.role ?? "analyst",
-    auditId, demoMode: !isDbConfigured(), elapsedMs: Date.now() - globalStart,
+    auditId, demoMode, elapsedMs: Date.now() - globalStart,
     retryInfo, historyId,
   });
 
