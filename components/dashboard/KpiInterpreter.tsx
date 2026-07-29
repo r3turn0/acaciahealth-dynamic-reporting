@@ -441,9 +441,11 @@ function FollowUpThread({
 interface KpiInterpreterProps {
   /** When set, auto-loads reports and pre-selects the first report matching this KPI key */
   preselectedKpi?: string | null;
+  /** When set, auto-selects the report whose name matches exactly (takes priority over preselectedKpi) */
+  preselectedReportName?: string | null;
 }
 
-export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
+export function KpiInterpreter({ preselectedKpi, preselectedReportName }: KpiInterpreterProps = {}) {
   const [reports, setReports] = useState<SavedReport[] | null>(null);
   const [loadingReports, setLoadingReports] = useState(false);
   const [selectedReport, setSelectedReport] = useState<SavedReport | null>(null);
@@ -517,6 +519,36 @@ export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
       loadReports(preselectedKpi);
     }
   }, [preselectedKpi]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When a specific report name is pre-selected (e.g. from a dashboard pin),
+  // find and select it by name — takes priority over preselectedKpi.
+  useEffect(() => {
+    if (!preselectedReportName) return;
+    if (reports) {
+      const match = reports.find(
+        (r) => r.name.toLowerCase() === preselectedReportName.toLowerCase()
+      );
+      if (match) {
+        setSelectedReport(match);
+        setInsights(null);
+      }
+    } else {
+      // Reports not yet loaded — load first, then select by name
+      loadReports();
+    }
+  }, [preselectedReportName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When reports finish loading and we have a pending preselectedReportName, select it
+  useEffect(() => {
+    if (!preselectedReportName || !reports) return;
+    const match = reports.find(
+      (r) => r.name.toLowerCase() === preselectedReportName.toLowerCase()
+    );
+    if (match && selectedReport?.name !== match.name) {
+      setSelectedReport(match);
+      setInsights(null);
+    }
+  }, [reports]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-run interpretation whenever the selected report changes (and we have dates)
   useEffect(() => {
@@ -666,7 +698,7 @@ export function KpiInterpreter({ preselectedKpi }: KpiInterpreterProps = {}) {
     );
   }
 
-  // ── Main view ──────────────────────────────────────────────────────���───────
+  // ── Main view ────────────────────────────────���─────────────────────���───────
 
   return (
     <div className="flex flex-col gap-5">

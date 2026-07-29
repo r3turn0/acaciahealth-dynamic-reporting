@@ -62,16 +62,18 @@ const TABS: {
 ];
 
 interface KpiIntelligenceHubProps {
-  initialTab?:         KpiTab;
-  preselectedKpi?:     string | null;
-  userRole?:           "Admin" | "Analyst" | "Viewer";
-  onNavigate?:         (view: string) => void;
-  onClearPreselected?: () => void;
+  initialTab?:            KpiTab;
+  preselectedKpi?:        string | null;
+  preselectedReportName?: string | null;
+  userRole?:              "Admin" | "Analyst" | "Viewer";
+  onNavigate?:            (view: string) => void;
+  onClearPreselected?:    () => void;
 }
 
 export function KpiIntelligenceHub({
   initialTab          = "interpreter",
   preselectedKpi,
+  preselectedReportName,
   userRole            = "Analyst",
   onNavigate,
   onClearPreselected,
@@ -154,7 +156,10 @@ export function KpiIntelligenceHub({
       <div className="p-0">
         {tab === "interpreter" && (
           <div className="p-5">
-            <KpiInterpreter preselectedKpi={preselectedKpi ?? undefined} />
+            <KpiInterpreter
+              preselectedKpi={preselectedKpi ?? undefined}
+              preselectedReportName={preselectedReportName ?? undefined}
+            />
           </div>
         )}
         {tab === "intelligence" && <KpiIntelligence />}

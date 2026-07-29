@@ -177,6 +177,8 @@ export default function Home() {
   const [authUser, setAuthUser]       = useState<AuthUser | null | false>(null);
   // KPI pre-selection: set when user clicks "Interpret" on a saved report
   const [preselectedKpi, setPreselectedKpi] = useState<string | null>(null);
+  // Report pre-selection: set when a dashboard pin is clicked — opens KPI Interpreter with that report
+  const [preselectedReportName, setPreselectedReportName] = useState<string | null>(null);
 
   // NextAuth is only used when Azure AD is configured in production.
   // In dev/preview (no AZURE_AD_CLIENT_ID) the custom /api/auth/validate
@@ -217,10 +219,20 @@ export default function Home() {
   }, [nextAuthStatus, nextAuthSession, authUser]);
 
   function navigate(raw: string) {
-    // Special token: "kpi:interpret:<kpiName>" — jump to KPI Interpreter with pre-selection
+    // Special token: "kpi:interpret:<kpiName>" — jump to KPI Interpreter with KPI pre-selection
     if (raw.startsWith("kpi:interpret:")) {
       const kpiName = raw.slice("kpi:interpret:".length);
       setPreselectedKpi(kpiName || null);
+      setPreselectedReportName(null);
+      setView("kpi");
+      setSidebarOpen(false);
+      return;
+    }
+    // Special token: "kpi:report:<reportName>" — jump to KPI Interpreter with a specific report pre-selected
+    if (raw.startsWith("kpi:report:")) {
+      const reportName = raw.slice("kpi:report:".length);
+      setPreselectedReportName(reportName || null);
+      setPreselectedKpi(null);
       setView("kpi");
       setSidebarOpen(false);
       return;
@@ -431,9 +443,13 @@ export default function Home() {
                 <KpiIntelligenceHub
                   initialTab={kpiTab}
                   preselectedKpi={preselectedKpi}
+                  preselectedReportName={preselectedReportName}
                   userRole={user.role as "Admin" | "Analyst" | "Viewer"}
                   onNavigate={navigate}
-                  onClearPreselected={() => setPreselectedKpi(null)}
+                  onClearPreselected={() => {
+                    setPreselectedKpi(null);
+                    setPreselectedReportName(null);
+                  }}
                 />
               </Suspense>
             </div>

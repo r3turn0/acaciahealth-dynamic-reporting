@@ -99,15 +99,13 @@ export function DashboardHome({ onNavigate, onOpenReport }: DashboardHomeProps) 
   }, [loadRecent]);
 
   function openPin(pin: DashboardPin) {
+    // Both report and KPI pins go directly to KPI Intelligence — Interpreter tab.
+    // Report pins pre-select the specific report by name.
+    // KPI pins pre-select by KPI key.
     if (pin.type === "report") {
-      onOpenReport({
-        sql: String(pin.meta.sql ?? ""),
-        prompt: String(pin.meta.prompt ?? ""),
-        kpi: pin.kpi,
-        name: pin.title,
-      });
+      onNavigate(`kpi:report:${pin.title}`);
     } else {
-      onNavigate("kpi");
+      onNavigate(`kpi:interpret:${pin.kpi}`);
     }
   }
 
@@ -123,7 +121,7 @@ export function DashboardHome({ onNavigate, onOpenReport }: DashboardHomeProps) 
           <RecentReportsList
             reports={recent}
             loading={loadingRecent}
-            onOpen={onOpenReport}
+            onOpen={(r) => onNavigate(`kpi:report:${r.name}`)}
             onViewAll={() => onNavigate("reports-saved")}
           />
         </div>
@@ -427,7 +425,7 @@ function RecentReportsList({
 // All IDs are canonical 7-item nav IDs — no legacy aliases.
 
 function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {
-  // Workflow-first order: Discover → Dataset Studio → Reports → KPI → Schema → Admin
+  // Workflow-first order: Discover → Dataset Studio → Reports → KPI �� Schema → Admin
   const actions: { id: string; step?: number; label: string; desc: string; badge?: string }[] = [
     {
       id:    "discover",
