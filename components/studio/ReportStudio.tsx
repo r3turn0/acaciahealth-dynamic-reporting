@@ -10,6 +10,7 @@ import { PostQueryAnalytics } from "./PostQueryAnalytics";
 import { SemanticQueryPanel } from "./SemanticQueryPanel";
 import { SavedReports } from "./SavedReports";
 import { VisualQueryBuilder } from "./VisualQueryBuilder";
+import { ResultRecoveryPanel } from "./ResultRecoveryPanel";
 import type { QueryPlan } from "./AskAI";
 import type { ReportResult } from "./ResultsTable";
 
@@ -481,9 +482,19 @@ Return only the corrected SQL.`,
           {/* Results */}
           {result && (
             <div className="flex flex-col gap-3">
-              <ResultsTable result={result} />
+        <ResultsTable result={result} />
 
-              {/* Post-Query Analytics Engine */}
+        {result.summary.row_count === 0 && (
+          <ResultRecoveryPanel
+            onRecover={async () => {
+              const recoveredStart = new Date(`${startDate}T00:00:00`);
+              recoveredStart.setFullYear(recoveredStart.getFullYear() - 1);
+              await executeSQL(sql, recoveredStart.toISOString().slice(0, 10), endDate);
+            }}
+          />
+        )}
+
+        {/* Post-Query Analytics Engine */}
               <PostQueryAnalytics result={result} />
 
               {/* Save button */}

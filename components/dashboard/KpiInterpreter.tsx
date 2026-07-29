@@ -1,5 +1,7 @@
 "use client";
 
+import { KpiIntelligenceWorkspace } from "./KpiIntelligenceWorkspace";
+
 import { useState, useCallback, useRef, useEffect } from "react";
 import { copyToClipboard } from "@/lib/utils";
 import {
@@ -702,6 +704,8 @@ export function KpiInterpreter({ preselectedKpi, preselectedReportName }: KpiInt
 
   return (
     <div className="flex flex-col gap-5">
+
+      <KpiIntelligenceWorkspace />
 
       {/* Report selector */}
       <div className="bg-card border border-border rounded-lg p-4">

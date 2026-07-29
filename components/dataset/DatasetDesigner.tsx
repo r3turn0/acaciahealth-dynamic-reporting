@@ -41,13 +41,14 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DatasetLineagePanel, DatasetValidationHub } from "./DatasetValidationHub";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type RelType    = "OneToOne" | "OneToMany" | "ManyToOne" | "ManyToMany";
 type RelStatus  = "Suggested" | "Accepted" | "Rejected";
 type DSStatus   = "Draft" | "Published" | "Deprecated";
-type DesignerTab = "discovery" | "canvas" | "relationships" | "datasets";
+type DesignerTab = "discovery" | "canvas" | "relationships" | "datasets" | "validation" | "lineage";
 
 interface ColumnDef {
   name:        string;
@@ -1252,6 +1253,8 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
     { id: "canvas",       label: "Relationship Canvas", icon: GitMerge, count: canvasTables.length },
     { id: "relationships",label: "Relationships",   icon: Network,     count: relationships.length },
     { id: "datasets",     label: "Semantic Datasets", icon: Layers,    count: datasets.length },
+    { id: "validation",   label: "Validation",        icon: ShieldCheck },
+    { id: "lineage",      label: "Lineage",           icon: Network },
   ];
 
   return (
@@ -1322,6 +1325,19 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
                 onPublish={handlePublish}
                 onCreate={handleCreateDataset}
                 onRefresh={loadData}
+              />
+            )}
+            {tab === "validation" && (
+              <DatasetValidationHub
+                datasetId={datasets[0]?.datasetId ?? "dataset-draft"}
+                tables={canvasTables}
+                relationshipCount={relationships.filter((relationship) => relationship.status === "Accepted").length}
+              />
+            )}
+            {tab === "lineage" && (
+              <DatasetLineagePanel
+                tables={canvasTables}
+                relationshipCount={relationships.filter((relationship) => relationship.status === "Accepted").length}
               />
             )}
           </>
