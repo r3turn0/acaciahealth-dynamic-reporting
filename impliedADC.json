@@ -1,0 +1,94 @@
+{
+  "kpi": "implied_average_daily_census",
+  "definition": {
+    "label": "Implied Average Daily Census",
+    "description": "Patient Days divided by the ADC window — normalised census proxy.",
+    "category": "Executive",
+    "version": "1.0.0",
+    "status": "Published",
+    "source": "CLIENT_EPISODES_ALL",
+    "aggregation": "CALC",
+    "formula": "patient_days / @ADC_WINDOW_DAYS",
+    "location_key": "epi_branchcode",
+    "service_line_field": "epi_slid",
+    "active_service_lines": [
+      "HOME HEALTH",
+      "HOSPICE",
+      "PRIVATE DUTY"
+    ],
+    "dimensions": [
+      "Service Line",
+      "Branch Code",
+      "Branch Name",
+      "Census Date"
+    ],
+    "parameters": {
+      "ADC_WINDOW_DAYS": 14
+    },
+    "filters": {}
+  },
+  "schema": {
+    "version": "6.1",
+    "reportingGrain": "BRANCH",
+    "locationKey": "epi_branchcode",
+    "serviceLineField": "epi_slid",
+    "dimensionCatalog": "Acacia Enterprise Branch Map"
+  },
+  "bucket_map": [
+    {
+      "sl_id": 1,
+      "branch_code": "HH",
+      "bucket_name": "Home Health"
+    },
+    {
+      "sl_id": 2,
+      "branch_code": "OC",
+      "bucket_name": "Hospice OC"
+    },
+    {
+      "sl_id": 3,
+      "branch_code": "HC",
+      "bucket_name": "Hospice Continuous"
+    },
+    {
+      "sl_id": 4,
+      "branch_code": "GI",
+      "bucket_name": "Hospice GI"
+    },
+    {
+      "sl_id": 5,
+      "branch_code": "IR",
+      "bucket_name": "Hospice IRC"
+    },
+    {
+      "sl_id": 6,
+      "branch_code": "PD",
+      "bucket_name": "Pediatrics"
+    },
+    {
+      "sl_id": 7,
+      "branch_code": "PC",
+      "bucket_name": "Palliative Care"
+    },
+    {
+      "sl_id": 8,
+      "branch_code": "PT",
+      "bucket_name": "Private Duty"
+    }
+  ],
+  "example_request": {
+    "report_name": "Weekly Implied Average Daily Census by Branch",
+    "prompt": "Show weekly implied_average_daily_census grouped by branch and service line",
+    "filters": {
+      "date_range": {
+        "start_date": "2026-07-14",
+        "end_date": "2026-07-21"
+      },
+      "service_lines": [
+        "HOME HEALTH",
+        "HOSPICE",
+        "PRIVATE DUTY"
+      ]
+    }
+  }
+}
