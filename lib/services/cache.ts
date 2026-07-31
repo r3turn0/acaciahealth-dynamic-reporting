@@ -132,7 +132,8 @@ export function getCache<T>(key: string): T | null {
 
 export function setCache<T>(key: string, value: T, options: number | CacheOptions = {}): void {
   const normalized = typeof options === "number" ? { ttlMs: options } : options;
-  const ttlMs = Math.max(1_000, normalized.ttlMs ?? DEFAULT_TTL_MS);
+  const requestedTtl = normalized.ttlMs ?? DEFAULT_TTL_MS;
+  const ttlMs = requestedTtl <= 0 ? requestedTtl : Math.max(1_000, requestedTtl);
   cache.set(key, {
     value,
     expiresAt: Date.now() + ttlMs,
