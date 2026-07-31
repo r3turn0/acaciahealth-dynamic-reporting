@@ -16,9 +16,22 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import schemaConfig from "@/lib/config/schemaConfig.json";
 import { isDbConfigured, BackendUnreachableError } from "@/lib/services/db";
+import { buildCacheKey, withCache } from "@/lib/services/cache";
+import { recordPerformanceSample } from "@/lib/services/performanceTelemetry";
 
 // Static tables used for demo mode only. In live mode ALL tables are allowed.
 const DEMO_TABLES = Object.keys(schemaConfig);
+
+// Only low-change, non-PHI reference tables are eligible for shared caching.
+const REFERENCE_TABLE_TTLS = new Map<string, number>([
+  ["BRANCHES", 60 * 60_000],
+  ["SERVICE_LINES", 24 * 60 * 60_000],
+  ["CARE_TYPES", 24 * 60 * 60_000],
+  ["FACILITIES", 60 * 60_000],
+  ["PROVIDERS", 60 * 60_000],
+  ["INSURANCE_PLANS", 60 * 60_000],
+  ["LOOKUP_VALUES", 24 * 60 * 60_000],
+]);
 
 // ── Demo data generators ──────────────────────────────────────────────────────
 
@@ -186,36 +199,71 @@ export async function GET(
 
     // Build a safe parameterised-style TOP + ORDER BY query (columns are from allowlist)
     const safeTable = decodedTable.replace(/[^a-zA-Z0-9_.]/g, "");
-    const countRows = await executeRawQuery(
-      `SELECT COUNT(*) AS total FROM [${safeTable.replace(".", "].[").replace(/\[/g, "[")}]`
-    );
-    const total = (countRows[0]?.total as number) ?? 0;
-
     const orderClause = sortCol
       ? `ORDER BY [${sortCol.replace(/[^a-zA-Z0-9_]/g, "")}] ${sortDir.toUpperCase()}`
       : "ORDER BY (SELECT NULL)";
-
     const offset = (page - 1) * pageSize;
-    const query  = `
+    const query = `
       SELECT *
       FROM   [${safeTable.replace(".", "].[").replace(/\[/g, "[")}]
       ${orderClause}
       OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY
     `;
 
-    const rows = await executeRawQuery(query);
-    const cols = rows.length > 0 ? Object.keys(rows[0]) : [];
+    const loadPage = async () => {
+      const sqlStart = Date.now();
+      const [countRows, rows] = await Promise.all([
+        executeRawQuery(`SELECT COUNT(*) AS total FROM [${safeTable.replace(".", "].[").replace(/\[/g, "[")}]`),
+        executeRawQuery(query),
+      ]);
+      return {
+        total: (countRows[0]?.total as number) ?? 0,
+        rows,
+        sqlDurationMs: Date.now() - sqlStart,
+      };
+    };
 
-    return NextResponse.json({
-      table:      decodedTable,
-      columns:    cols,
+    const ttlMs = REFERENCE_TABLE_TTLS.get(safeTable.toUpperCase());
+    const requestStart = Date.now();
+    const scopedKey = buildCacheKey(`table:${safeTable}`, { page, pageSize, sortCol, sortDir, filters }, {
+      tenantId: req.headers.get("x-tenant-id") ?? "default",
+      role: req.headers.get("x-user-role") ?? "viewer",
+    });
+    const loaded = ttlMs
+      ? await withCache(scopedKey, loadPage, {
+          ttlMs,
+          namespace: "reference",
+          tags: [`table:${safeTable.toUpperCase()}`],
+        })
+      : { value: await loadPage(), cacheStatus: "BYPASS" as const };
+    const { total, rows, sqlDurationMs } = loaded.value;
+    const cols = rows.length > 0 ? Object.keys(rows[0]) : [];
+    const durationMs = Date.now() - requestStart;
+
+    recordPerformanceSample({
+      route: "/api/data/[table]",
+      method: "GET",
+      statusCode: 200,
+      durationMs,
+      sqlDurationMs: loaded.cacheStatus === "HIT" ? undefined : sqlDurationMs,
+      cacheStatus: loaded.cacheStatus,
+      workload: ttlMs ? "reference" : "patient",
+    });
+
+    const response = NextResponse.json({
+      table: decodedTable,
+      columns: cols,
       rows,
       total,
       page,
       pageSize,
       totalPages: Math.ceil(total / pageSize),
-      source:     "live_db",
+      source: "live_db",
+      cacheStatus: loaded.cacheStatus,
     });
+    response.headers.set("X-Cache", loaded.cacheStatus);
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
   } catch (err) {
     // If the DB is configured but unreachable (VPN/firewall/wrong host), don't
     // hard-fail with a blank 500. Only the statically-known tables can be

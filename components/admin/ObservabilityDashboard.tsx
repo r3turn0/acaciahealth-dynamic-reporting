@@ -15,6 +15,7 @@
  */
 
 import { useState, useEffect, useSyncExternalStore } from "react";
+import useSWR from "swr";
 import {
   Activity,
   AlertCircle,
@@ -46,6 +47,26 @@ import {
 import { MetadataValidationPanel } from "@/components/admin/MetadataValidationPanel";
 
 // ── Utility ───────────────────────────────────────────────────────────────────
+
+interface PerformancePayload {
+  performance: {
+    sampleCount: number;
+    apiP95Ms: number | null;
+    sqlP95Ms: number | null;
+    cacheHitRatio: number | null;
+    timeoutCount: number;
+    deadlockCount: number;
+    blockingRate: number | null;
+  };
+  cache: { size: number; maxEntries: number; estimatedBytes: number };
+  infrastructure: Record<string, { status: string; value?: number | null; enabled?: boolean | null }>;
+}
+
+const fetcher = async (url: string): Promise<PerformancePayload> => {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error("Performance telemetry unavailable");
+  return response.json();
+};
 
 function formatTs(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -136,6 +157,12 @@ const TYPE_OPTIONS: { value: ObsEventType | "all"; label: string }[] = [
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ObservabilityDashboard() {
+  const { data: performanceData, error: performanceError } = useSWR(
+    "/api/admin/performance",
+    fetcher,
+    { refreshInterval: 10_000, revalidateOnFocus: false }
+  );
+
   // Live subscription to the store
   const allEvents = useSyncExternalStore(subscribeToObs, getObsSnapshot, () => []);
 
@@ -205,8 +232,70 @@ export function ObservabilityDashboard() {
         </div>
       </section>
 
+      {/* ── Performance objectives ─────────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <h3 className="text-xs font-semibold text-foreground uppercase tracking-wide">Performance Objectives</h3>
+            <p className="text-[11px] text-muted-foreground mt-1">Rolling 15-minute application telemetry. No PHI is recorded.</p>
+          </div>
+          <span className="text-[10px] text-muted-foreground">{performanceData?.performance.sampleCount ?? 0} samples</span>
+        </div>
+        {performanceError ? (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+            Performance telemetry is temporarily unavailable.
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {[
+              {
+                label: "API P95",
+                value: performanceData?.performance.apiP95Ms == null ? "No data" : `${performanceData.performance.apiP95Ms} ms`,
+                state: performanceData?.performance.apiP95Ms == null ? null : performanceData.performance.apiP95Ms < 500,
+                target: "Target < 500 ms",
+              },
+              {
+                label: "Cache hit ratio",
+                value: performanceData?.performance.cacheHitRatio == null ? "No data" : `${Math.round(performanceData.performance.cacheHitRatio * 100)}%`,
+                state: performanceData?.performance.cacheHitRatio == null ? null : performanceData.performance.cacheHitRatio > 0.8,
+                target: "Target > 80%",
+              },
+              {
+                label: "Deadlocks",
+                value: performanceData?.performance.sampleCount ? String(performanceData.performance.deadlockCount) : "No data",
+                state: performanceData?.performance.sampleCount ? performanceData.performance.deadlockCount === 0 : null,
+                target: "Target 0",
+              },
+              {
+                label: "Blocking rate",
+                value: performanceData?.performance.blockingRate == null ? "No data" : `${(performanceData.performance.blockingRate * 100).toFixed(1)}%`,
+                state: performanceData?.performance.blockingRate == null ? null : performanceData.performance.blockingRate < 0.01,
+                target: "Target < 1%",
+              },
+            ].map((metric) => (
+              <div key={metric.label} className="flex flex-col gap-1 rounded-lg border border-border bg-muted/30 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-muted-foreground">{metric.label}</span>
+                  <span className={cn("h-2 w-2 rounded-full", metric.state == null ? "bg-muted-foreground" : metric.state ? "bg-chart-3" : "bg-destructive")} />
+                </div>
+                <strong className="text-base font-semibold text-foreground tabular-nums">{metric.value}</strong>
+                <span className="text-[10px] text-muted-foreground">{metric.target}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-2 mt-3 lg:grid-cols-5">
+          {["azureSqlCpu", "queryStore", "reportingIsolation", "indexMaintenance", "criticalTableScans"].map((key) => (
+            <div key={key} className="rounded-lg border border-border px-3 py-2">
+              <span className="block text-[10px] text-muted-foreground">{key.replace(/([A-Z])/g, " $1").replace(/^./, (char) => char.toUpperCase())}</span>
+              <span className="text-[11px] font-medium text-foreground">Not connected</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ── Stats row ──────────────────────────────────────────────────────── */}
-      <section className="grid grid-cols-4 gap-3">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           { label: "Total Searches", value: searchEvents.length.toLocaleString() },
           { label: "Zero Results",   value: zeroResults.length.toLocaleString(), warn: zeroResults.length > 0 },
@@ -351,7 +440,7 @@ export function ObservabilityDashboard() {
   );
 }
 
-// ── Log row ───────────────────────────────────────────────────────────────────
+// ── Log row ───────────────────────────────────────────────────────────────���───
 
 function LogRow({ event }: { event: ObsEvent }) {
   const [open, setOpen] = useState(false);

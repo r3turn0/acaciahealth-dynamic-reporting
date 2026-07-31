@@ -35,6 +35,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runQueryGateway, type GatewayRequest } from "@/lib/gateway/QueryGateway";
 import { GatewayQueryBodySchema } from "@/lib/validation/apiSchemas";
 import { checkRateLimit } from "@/lib/middleware/rateLimiter";
+import { recordPerformanceSample } from "@/lib/services/performanceTelemetry";
 
 export async function POST(req: NextRequest) {
   const rl = checkRateLimit(req, { limit: 40, window: 60, prefix: "gateway-query" });
@@ -83,6 +84,14 @@ export async function POST(req: NextRequest) {
 
     // Surface validation failures as 422 so callers know the pipeline blocked
     if (!result.validation.valid) {
+      recordPerformanceSample({
+        route: "/api/gateway/query",
+        method: "POST",
+        statusCode: 422,
+        durationMs: Date.now() - globalStart,
+        workload: planOnly ? "metadata" : "unknown",
+        cacheStatus: "BYPASS",
+      });
       return NextResponse.json(
         {
           ...result,
@@ -94,11 +103,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const durationMs = Date.now() - globalStart;
+    recordPerformanceSample({
+      route: "/api/gateway/query",
+      method: "POST",
+      statusCode: 200,
+      durationMs,
+      sqlDurationMs: result.execution?.executionMs,
+      workload: planOnly ? "metadata" : "unknown",
+      cacheStatus: "BYPASS",
+    });
     return NextResponse.json({
       ...result,
-      totalElapsedMs: Date.now() - globalStart,
+      totalElapsedMs: durationMs,
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    recordPerformanceSample({
+      route: "/api/gateway/query",
+      method: "POST",
+      statusCode: 500,
+      durationMs: Date.now() - globalStart,
+      workload: "unknown",
+      cacheStatus: "BYPASS",
+      timeout: /timeout|timed out/i.test(message),
+      deadlock: /deadlock|1205/i.test(message),
+      blocked: /blocking|blocked/i.test(message),
+    });
     console.error("[QueryGateway] /api/gateway/query unhandled error:", err);
     return NextResponse.json(
       { error: "Gateway error", details: err instanceof Error ? err.message : String(err) },
