@@ -304,15 +304,45 @@ function bindParam(request: sql.Request, p: NamedParam): void {
 
 // ── Core query runner ─────────────────────────────────────────────────────────
 
+export interface QueryResultSet {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  rowCount: number;
+}
+
+export interface MultiQueryResult {
+  /** Result Set 1, retained for backward-compatible consumers. */
+  columns: string[];
+  rows: Record<string, unknown>[];
+  rowCount: number;
+  /** Every result set returned by the single SQL command. */
+  resultSets: QueryResultSet[];
+}
+
+async function runMultiQuery(
+  sqlText: string,
+  params: NamedParam[]
+): Promise<MultiQueryResult> {
+  const pool = await getPool();
+  const request = pool.request();
+  request.multiple = true;
+  for (const p of params) bindParam(request, p);
+  const result = await request.query(sqlText);
+  const recordsets = (result.recordsets ?? []) as Record<string, unknown>[][];
+  const resultSets = recordsets.map((rows) => ({
+    columns: rows.length > 0 ? Object.keys(rows[0]) : [],
+    rows,
+    rowCount: rows.length,
+  }));
+  const first = resultSets[0] ?? { columns: [], rows: [], rowCount: 0 };
+  return { ...first, resultSets };
+}
+
 async function runQuery(
   sqlText: string,
   params: NamedParam[]
 ): Promise<Record<string, unknown>[]> {
-  const pool = await getPool();
-  const request = pool.request();
-  for (const p of params) bindParam(request, p);
-  const result = await request.query(sqlText);
-  return (result.recordset ?? []) as Record<string, unknown>[];
+  return (await runMultiQuery(sqlText, params)).rows;
 }
 
 // ── Public API (unchanged signatures for existing callers) ──────────────────────
@@ -346,6 +376,29 @@ export async function executeQueryWithParams(
   return runQuery(query, inputs);
 }
 
+/** Execute one parameterized SQL command and consume every returned result set. */
+export async function executeMultiQueryWithParams(
+  query: string,
+  inputs: NamedParam[]
+): Promise<MultiQueryResult> {
+  return runMultiQuery(query, inputs);
+}
+
+/** Execute one standard date-range command and consume every result set. */
+export async function executeMultiQuery(
+  query: string,
+  params: QueryParams
+): Promise<MultiQueryResult> {
+  const named: NamedParam[] = [
+    { name: "StartDate", value: params.StartDate, type: "date" },
+    { name: "EndDate", value: params.EndDate, type: "date" },
+  ];
+  if (params.BranchCode !== undefined) {
+    named.push({ name: "BranchCode", value: params.BranchCode, type: "nvarchar" });
+  }
+  return runMultiQuery(query, named);
+}
+
 /**
  * Execute an introspection-only query with no user parameters.
  * NEVER pass user-supplied input to this function.
@@ -354,6 +407,11 @@ export async function executeRawQuery(
   query: string
 ): Promise<Record<string, unknown>[]> {
   return runQuery(query, []);
+}
+
+/** Introspection-only multi-result execution. Never pass user input. */
+export async function executeRawMultiQuery(query: string): Promise<MultiQueryResult> {
+  return runMultiQuery(query, []);
 }
 
 /**

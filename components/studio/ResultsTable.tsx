@@ -33,6 +33,11 @@ export interface ReportResult {
   kpi: string;
   sql_used: string;
   data: Record<string, unknown>[];
+  result_sets?: Array<{
+    columns: string[];
+    rows: Record<string, unknown>[];
+    rowCount: number;
+  }>;
   summary: {
     row_count: number;
     columns: string[];
@@ -319,6 +324,11 @@ export function ResultsTable({ result }: ResultsTableProps) {
             <span className="text-xs text-muted-foreground">
               {result.summary.row_count.toLocaleString()} rows
             </span>
+            {(result.result_sets?.length ?? 0) > 1 && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
+                {result.result_sets?.length} datasets
+              </span>
+            )}
             {result.demo_mode && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-chart-5/15 text-chart-5 border border-chart-5/25">
                 Demo Data

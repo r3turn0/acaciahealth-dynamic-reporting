@@ -212,6 +212,7 @@ export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportSt
         kpi: currentPlan?.kpi_detected ?? "custom",
         sql_used: json.executed_sql ?? sql,
         data: rows,
+        result_sets: Array.isArray(json.resultSets) ? json.resultSets : undefined,
         summary: {
           row_count: json.rowCount ?? rows.length,
           columns: cols,

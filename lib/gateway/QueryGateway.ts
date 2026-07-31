@@ -20,7 +20,7 @@
 
 import { chatJSON, isAiConfigured } from "@/lib/ai/gateway";
 import { validateQuery } from "@/lib/services/queryGuard";
-import { executeQuery, isDbConfigured, BackendUnreachableError } from "@/lib/services/db";
+import { executeMultiQuery, isDbConfigured, BackendUnreachableError, type QueryResultSet } from "@/lib/services/db";
 import { parameterizeDates } from "@/lib/services/dateParams";
 
 // Hard ceiling for a single SQL execution attempt inside the gateway.
@@ -186,6 +186,8 @@ export interface ExecutionResult {
   rows: Record<string, unknown>[];
   columns: string[];
   rowCount: number;
+  /** Every dataset returned by the command; rows/columns remain Result Set 1. */
+  resultSets: QueryResultSet[];
   executionMs: number;
   truncated: boolean;
   auditLogId: string;
@@ -750,9 +752,14 @@ async function runExecutionEngine(
       execution: {
         rows,
         columns: rows.length > 0 ? Object.keys(rows[0]) : [],
+      rowCount: rows.length,
+      resultSets: [{
+        columns: rows.length > 0 ? Object.keys(rows[0]) : [],
+        rows,
         rowCount: rows.length,
-        executionMs: Date.now() - t0,
-        truncated: false,
+      }],
+      executionMs: Date.now() - t0,
+      truncated: false,
         auditLogId: auditId,
       },
       executedSql: sql,
@@ -778,14 +785,15 @@ async function runExecutionEngine(
   // ── First execution attempt ────────────────────────────────────────────────
 
   try {
-    const rows = await withTimeout(
-      executeQuery(sql, { StartDate: startDate, EndDate: endDate }),
+    const queryResult = await withTimeout(
+      executeMultiQuery(sql, { StartDate: startDate, EndDate: endDate }),
       EXECUTION_TIMEOUT_MS,
-      "executeQuery"
-    ) as Record<string, unknown>[];
+      "executeMultiQuery"
+    );
+    const rows = queryResult.rows;
 
     const MAX_ROWS = 100_000;
-    const truncated = rows.length >= MAX_ROWS;
+    const truncated = queryResult.resultSets.some((set) => set.rowCount >= MAX_ROWS);
     const executionMs = Date.now() - t0;
 
     // Record success in history
@@ -802,6 +810,10 @@ async function runExecutionEngine(
         rows: rows.slice(0, MAX_ROWS),
         columns: rows.length > 0 ? Object.keys(rows[0]) : [],
         rowCount: rows.length,
+        resultSets: queryResult.resultSets.map((set) => ({
+          ...set,
+          rows: set.rows.slice(0, MAX_ROWS),
+        })),
         executionMs,
         truncated,
         auditLogId: auditId,
@@ -834,6 +846,11 @@ async function runExecutionEngine(
           rows,
           columns: rows.length > 0 ? Object.keys(rows[0]) : [],
           rowCount: rows.length,
+          resultSets: [{
+            columns: rows.length > 0 ? Object.keys(rows[0]) : [],
+            rows,
+            rowCount: rows.length,
+          }],
           executionMs: Date.now() - t0,
           truncated: false,
           auditLogId: auditId,
@@ -868,14 +885,15 @@ async function runExecutionEngine(
           // Execute the corrected SQL
           const retryT0 = Date.now();
           try {
-            const retryRows = await withTimeout(
-              executeQuery(retryResult.correctedSql, { StartDate: startDate, EndDate: endDate }),
+            const retryQueryResult = await withTimeout(
+              executeMultiQuery(retryResult.correctedSql, { StartDate: startDate, EndDate: endDate }),
               EXECUTION_TIMEOUT_MS,
-              "executeQuery(retry)"
-            ) as Record<string, unknown>[];
+              "executeMultiQuery(retry)"
+            );
+            const retryRows = retryQueryResult.rows;
 
             const MAX_ROWS = 100_000;
-            const truncated = retryRows.length >= MAX_ROWS;
+            const truncated = retryQueryResult.resultSets.some((set) => set.rowCount >= MAX_ROWS);
             const retryMs = Date.now() - retryT0;
 
             // Learn from this corrected success
@@ -886,6 +904,10 @@ async function runExecutionEngine(
                 rows: retryRows.slice(0, MAX_ROWS),
                 columns: retryRows.length > 0 ? Object.keys(retryRows[0]) : [],
                 rowCount: retryRows.length,
+                resultSets: retryQueryResult.resultSets.map((set) => ({
+                  ...set,
+                  rows: set.rows.slice(0, MAX_ROWS),
+                })),
                 executionMs: retryMs,
                 truncated,
                 auditLogId: auditId,
