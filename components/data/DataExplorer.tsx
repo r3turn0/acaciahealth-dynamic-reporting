@@ -28,6 +28,7 @@ import {
 import { SemanticSearchPanel } from "@/components/discover/SemanticSearchPanel";
 import { downloadDataset, estimateCSVBytes } from "@/lib/utils/download";
 import { logExport } from "@/lib/services/observabilityStore";
+import { orchestrate } from "@/lib/orchestration/requestRegistry";
 
 // Try to load the seeded full table list; fall back to schemaConfig keys.
 let allTablesJson: string[] = [];
@@ -152,6 +153,7 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
   const [showFilters, setShowFilters]   = useState(false);
   const [showSemanticSearch, setShowSemanticSearch] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dataIntentRef = useRef(0);
 
   const fetchData = useCallback(async (
     table: string,
@@ -161,6 +163,7 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
     sd: "asc" | "desc",
     f: Record<string, string>
   ) => {
+    const intent = ++dataIntentRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -172,20 +175,22 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
           ? { filters: JSON.stringify(f) }
           : {}),
       });
-      const res  = await fetch(`/api/data/${encodeURIComponent(table)}?${params}`);
-      if (!res.ok) {
-        // Guard against HTML error pages (e.g. middleware failures) before JSON.parse
-        const text = await res.text();
-        let msg = `HTTP ${res.status}`;
-        try { msg = (JSON.parse(text) as { error?: string }).error ?? msg; } catch { /* keep HTTP status */ }
-        throw new Error(msg);
-      }
-      const json = await res.json();
-      setData(json);
+      const json = await orchestrate({ scope: "data-explorer", operation: "preview", resource: table, params: { pg, ps, s, sd, f }, policy: "latest", timeoutMs: 30_000 }, async (signal) => {
+        const res = await fetch(`/api/data/${encodeURIComponent(table)}?${params}`, { signal });
+        if (!res.ok) {
+          const text = await res.text();
+          let msg = `HTTP ${res.status}`;
+          try { msg = (JSON.parse(text) as { error?: string }).error ?? msg; } catch { /* keep HTTP status */ }
+          throw new Error(msg);
+        }
+        return res.json() as Promise<DataPage>;
+      });
+      if (intent === dataIntentRef.current) setData(json);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error");
+      if (e instanceof Error && (e.name === "AbortError" || e.name === "StaleRequestError")) return;
+      if (intent === dataIntentRef.current) setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
-      setLoading(false);
+      if (intent === dataIntentRef.current) setLoading(false);
     }
   }, []);
 

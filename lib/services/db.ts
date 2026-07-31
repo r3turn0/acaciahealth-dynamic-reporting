@@ -321,13 +321,22 @@ export interface MultiQueryResult {
 
 async function runMultiQuery(
   sqlText: string,
-  params: NamedParam[]
+  params: NamedParam[],
+  signal?: AbortSignal,
 ): Promise<MultiQueryResult> {
+  if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
   const pool = await getPool();
   const request = pool.request();
   request.multiple = true;
   for (const p of params) bindParam(request, p);
-  const result = await request.query(sqlText);
+  const cancel = () => request.cancel();
+  signal?.addEventListener("abort", cancel, { once: true });
+  let result;
+  try {
+    result = await request.query(sqlText);
+  } finally {
+    signal?.removeEventListener("abort", cancel);
+  }
   const recordsets = (result.recordsets ?? []) as Record<string, unknown>[][];
   const resultSets = recordsets.map((rows) => ({
     columns: rows.length > 0 ? Object.keys(rows[0]) : [],
@@ -371,23 +380,26 @@ export async function executeQuery(
  */
 export async function executeQueryWithParams(
   query: string,
-  inputs: NamedParam[]
+  inputs: NamedParam[],
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>[]> {
-  return runQuery(query, inputs);
+  return (await runMultiQuery(query, inputs, signal)).rows;
 }
 
 /** Execute one parameterized SQL command and consume every returned result set. */
 export async function executeMultiQueryWithParams(
   query: string,
-  inputs: NamedParam[]
+  inputs: NamedParam[],
+  signal?: AbortSignal,
 ): Promise<MultiQueryResult> {
-  return runMultiQuery(query, inputs);
+  return runMultiQuery(query, inputs, signal);
 }
 
 /** Execute one standard date-range command and consume every result set. */
 export async function executeMultiQuery(
   query: string,
-  params: QueryParams
+  params: QueryParams,
+  signal?: AbortSignal,
 ): Promise<MultiQueryResult> {
   const named: NamedParam[] = [
     { name: "StartDate", value: params.StartDate, type: "date" },
@@ -396,7 +408,7 @@ export async function executeMultiQuery(
   if (params.BranchCode !== undefined) {
     named.push({ name: "BranchCode", value: params.BranchCode, type: "nvarchar" });
   }
-  return runMultiQuery(query, named);
+  return runMultiQuery(query, named, signal);
 }
 
 /**

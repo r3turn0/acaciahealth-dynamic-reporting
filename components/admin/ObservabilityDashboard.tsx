@@ -29,6 +29,7 @@ import {
   Trash2,
   XCircle,
   RefreshCw,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -45,6 +46,7 @@ import {
   type ExportLog,
 } from "@/lib/services/observabilityStore";
 import { MetadataValidationPanel } from "@/components/admin/MetadataValidationPanel";
+import { getRequestSnapshots, getRequestSummary, getRequestVersion, subscribeRequests } from "@/lib/orchestration/requestRegistry";
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
@@ -165,6 +167,9 @@ export function ObservabilityDashboard() {
 
   // Live subscription to the store
   const allEvents = useSyncExternalStore(subscribeToObs, getObsSnapshot, () => []);
+  useSyncExternalStore(subscribeRequests, getRequestVersion, () => 0);
+  const requestSummary = getRequestSummary();
+  const activeRequests = getRequestSnapshots().filter((request) => request.status === "pending").slice(0, 6);
 
   const [typeFilter, setTypeFilter]     = useState<ObsEventType | "all">("all");
   const [levelFilter, setLevelFilter]   = useState<ObsLevel | "all">("all");
@@ -213,6 +218,12 @@ export function ObservabilityDashboard() {
 
   return (
     <div className="flex flex-col gap-5">
+
+      <section className="rounded-xl border border-border bg-card p-4">
+        <div className="flex items-center justify-between gap-3"><div><h3 className="text-xs font-semibold uppercase tracking-wide text-foreground">Request orchestration</h3><p className="mt-1 text-[11px] text-muted-foreground">Live browser lifecycle, deduplication, and cancellation visibility.</p></div><span className={cn("rounded-full border px-2 py-1 text-[10px] font-medium", requestSummary.active ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-muted text-muted-foreground")}>{requestSummary.active} active</span></div>
+        <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-5">{[["Completed", requestSummary.completed], ["Cancelled / stale", requestSummary.cancelled], ["Calls saved", requestSummary.savedCalls], ["P50", requestSummary.p50Ms === null ? "—" : `${requestSummary.p50Ms} ms`], ["P95", requestSummary.p95Ms === null ? "—" : `${requestSummary.p95Ms} ms`]].map(([label, value]) => <div key={label} className="rounded-lg border border-border bg-background p-3"><p className="text-[10px] text-muted-foreground">{label}</p><p className="mt-1 text-lg font-semibold text-foreground">{value}</p></div>)}</div>
+        {activeRequests.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{activeRequests.map((request) => <span key={request.id} className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-2 py-1 text-[10px] text-foreground"><Loader2 className="size-3 animate-spin text-primary" />{request.scope} · {request.operation}</span>)}</div>}
+      </section>
 
       {/* ── Health Summary ─────────────────────────────────────────────────── */}
       <section>
