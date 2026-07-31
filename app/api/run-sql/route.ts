@@ -58,6 +58,8 @@ export async function POST(req: NextRequest) {
       rows,
       columns: execution?.columns ?? [],
       rowCount: execution?.rowCount ?? 0,
+      resultSets: execution?.resultSets ?? [],
+      resultSetCount: execution?.resultSets.length ?? 0,
       cache_hit: false,
       execution_ms: execution?.executionMs ?? Date.now() - start,
       report_id: report_id ?? null,

@@ -195,7 +195,7 @@ export async function GET(
 
   // Live mode — query SQL Server
   try {
-    const { executeRawQuery } = await import("@/lib/services/db");
+    const { executeRawMultiQuery } = await import("@/lib/services/db");
 
     // Build a safe parameterised-style TOP + ORDER BY query (columns are from allowlist)
     const safeTable = decodedTable.replace(/[^a-zA-Z0-9_.]/g, "");
@@ -203,21 +203,24 @@ export async function GET(
       ? `ORDER BY [${sortCol.replace(/[^a-zA-Z0-9_]/g, "")}] ${sortDir.toUpperCase()}`
       : "ORDER BY (SELECT NULL)";
     const offset = (page - 1) * pageSize;
+    const qualifiedTable = `[${safeTable.replace(".", "].[").replace(/\[/g, "[")}]`;
     const query = `
       SELECT *
-      FROM   [${safeTable.replace(".", "].[").replace(/\[/g, "[")}]
+      FROM ${qualifiedTable}
       ${orderClause}
-      OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY
+      OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY;
+
+      SELECT COUNT_BIG(*) AS total
+      FROM ${qualifiedTable};
     `;
 
     const loadPage = async () => {
       const sqlStart = Date.now();
-      const [countRows, rows] = await Promise.all([
-        executeRawQuery(`SELECT COUNT(*) AS total FROM [${safeTable.replace(".", "].[").replace(/\[/g, "[")}]`),
-        executeRawQuery(query),
-      ]);
+      const result = await executeRawMultiQuery(query);
+      const rows = result.resultSets[0]?.rows ?? [];
+      const countRows = result.resultSets[1]?.rows ?? [];
       return {
-        total: (countRows[0]?.total as number) ?? 0,
+        total: Number(countRows[0]?.total ?? 0),
         rows,
         sqlDurationMs: Date.now() - sqlStart,
       };

@@ -9,6 +9,7 @@ import {
   CornerDownLeft,
   Cpu,
   MessageSquareDiff,
+  ShieldCheck,
 } from "lucide-react";
 import { ChartRenderer } from "./ChartRenderer";
 import { computeAggregation } from "@/lib/bi/kpiService";
@@ -29,6 +30,8 @@ interface CopilotConfig {
   dimensions: string[];
   filters: Filter[];
   chart: ChartType;
+  title: string;
+  action: "create_visualization" | "update_visualization" | "add_filter" | "forecast" | "explain";
   explanation: string;
 }
 
@@ -48,6 +51,7 @@ export function AiCopilot({ dataset, onSaved }: Props) {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [config, setConfig] = useState<CopilotConfig | null>(null);
+  const [applied, setApplied] = useState(false);
   const [fallback, setFallback] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reportName, setReportName] = useState("");
@@ -64,6 +68,7 @@ export function AiCopilot({ dataset, onSaved }: Props) {
     setLoading(true);
     setError(null);
     setConfig(null);
+    setApplied(false);
     try {
       const res = await fetch("/api/bi/copilot", {
         method: "POST",
@@ -106,13 +111,13 @@ export function AiCopilot({ dataset, onSaved }: Props) {
   }
 
   const result = useMemo(() => {
-    if (!config) return null;
+    if (!config || !applied) return null;
     return computeAggregation(dataset.sampleData, {
       metrics: config.metrics,
       dimensions: config.dimensions,
       filters: config.filters,
     });
-  }, [config, dataset.sampleData]);
+  }, [applied, config, dataset.sampleData]);
 
   const labels = useMemo(() => {
     const m: Record<string, string> = {};
@@ -204,6 +209,20 @@ export function AiCopilot({ dataset, onSaved }: Props) {
           onRetry={handleFixRetry}
           onDismiss={() => setFixResult(null)}
         />
+      )}
+
+      {config && !applied && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+          <div className="flex items-start gap-3">
+            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-foreground">Proposed action: {config.title || "Create visualization"}</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{config.explanation}</p>
+              <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{config.action?.replaceAll("_", " ") || "create visualization"} · schema metadata only · confirmation required</p>
+            </div>
+            <button onClick={() => setApplied(true)} className="shrink-0 rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90">Apply proposal</button>
+          </div>
+        </div>
       )}
 
       {/* Result */}
