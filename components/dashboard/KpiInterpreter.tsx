@@ -1,6 +1,7 @@
 "use client";
 
 import { KpiIntelligenceWorkspace } from "./KpiIntelligenceWorkspace";
+import { ensureKpiReportsSeeded } from "@/lib/services/seedReportsClient";
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { copyToClipboard } from "@/lib/utils";
@@ -476,7 +477,7 @@ export function KpiInterpreter({ preselectedKpi, preselectedReportName }: KpiInt
     setLoadingReports(true);
     try {
       // Idempotent seed: populates SQL library reports if not yet present.
-      await fetch("/api/kpi/seed-reports", { method: "POST" }).catch(() => {});
+      await ensureKpiReportsSeeded().catch(() => {});
       const res = await fetch("/api/reports");
       const json = await res.json();
       const loaded: SavedReport[] = json.reports ?? [];

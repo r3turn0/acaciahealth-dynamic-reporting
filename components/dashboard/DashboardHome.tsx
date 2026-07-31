@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { ensureKpiReportsSeeded } from "@/lib/services/seedReportsClient";
 import {
   Pin,
   X,
@@ -88,7 +89,7 @@ export function DashboardHome({ onNavigate, onOpenReport }: DashboardHomeProps) 
   useEffect(() => {
     async function seedAndRefresh() {
       try {
-        await fetch("/api/kpi/seed-reports", { method: "POST" });
+        await ensureKpiReportsSeeded();
       } catch {
         // Non-critical — dashboard renders fine without seeded pins.
       }
@@ -421,7 +422,7 @@ function RecentReportsList({
   );
 }
 
-// ── Quick actions ─────────────────────────────────────────────────────────────
+// ── Quick actions ─────────────────���───────────────────────────────────────────
 // All IDs are canonical 7-item nav IDs — no legacy aliases.
 
 function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {

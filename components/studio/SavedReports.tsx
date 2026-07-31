@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { ensureKpiReportsSeeded } from "@/lib/services/seedReportsClient";
 import {
   Bookmark,
   Play,
@@ -446,7 +447,7 @@ export function SavedReports({
   const fetchReports = useCallback(async () => {
     try {
       // Idempotent seed: populates SQL library reports if not yet present.
-      await fetch("/api/kpi/seed-reports", { method: "POST" }).catch(() => {});
+      await ensureKpiReportsSeeded().catch(() => {});
       const res = await fetch("/api/reports");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
