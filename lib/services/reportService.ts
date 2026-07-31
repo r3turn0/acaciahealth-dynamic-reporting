@@ -15,6 +15,7 @@
 
 import { createHash } from "crypto";
 import * as AppDB from "@/lib/db/appClient";
+import { CANONICAL_REPORTS } from "@/lib/config/canonicalReports";
 import type { DataRow } from "./datasetService";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -2676,12 +2677,44 @@ OPTION (MAXRECURSION 32767)`,
 
   ];
 
-  for (const d of demos) {
+  // The uploaded SQL files are the sole source of truth for built-in Saved Reports.
+  // The legacy inline definitions above remain only as historical source context.
+  void demos;
+  for (const source of CANONICAL_REPORTS) {
+    const created_date = "2026-07-31T00:00:00.000Z";
     const id = createHash("sha256")
-      .update(d.name + d.created_date)
+      .update(`canonical:${source.sourceFile}:${source.resultSet}`)
       .digest("hex")
       .slice(0, 12);
-    reportStore.set(id, { id, ...d });
+    reportStore.set(id, {
+      id,
+      name: source.name,
+      description: source.description,
+      prompt: source.prompt,
+      sql: source.sql,
+      kpi: source.kpi,
+      tags: source.tags,
+      visibility: "team",
+      status: "published",
+      created_by: "system",
+      created_date,
+      last_run_date: null,
+      run_count: 0,
+      last_row_count: null,
+      version: 1,
+      version_history: [{
+        version: 1,
+        saved_at: created_date,
+        saved_by: "system",
+        note: `Imported verbatim from ${source.sourceFile}, result set ${source.resultSet}`,
+        sql_snapshot: source.sql,
+        metadata_snapshot: {
+          sourceFile: source.sourceFile,
+          resultSet: source.resultSet,
+          resultSetCount: source.resultSetCount,
+        },
+      }],
+    });
   }
 }
 
@@ -2705,6 +2738,82 @@ export async function getReport(id: string): Promise<SavedReport | null> {
     if (row) return row;
   } catch { /* fall through */ }
   return reportStore.get(id) ?? null;
+}
+
+export interface CanonicalReportSyncResult {
+  created: string[];
+  updated: string[];
+  removedLegacy: string[];
+  unchanged: string[];
+}
+
+/**
+ * Reconciles system-owned Saved Reports with the uploaded SQL files.
+ * Analyst-created reports are never changed or removed.
+ */
+export async function synchronizeCanonicalReports(): Promise<CanonicalReportSyncResult> {
+  const reports = await listReports();
+  const canonicalNames = new Set(CANONICAL_REPORTS.map((report) => report.name));
+  const canonicalKpis = new Set(CANONICAL_REPORTS.map((report) => report.kpi));
+  const result: CanonicalReportSyncResult = {
+    created: [],
+    updated: [],
+    removedLegacy: [],
+    unchanged: [],
+  };
+
+  for (const existing of reports) {
+    const isLegacySystemReport = existing.created_by === "system"
+      && canonicalKpis.has(existing.kpi)
+      && !canonicalNames.has(existing.name);
+    if (isLegacySystemReport && await deleteReport(existing.id)) {
+      result.removedLegacy.push(existing.name);
+    }
+  }
+
+  const remaining = (await listReports()).filter((report) => !result.removedLegacy.includes(report.name));
+
+  for (const source of CANONICAL_REPORTS) {
+    const existing = remaining.find((report) => report.name === source.name);
+    if (!existing) {
+      await createReport({
+        name: source.name,
+        description: source.description,
+        prompt: source.prompt,
+        sql: source.sql,
+        kpi: source.kpi,
+        tags: source.tags,
+        visibility: "team",
+        created_by: "system",
+      });
+      result.created.push(source.name);
+      continue;
+    }
+
+    const changed = existing.sql !== source.sql
+      || existing.description !== source.description
+      || existing.kpi !== source.kpi
+      || JSON.stringify(existing.tags) !== JSON.stringify(source.tags);
+
+    if (!changed) {
+      result.unchanged.push(source.name);
+      continue;
+    }
+
+    await updateReport(existing.id, {
+      description: source.description,
+      sql: source.sql,
+      kpi: source.kpi,
+      tags: source.tags,
+      visibility: "team",
+      status: "published",
+      versionNote: `Synchronized from ${source.sourceFile}, result set ${source.resultSet}`,
+      updated_by: "system",
+    });
+    result.updated.push(source.name);
+  }
+
+  return result;
 }
 
 export interface CreateReportInput {
