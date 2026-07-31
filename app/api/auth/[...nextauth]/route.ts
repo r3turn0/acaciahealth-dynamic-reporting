@@ -113,9 +113,11 @@ export const authOptions: AuthOptions = {
     error:  "/login",
   },
 
-  secret: process.env.NEXTAUTH_SECRET,
+  // Keep local development deterministic even when NEXTAUTH_SECRET is absent.
+  // Production must still provide a strong secret through the environment.
+  secret: process.env.NEXTAUTH_SECRET ?? (isDev ? "acacia-local-development-only-secret" : undefined),
 
-  debug: isDev,
+  debug: false,
 };
 
 const handler = NextAuth(authOptions);
