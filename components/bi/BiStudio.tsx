@@ -9,6 +9,7 @@ import {
   Sparkles,
   ChevronDown,
   Terminal,
+  BrainCircuit,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBiStore } from "@/lib/hooks/useBiStore";
@@ -17,13 +18,15 @@ import { KpiExplorerCanvas, type ExplorerSeed } from "./KpiExplorerCanvas";
 import { ReportManager } from "./ReportManager";
 import { ExcelImport } from "./ExcelImport";
 import { AiCopilot } from "./AiCopilot";
+import { KpiIntelligenceWorkspace } from "./KpiIntelligenceWorkspace";
 import { WorkspacePage } from "./WorkspacePage";
 import type { KpiReport } from "@/lib/bi/types";
 
-type BiTab = "datasets" | "explorer" | "reports" | "import" | "copilot" | "query";
+type BiTab = "datasets" | "intelligence" | "explorer" | "reports" | "import" | "copilot" | "query";
 
 const TABS: { id: BiTab; label: string; icon: React.ElementType }[] = [
   { id: "datasets", label: "Datasets", icon: Boxes },
+  { id: "intelligence", label: "KPI Intelligence", icon: BrainCircuit },
   { id: "explorer", label: "KPI Explorer", icon: LayoutDashboard },
   { id: "copilot", label: "AI Copilot", icon: Sparkles },
   { id: "query", label: "SQL Workspace", icon: Terminal },
@@ -69,7 +72,7 @@ export function BiStudio() {
     setTab("explorer");
   }
 
-  const needsDataset = tab === "explorer" || tab === "copilot";
+  const needsDataset = tab === "intelligence" || tab === "explorer" || tab === "copilot";
 
   return (
     <div className="flex flex-col gap-5">
@@ -149,6 +152,16 @@ export function BiStudio() {
       {/* Panels — all mounted simultaneously, hidden with CSS to preserve in-memory state */}
       <div className={tab === "datasets" ? undefined : "hidden"}>
         <DatasetBuilder onOpenInExplorer={openInExplorer} />
+      </div>
+
+      <div className={tab === "intelligence" ? undefined : "hidden"}>
+        <KpiIntelligenceWorkspace
+          dataset={activeDataset}
+          onDatasetCreated={(datasetId) => {
+            setActiveDatasetId(datasetId);
+            setTab("intelligence");
+          }}
+        />
       </div>
 
       <div className={tab === "explorer" ? undefined : "hidden"}>
