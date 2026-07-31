@@ -22,6 +22,7 @@ export const runtime = "nodejs";
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { getDatasetValidation } from "@/lib/validation/datasetValidationRegistry";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -366,7 +367,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, relationship: newRel }, { status: 201 });
   }
 
-  // ── REJECT RELATIONSHIP ───────────────────────────────────────────────────────
+  // ── REJECT RELATIONSHIP ─────────────���─────────────────────────────────────────
   if (action === "reject_rel") {
     const id = String(body.id ?? "");
     const rel = relationships.get(id);
@@ -421,6 +422,13 @@ export async function POST(req: NextRequest) {
     const dsId = String(body.datasetId ?? "");
     const ds = datasets.get(dsId);
     if (!ds) return NextResponse.json({ error: `Dataset '${dsId}' not found` }, { status: 404 });
+    const validationRecord = getDatasetValidation(dsId);
+    if (!validationRecord || validationRecord.validation.status === "Failed" || validationRecord.validation.score < 70) {
+      return NextResponse.json({
+        error: "Dataset must pass validation with a score of 70 or higher before publishing",
+        validation: validationRecord?.validation ?? null,
+      }, { status: 422 });
+    }
     ds.status = "Published";
     ds.version = bumpVer(ds.version, "minor");
     ds.publishedDate = new Date().toISOString().split("T")[0];

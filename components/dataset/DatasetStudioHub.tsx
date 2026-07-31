@@ -1,75 +1,20 @@
 "use client";
 
-/**
- * DatasetStudioHub
- *
- * Single governed dataset surface — replaces 3 previously separate nav items:
- *   Dataset Designer  |  Build Dataset (DataContractWorkspace)  |  BI Studio dataset tools
- *
- * Workflow tabs (in order):
- *   build     — Design the dataset: discover tables, build canvas, define relationships (DatasetDesigner)
- *   validate  — Validate: schema checks, relationship integrity, Power BI compatibility (DataContractWorkspace)
- *   publish   — Publish: version, register in Schema Hub, expose to reports
- *   history   — Version history and lineage
- *
- * Spec:
- *   - Dataset Studio is primary item #3 in the 7-item nav (workflow step 2)
- *   - Published datasets automatically appear in Schema Hub
- *   - Single dataset design tool — no alternatives
- */
-
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, BookOpen, CheckCircle2, Database, GitMerge, Layers, Network, Send } from "lucide-react";
+import { DatasetDesigner } from "@/components/dataset/DatasetDesigner";
 import { cn } from "@/lib/utils";
-import {
-  Layers,
-  CheckCircle2,
-  Send,
-  History,
-  ArrowRight,
-  GitMerge,
-} from "lucide-react";
-import { DatasetDesigner }        from "@/components/dataset/DatasetDesigner";
-import { DataContractWorkspace }  from "@/components/access/DataContractWorkspace";
 
-// ── Tab definitions ───────────────────────────────────────────────────────────
+type DatasetTab = "discover" | "build" | "relationships" | "semantics" | "validate" | "publish" | "history";
+type DesignerStage = "discovery" | "canvas" | "relationships" | "datasets" | "validation" | "lineage";
 
-type DatasetTab = "build" | "validate" | "publish" | "history";
-
-const TABS: {
-  id:          DatasetTab;
-  step:        number;
-  label:       string;
-  icon:        React.ElementType;
-  description: string;
-}[] = [
-  {
-    id:          "build",
-    step:        1,
-    label:       "Build Dataset",
-    icon:        Layers,
-    description: "Discover source tables, drag-and-drop columns, define PK/FK relationships, and create semantic datasets",
-  },
-  {
-    id:          "validate",
-    step:        2,
-    label:       "Validate",
-    icon:        CheckCircle2,
-    description: "Schema checks, relationship integrity, duplicate aggregation prevention, and Power BI semantic compatibility",
-  },
-  {
-    id:          "publish",
-    step:        3,
-    label:       "Publish",
-    icon:        Send,
-    description: "Version and publish — dataset automatically appears in Schema Hub and becomes available to Reports",
-  },
-  {
-    id:          "history",
-    step:        4,
-    label:       "Version History",
-    icon:        History,
-    description: "Inspect all published versions, compare schemas, and trace lineage end-to-end",
-  },
+const TABS: Array<{ id: Exclude<DatasetTab, "history">; label: string; icon: React.ElementType; description: string; designerStage: DesignerStage }> = [
+  { id: "discover", label: "Discover", icon: Database, description: "Find governed source tables and inspect columns before adding them to the canvas.", designerStage: "discovery" },
+  { id: "build", label: "Build", icon: Layers, description: "Assemble source tables and create join paths on the relationship canvas.", designerStage: "canvas" },
+  { id: "relationships", label: "Relationships", icon: GitMerge, description: "Review inferred relationships, confidence signals, and accepted join paths.", designerStage: "relationships" },
+  { id: "semantics", label: "Semantics", icon: BookOpen, description: "Define reusable datasets, dimensions, measures, ownership, and business meaning.", designerStage: "datasets" },
+  { id: "validate", label: "Validate", icon: CheckCircle2, description: "Automatically check schema, mappings, relationships, KPI readiness, and data quality.", designerStage: "validation" },
+  { id: "publish", label: "Publish", icon: Send, description: "Publish only validated semantic datasets and expose them to reporting surfaces.", designerStage: "datasets" },
 ];
 
 interface DatasetStudioHubProps {
@@ -77,192 +22,60 @@ interface DatasetStudioHubProps {
   onNavigate?: (view: string) => void;
 }
 
-export function DatasetStudioHub({ initialTab = "build", onNavigate }: DatasetStudioHubProps) {
-  const [tab, setTab] = useState<DatasetTab>(initialTab);
-
-  // Respond to sidebar sub-item clicks while the hub is already mounted
-  useEffect(() => {
-    if (initialTab) setTab(initialTab);
-  }, [initialTab]);
-
-  const activeTab = TABS.find((t) => t.id === tab) ?? TABS[0];
-
-  return (
-    <div className="flex flex-col gap-0 bg-card border border-border rounded-xl overflow-hidden">
-      {/* Workflow header */}
-      <div className="flex items-center gap-3 px-5 py-3 bg-muted/30 border-b border-border">
-        <GitMerge className="w-3.5 h-3.5 text-primary shrink-0" />
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          {TABS.map((t, i) => (
-            <span key={t.id} className="flex items-center gap-1.5">
-              <button
-                onClick={() => setTab(t.id)}
-                className={cn(
-                  "font-medium transition-colors",
-                  tab === t.id ? "text-primary" : "hover:text-foreground"
-                )}
-              >
-                {t.step}. {t.label}
-              </button>
-              {i < TABS.length - 1 && (
-                <ArrowRight className="w-3 h-3 text-border shrink-0" />
-              )}
-            </span>
-          ))}
-        </div>
-        <span className="ml-auto text-[10px] text-muted-foreground bg-muted/60 border border-border rounded px-2 py-0.5">
-          Published datasets → Schema Hub
-        </span>
-      </div>
-
-      {/* Tab strip */}
-      <div className="flex items-stretch border-b border-border overflow-x-auto bg-card shrink-0">
-        {TABS.map(({ id, step, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
-            className={cn(
-              "flex items-center gap-2 px-5 py-3 text-xs font-medium whitespace-nowrap border-b-2 transition-colors shrink-0",
-              tab === id
-                ? "border-primary text-primary bg-primary/5"
-                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40"
-            )}
-          >
-            <span
-              className={cn(
-                "flex items-center justify-center w-4 h-4 rounded text-[9px] font-bold border shrink-0",
-                tab === id
-                  ? "bg-primary/20 border-primary/40 text-primary"
-                  : "bg-muted/60 border-border text-muted-foreground"
-              )}
-            >
-              {step}
-            </span>
-            <Icon className="w-3.5 h-3.5 shrink-0" />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Description bar */}
-      <div className="flex items-center gap-2 px-5 py-2 bg-muted/20 border-b border-border/60">
-        {activeTab && <activeTab.icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-        <p className="text-[11px] text-muted-foreground">{activeTab?.description}</p>
-      </div>
-
-      {/* Tab content */}
-      <div>
-        {tab === "build" && (
-          <DatasetDesigner
-            onNavigate={(id) => {
-              // redirect schema/kpi deep-links to the correct primary view
-              if (id === "schema" || id === "registry") onNavigate?.("schema");
-              else if (id === "kpi")                     onNavigate?.("kpi");
-              else                                        onNavigate?.(id);
-            }}
-          />
-        )}
-
-        {tab === "validate" && (
-          <DataContractWorkspace />
-        )}
-
-        {tab === "publish" && (
-          <PublishPanel onNavigateToSchema={() => onNavigate?.("schema")} />
-        )}
-
-        {tab === "history" && (
-          <VersionHistoryPanel />
-        )}
-      </div>
-    </div>
-  );
+function normalizeTab(tab: DatasetTab): Exclude<DatasetTab, "history"> {
+  if (tab === "history") return "publish";
+  return tab;
 }
 
-// ── Publish panel placeholder ─────────────────────────────────────────────────
+export function DatasetStudioHub({ initialTab = "discover", onNavigate }: DatasetStudioHubProps) {
+  const [tab, setTab] = useState<Exclude<DatasetTab, "history">>(normalizeTab(initialTab));
 
-function PublishPanel({ onNavigateToSchema }: { onNavigateToSchema?: () => void }) {
-  return (
-    <div className="p-8 flex flex-col items-center gap-4 text-center max-w-lg mx-auto">
-      <div className="w-12 h-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-        <Send className="w-6 h-6 text-primary" />
-      </div>
-      <div>
-        <h3 className="text-sm font-semibold text-foreground">Publish Dataset</h3>
-        <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-          Complete the Build and Validate steps first. Once published, your dataset will automatically
-          appear in Schema Hub and become available to Report Studio and BI Studio.
-        </p>
-      </div>
-      <div className="w-full bg-muted/30 border border-border rounded-lg p-4 text-left">
-        <p className="text-[11px] font-semibold text-foreground mb-2">On publish, the platform will:</p>
-        <ul className="flex flex-col gap-1">
-          {[
-            "Register a new version in Schema Hub",
-            "Expose dataset metadata, measures, and dimensions",
-            "Validate Power BI semantic compatibility",
-            "Create an immutable audit log entry",
-            "Notify dependent reports of the schema change",
-          ].map((step) => (
-            <li key={step} className="flex items-start gap-2 text-[11px] text-muted-foreground">
-              <CheckCircle2 className="w-3 h-3 text-chart-3 shrink-0 mt-0.5" />
-              {step}
-            </li>
-          ))}
-        </ul>
-      </div>
-      {onNavigateToSchema && (
-        <button
-          onClick={onNavigateToSchema}
-          className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-        >
-          View published datasets in Schema Hub
-          <ArrowRight className="w-3 h-3" />
-        </button>
-      )}
-    </div>
-  );
-}
+  useEffect(() => { setTab(normalizeTab(initialTab)); }, [initialTab]);
 
-// ── Version history panel placeholder ────────────────────────────────────────
-
-function VersionHistoryPanel() {
-  const mockVersions = [
-    { version: "v3.0", date: "2025-07-15", status: "Published", tables: 8, rows: 142300 },
-    { version: "v2.1", date: "2025-06-28", status: "Archived",  tables: 7, rows: 138900 },
-    { version: "v2.0", date: "2025-06-01", status: "Archived",  tables: 7, rows: 135200 },
-    { version: "v1.2", date: "2025-05-14", status: "Archived",  tables: 5, rows: 121000 },
-  ];
+  const active = useMemo(() => TABS.find((item) => item.id === tab) ?? TABS[0], [tab]);
+  const activeIndex = TABS.findIndex((item) => item.id === tab);
 
   return (
-    <div className="p-5">
-      <div className="flex flex-col gap-2">
-        <div className="grid grid-cols-5 gap-4 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest border-b border-border">
-          <span>Version</span>
-          <span>Published</span>
-          <span>Status</span>
-          <span>Tables</span>
-          <span>Rows</span>
-        </div>
-        {mockVersions.map((v) => (
-          <div
-            key={v.version}
-            className="grid grid-cols-5 gap-4 px-3 py-2.5 rounded-lg hover:bg-muted/30 transition-colors text-xs text-foreground border border-transparent hover:border-border/60"
-          >
-            <span className="font-mono font-semibold text-primary">{v.version}</span>
-            <span className="text-muted-foreground">{v.date}</span>
-            <span className={cn(
-              "inline-flex items-center gap-1 text-[10px] font-medium",
-              v.status === "Published" ? "text-chart-3" : "text-muted-foreground"
-            )}>
-              <CheckCircle2 className="w-3 h-3" />
-              {v.status}
-            </span>
-            <span className="text-muted-foreground">{v.tables}</span>
-            <span className="text-muted-foreground">{v.rows.toLocaleString()}</span>
+    <section className="overflow-hidden rounded-xl border border-border bg-card" aria-label="Dataset Builder workflow">
+      <header className="border-b border-border bg-muted/20 px-5 py-4">
+        <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+          <div className="flex items-center gap-3">
+            <span className="flex size-9 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary"><Network className="size-4" /></span>
+            <div><h2 className="text-sm font-semibold text-foreground">Dataset Builder</h2><p className="mt-0.5 text-xs text-muted-foreground">One governed path from source discovery to publication</p></div>
           </div>
-        ))}
+          <span className="rounded-md border border-border bg-background px-2.5 py-1 text-[10px] font-medium text-muted-foreground">Validated datasets → Schema Hub, Reports, and BI Studio</span>
+        </div>
+      </header>
+
+      <nav className="flex overflow-x-auto border-b border-border bg-card" aria-label="Dataset workflow stages">
+        {TABS.map((item, index) => {
+          const Icon = item.icon;
+          const complete = index < activeIndex;
+          const selected = item.id === tab;
+          return (
+            <button key={item.id} type="button" onClick={() => setTab(item.id)} aria-current={selected ? "step" : undefined} className={cn("flex min-w-fit flex-1 items-center justify-center gap-2 border-b-2 px-4 py-3 text-xs font-medium transition-colors", selected ? "border-primary bg-primary/5 text-primary" : "border-transparent text-muted-foreground hover:bg-accent/30 hover:text-foreground")}>
+              <span className={cn("flex size-5 items-center justify-center rounded-full border text-[10px] font-semibold", selected ? "border-primary bg-primary text-primary-foreground" : complete ? "border-primary/40 bg-primary/10 text-primary" : "border-border bg-muted/30")}>{complete ? <CheckCircle2 className="size-3" /> : index + 1}</span>
+              <Icon className="size-3.5" />{item.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      <div className="flex items-center gap-2 border-b border-border/60 bg-muted/10 px-5 py-2.5"><active.icon className="size-3.5 shrink-0 text-primary" /><p className="text-[11px] text-muted-foreground">{active.description}</p></div>
+
+      <div className="p-5">
+        <DatasetDesigner
+          initialTab={active.designerStage}
+          showStageTabs={false}
+          onNavigate={(id) => onNavigate?.(id === "registry" ? "schema" : id)}
+        />
       </div>
-    </div>
+
+      <footer className="flex items-center justify-between gap-3 border-t border-border bg-muted/10 px-5 py-3">
+        <button type="button" disabled={activeIndex === 0} onClick={() => setTab(TABS[Math.max(0, activeIndex - 1)].id)} className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition hover:text-foreground disabled:opacity-40">Previous stage</button>
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground"><span>Stage {activeIndex + 1} of {TABS.length}</span><span className="hidden md:inline">Changes remain in the shared session registry.</span></div>
+        <button type="button" disabled={activeIndex === TABS.length - 1} onClick={() => setTab(TABS[Math.min(TABS.length - 1, activeIndex + 1)].id)} className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-40">Next stage<ArrowRight className="size-3" /></button>
+      </footer>
+    </section>
   );
 }

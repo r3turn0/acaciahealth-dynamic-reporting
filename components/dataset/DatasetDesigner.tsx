@@ -488,16 +488,17 @@ function DiscoveryPanel({
       {/* Table list */}
       <div className="flex flex-col gap-1.5">
         {filtered.map((t) => {
-          const isExpanded = expanded === t.name;
+          const tableId = `${t.schema}.${t.name}`;
+          const isExpanded = expanded === tableId;
           const isOnCanvas = canvasTables.has(t.name);
           return (
-            <div key={t.name} className="border border-border rounded-lg overflow-hidden">
+            <div key={tableId} className="border border-border rounded-lg overflow-hidden">
               {/* Use div + role to avoid button-in-button — HTML spec disallows nested interactive elements */}
               <div
                 role="button"
                 tabIndex={0}
-                onClick={() => setExpanded(isExpanded ? null : t.name)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded(isExpanded ? null : t.name); } }}
+                onClick={() => setExpanded(isExpanded ? null : tableId)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded(isExpanded ? null : tableId); } }}
                 className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-muted/20 transition-colors text-left cursor-pointer"
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -527,7 +528,7 @@ function DiscoveryPanel({
                   <p className="text-[11px] text-muted-foreground py-2 leading-relaxed">{t.businessDescription}</p>
                   <div className="flex flex-col gap-0.5">
                     {t.columns.map((c) => (
-                      <div key={c.name} className="flex items-center gap-2 py-1 border-b border-border/30 last:border-0">
+                      <div key={`${tableId}.${c.name}`} className="flex items-center gap-2 py-1 border-b border-border/30 last:border-0">
                         <div className="flex items-center gap-1 w-8 shrink-0">
                           {c.isPk && <span className="text-[8px] font-bold text-chart-5 bg-chart-5/10 rounded px-0.5">PK</span>}
                           {c.isFk && <span className="text-[8px] font-bold text-primary bg-primary/10 rounded px-0.5">FK</span>}
@@ -602,7 +603,7 @@ function CanvasPanel({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {canvasTables.map((t) => (
-            <div key={t.name} className="border border-border rounded-lg overflow-hidden bg-card">
+            <div key={`${t.schema}.${t.name}`} className="border border-border rounded-lg overflow-hidden bg-card">
               {/* Table header */}
               <div className="flex items-center gap-2 px-3 py-2.5 bg-primary/5 border-b border-border">
                 <Table2 className="w-3.5 h-3.5 text-primary shrink-0" />
@@ -619,7 +620,7 @@ function CanvasPanel({
                   const isHover = hoveredColumn === colKey && dragColumn && dragColumn.table !== t.name;
                   return (
                     <div
-                      key={c.name}
+                      key={`${t.schema}.${t.name}.${c.name}`}
                       draggable
                       onDragStart={() => handleDragStart(t.name, c.name, c.type)}
                       onDragEnd={() => setDragColumn(null)}
@@ -995,10 +996,12 @@ function ScopeSummaryBar({ scope }: { scope: ScopeData | null }) {
 
 interface DatasetDesignerProps {
   onNavigate?: (view: string) => void;
+  initialTab?: DesignerTab;
+  showStageTabs?: boolean;
 }
 
-export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
-  const [tab, setTab] = useState<DesignerTab>("discovery");
+export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStageTabs = true }: DatasetDesignerProps) {
+  const [tab, setTab] = useState<DesignerTab>(initialTab);
   const [canvasTables, setCanvasTables] = useState<TableDef[]>([
     SOURCE_TABLES.find((t) => t.name === "CLIENT_EPISODES_ALL")!,
     SOURCE_TABLES.find((t) => t.name === "BRANCHES")!,
@@ -1086,6 +1089,7 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
   }, []);
 
   useEffect(() => { void loadData(); }, [loadData]);
+  useEffect(() => { setTab(initialTab); }, [initialTab]);
 
   // Auto-refresh the live DB catalog on mount so the Discovery panel shows all tables
   // immediately (not only after user manually clicks Refresh)
@@ -1223,12 +1227,10 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "publish_dataset", datasetId }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json() as { success: boolean; dataset: SemanticDataset };
-      if (json.success) {
-        setDatasets((prev) => prev.map((d) => d.datasetId === datasetId ? json.dataset : d));
-        showToast(`${json.dataset.datasetName} published`);
-      }
+      const json = await res.json() as { success?: boolean; dataset?: SemanticDataset; error?: string };
+      if (!res.ok || !json.success || !json.dataset) throw new Error(json.error ?? `HTTP ${res.status}`);
+      setDatasets((prev) => prev.map((d) => d.datasetId === datasetId ? json.dataset! : d));
+      showToast(`${json.dataset.datasetName} published`);
     } catch (err) { showToast(`Failed to publish dataset${err instanceof Error ? `: ${err.message}` : ""}`, false); }
   }
 
@@ -1262,27 +1264,29 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
       {/* Scope summary */}
       <ScopeSummaryBar scope={scope} />
 
-      {/* Tab bar */}
-      <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg border border-border w-fit overflow-x-auto">
-        {TABS.map(({ id, label, icon: Icon, count }) => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
-            className={cn(
-              "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0",
-              tab === id
-                ? "bg-card text-foreground shadow-sm border border-border"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <Icon className="w-3.5 h-3.5" />
-            {label}
-            {count !== undefined && (
-              <span className="text-[9px] bg-muted/50 border border-border rounded-full px-1.5 py-0.5">{count}</span>
-            )}
-          </button>
-        ))}
-      </div>
+      {/* Optional standalone tab bar; Dataset Studio owns the canonical workflow navigation. */}
+      {showStageTabs && (
+        <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg border border-border w-fit overflow-x-auto">
+          {TABS.map(({ id, label, icon: Icon, count }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0",
+                tab === id
+                  ? "bg-card text-foreground shadow-sm border border-border"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {label}
+              {count !== undefined && (
+                <span className="text-[9px] bg-muted/50 border border-border rounded-full px-1.5 py-0.5">{count}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Tab content */}
       <div className="bg-card border border-border rounded-xl p-5">
@@ -1329,7 +1333,7 @@ export function DatasetDesigner({ onNavigate }: DatasetDesignerProps) {
             )}
             {tab === "validation" && (
               <DatasetValidationHub
-                datasetId={datasets[0]?.datasetId ?? "dataset-draft"}
+                datasetId={datasets.find((dataset) => dataset.status === "Draft")?.datasetId ?? datasets[0]?.datasetId ?? "dataset-draft"}
                 tables={canvasTables}
                 relationshipCount={relationships.filter((relationship) => relationship.status === "Accepted").length}
               />
