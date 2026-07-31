@@ -22,8 +22,12 @@ export function HealthStatus() {
   async function fetchHealth() {
     setLoading(true);
     try {
-      const res = await fetch("/api/health");
-      const data = await res.json();
+      const res = await fetch("/api/health", {
+        cache: "no-store",
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) throw new Error(`Health request failed (${res.status})`);
+      const data = (await res.json()) as HealthData;
       setHealth(data);
     } catch {
       setHealth(null);
@@ -52,8 +56,22 @@ export function HealthStatus() {
         </button>
       </div>
 
-      {!health ? (
-        <p className="text-xs text-muted-foreground">Loading health data...</p>
+      {loading && !health ? (
+        <p className="text-xs text-muted-foreground">Checking system health...</p>
+      ) : !health ? (
+        <div role="alert" className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs text-destructive">
+            <XCircle className="h-3.5 w-3.5 shrink-0" />
+            <span>Health service did not respond.</span>
+          </div>
+          <button
+            type="button"
+            onClick={fetchHealth}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            Try again
+          </button>
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
           <StatusRow

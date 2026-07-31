@@ -4,9 +4,16 @@ import { NextResponse } from "next/server";
 import { checkConnection, isDbConfigured } from "@/lib/services/db";
 import { getCacheStats } from "@/lib/services/cache";
 
+const HEALTH_DB_TIMEOUT_MS = 2_000;
+
 export async function GET() {
   const dbConfigured = isDbConfigured();
-  const dbConnected = dbConfigured ? await checkConnection() : false;
+  const dbConnected = dbConfigured
+    ? await Promise.race([
+        checkConnection(),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), HEALTH_DB_TIMEOUT_MS)),
+      ])
+    : false;
 
   const cacheStats = getCacheStats();
 
