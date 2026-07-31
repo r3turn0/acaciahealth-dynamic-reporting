@@ -43,6 +43,9 @@ const BASE_DELAY_MS = 500;
 // Hard ceiling: if the entire connect-with-retry sequence hasn't resolved in
 // this many ms, abort and throw BackendUnreachableError immediately.
 const CONNECT_TIMEOUT_MS = 5_000;
+// Avoid making every tab wait through the same failed network handshake when a
+// local/private SQL Server cannot be reached from the preview environment.
+const FAILURE_COOLDOWN_MS = 30_000;
 
 // Connection error codes that are safe to retry (transient network/handshake).
 const RETRYABLE_CODES = new Set([
@@ -71,6 +74,8 @@ export class BackendUnreachableError extends Error {
 const globalForDb = globalThis as unknown as {
   __mssql_pool?: sql.ConnectionPool;
   __mssql_connecting?: Promise<sql.ConnectionPool>;
+  __mssql_unavailableUntil?: number;
+  __mssql_lastError?: string;
 };
 
 // ── Config ──────────────────────────────────────────────────────────────────────
@@ -206,6 +211,13 @@ async function getPool(): Promise<sql.ConnectionPool> {
   const existing = globalForDb.__mssql_pool;
   if (existing?.connected) return existing;
 
+  const unavailableUntil = globalForDb.__mssql_unavailableUntil ?? 0;
+  if (Date.now() < unavailableUntil) {
+    throw new BackendUnreachableError(
+      globalForDb.__mssql_lastError ?? "SQL Server is temporarily unreachable."
+    );
+  }
+
   // Coalesce concurrent connection attempts.
   if (!globalForDb.__mssql_connecting) {
     // Wrap the entire retry sequence in a hard timeout so a permanently
@@ -223,12 +235,16 @@ async function getPool(): Promise<sql.ConnectionPool> {
     globalForDb.__mssql_connecting = Promise.race([connectPromise, timeoutPromise])
       .then((pool) => {
         globalForDb.__mssql_pool = pool;
+        globalForDb.__mssql_unavailableUntil = undefined;
+        globalForDb.__mssql_lastError = undefined;
         return pool;
       })
       .catch((err) => {
-        // Clear the pool reference so the next request tries fresh.
         globalForDb.__mssql_pool = undefined;
         const code = (err as { code?: string }).code ?? "";
+        const message = err instanceof Error ? err.message : "SQL Server is unreachable.";
+        globalForDb.__mssql_unavailableUntil = Date.now() + FAILURE_COOLDOWN_MS;
+        globalForDb.__mssql_lastError = message;
         // DNS/refused/timeout → surface a clear "unreachable" error.
         if (
           err instanceof BackendUnreachableError ||

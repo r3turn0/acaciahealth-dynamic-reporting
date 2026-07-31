@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type Category = "auth" | "access" | "admin" | "policy" | "anomaly";
+type Category = "auth" | "access" | "admin" | "policy" | "anomaly" | "query";
 type Severity = "info" | "warn" | "critical";
 type Result = "success" | "failure" | "blocked";
 
@@ -48,6 +48,7 @@ const CATEGORY_CONFIG: Record<Category, { label: string; color: string; bg: stri
   admin: { label: "Admin", color: "text-chart-5", bg: "bg-chart-5/10 border-chart-5/25", icon: Shield },
   policy: { label: "Policy", color: "text-chart-4", bg: "bg-chart-4/10 border-chart-4/25", icon: Activity },
   anomaly: { label: "Anomaly", color: "text-destructive", bg: "bg-destructive/10 border-destructive/25", icon: AlertTriangle },
+  query: { label: "Query", color: "text-primary", bg: "bg-primary/10 border-primary/25", icon: Database },
 };
 
 const SEVERITY_CONFIG: Record<Severity, { label: string; color: string; bg: string }> = {
@@ -108,7 +109,7 @@ interface Filters {
 }
 
 function FilterBar({ filters, onChange }: { filters: Filters; onChange: (f: Filters) => void }) {
-  const categories: (Category | "")[] = ["", "auth", "access", "admin", "policy", "anomaly"];
+  const categories: (Category | "")[] = ["", "auth", "access", "admin", "policy", "anomaly", "query"];
   const severities: (Severity | "")[] = ["", "info", "warn", "critical"];
   const results: (Result | "")[] = ["", "success", "failure", "blocked"];
 
