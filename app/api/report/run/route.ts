@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
       endDate: filters.date_range.end_date,
       branchCode: filters.branch_code,
       reportName: report_name,
+      signal: req.signal,
     });
 
     if (!result.validation.valid) {
@@ -69,6 +70,9 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
+    if (req.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
+      return NextResponse.json({ error: "Request cancelled" }, { status: 499 });
+    }
     console.error("[Gateway→report/run] error:", err);
     return NextResponse.json({ error: "Report execution failed" }, { status: 500 });
   }

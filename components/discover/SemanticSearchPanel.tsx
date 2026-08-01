@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Search, X, Sparkles, Database, FileText, Gauge, Bot, BookOpen, ShieldCheck, ChevronRight, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AssetType } from "@/lib/discovery/catalog";
+import { orchestrate } from "@/lib/orchestration/requestRegistry";
 
 type Result = { id: string; type: AssetType; name: string; description: string; tags: string[]; location: string; related: string[]; score: number; matchedTerms: string[] };
 const filters: Array<{ type: AssetType | "all"; label: string }> = [{ type: "all", label: "All" }, { type: "dataset", label: "Datasets" }, { type: "table", label: "Tables" }, { type: "column", label: "Columns" }, { type: "kpi", label: "KPIs" }, { type: "report", label: "Reports" }, { type: "validation", label: "Rules" }, { type: "agent", label: "Agents" }];
@@ -19,21 +20,34 @@ export function SemanticSearchPanel({ onSelectTable, initialQuery = "" }: Semant
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const intentRef = useRef(0);
 
   async function search(nextQuery = query, type = activeType) {
     if (!nextQuery.trim()) return;
+    const intent = ++intentRef.current;
     setLoading(true); setError(null); setSearched(true);
     try {
-      const response = await fetch("/api/discover/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: nextQuery, types: type === "all" ? undefined : [type], topK: 20 }) });
-      const text = await response.text();
-      if (!response.ok || !text) throw new Error("Search service is temporarily unavailable");
-      const data = JSON.parse(text) as { results: Result[]; backend: string };
-      setResults(data.results ?? []); setBackend(data.backend);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Search failed"); setResults([]); }
-    finally { setLoading(false); }
+      const data = await orchestrate({ scope: "catalog-search", operation: "search", resource: type, params: { query: nextQuery, type }, policy: "latest", timeoutMs: 20_000 }, async (signal) => {
+        const response = await fetch("/api/discover/search", { method: "POST", headers: { "Content-Type": "application/json" }, signal, body: JSON.stringify({ query: nextQuery, types: type === "all" ? undefined : [type], topK: 20 }) });
+        const text = await response.text();
+        if (!response.ok || !text) throw new Error("Search service is temporarily unavailable");
+        return JSON.parse(text) as { results: Result[]; backend: string };
+      });
+      if (intent === intentRef.current) { setResults(data.results ?? []); setBackend(data.backend); }
+    } catch (cause) {
+      if (cause instanceof Error && (cause.name === "AbortError" || cause.name === "StaleRequestError")) return;
+      if (intent === intentRef.current) { setError(cause instanceof Error ? cause.message : "Search failed"); setResults([]); }
+    } finally { if (intent === intentRef.current) setLoading(false); }
   }
   function submit(event: FormEvent) { event.preventDefault(); void search(); }
   function selectType(type: AssetType | "all") { setActiveType(type); if (searched) void search(query, type); }
+  useEffect(() => {
+    if (!searched || query.trim().length < 3) return;
+    const timer = setTimeout(() => { void search(query, activeType); }, 400);
+    return () => clearTimeout(timer);
+  // search intentionally follows the latest query/filter intent.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, activeType]);
 
   return <div className="flex flex-col gap-4">
     <form onSubmit={submit} className="relative">

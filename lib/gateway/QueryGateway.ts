@@ -78,6 +78,8 @@ export interface GatewayRequest {
   inMemoryRows?: Record<string, unknown>[];
   /** Report name used for display / caching */
   reportName?: string;
+  /** Propagates browser or route cancellation through SQL execution. */
+  signal?: AbortSignal;
   /** Skip execution — plan only */
   planOnly?: boolean;
   /** Request ID for correlation */
@@ -725,7 +727,8 @@ async function runExecutionEngine(
   endDate: string,
   auditId: string,
   planOnly: boolean,
-  userRequest?: string
+  userRequest?: string,
+  signal?: AbortSignal,
 ): Promise<ExecutionEngineResult> {
   const t0 = Date.now();
 
@@ -786,7 +789,7 @@ async function runExecutionEngine(
 
   try {
     const queryResult = await withTimeout(
-      executeMultiQuery(sql, { StartDate: startDate, EndDate: endDate }),
+      executeMultiQuery(sql, { StartDate: startDate, EndDate: endDate }, signal),
       EXECUTION_TIMEOUT_MS,
       "executeMultiQuery"
     );
@@ -886,7 +889,7 @@ async function runExecutionEngine(
           const retryT0 = Date.now();
           try {
             const retryQueryResult = await withTimeout(
-              executeMultiQuery(retryResult.correctedSql, { StartDate: startDate, EndDate: endDate }),
+              executeMultiQuery(retryResult.correctedSql, { StartDate: startDate, EndDate: endDate }, signal),
               EXECUTION_TIMEOUT_MS,
               "executeMultiQuery(retry)"
             );
@@ -1097,7 +1100,7 @@ function buildDemoRows(sql: string, startDate: string, endDate: string): Record<
   return rows;
 }
 
-// ── Main Gateway Entry Point ──────────────────────────────────────────────────
+// ── Main Gateway Entry Point ─���────────────────────────────────────────────────
 
 export async function runQueryGateway(req: GatewayRequest): Promise<GatewayResult> {
   const globalStart = Date.now();
@@ -1172,8 +1175,9 @@ export async function runQueryGateway(req: GatewayRequest): Promise<GatewayResul
     retryInfo,
     historyId,
   } = await runExecutionEngine(
-    normalizedSql, req.startDate, req.endDate, auditId, req.planOnly ?? false,
-    req.source !== "sql_editor" ? req.query : undefined // Pass NL query for retry context
+  normalizedSql, req.startDate, req.endDate, auditId, req.planOnly ?? false,
+  req.source !== "sql_editor" ? req.query : undefined, // Pass NL query for retry context
+  req.signal,
   );
   pipeline.push(s6);
 
