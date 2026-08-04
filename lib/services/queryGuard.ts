@@ -55,7 +55,10 @@ export function validateReadOnlySql(sql: string): ValidationResult {
     return { valid: false, errors: ["SQL is required"] };
   }
 
-  const withoutTrailingTerminator = executable.replace(/;\s*$/, "");
+  // SQL Server commonly prefixes CTEs with a defensive semicolon. Treat only
+  // leading terminators as syntax, while rejecting separators inside the query.
+  const withoutLeadingTerminator = executable.replace(/^(?:;\s*)+/, "");
+  const withoutTrailingTerminator = withoutLeadingTerminator.replace(/;\s*$/, "");
   if (withoutTrailingTerminator.includes(";")) {
     errors.push("Multiple SQL statements are not allowed");
   }

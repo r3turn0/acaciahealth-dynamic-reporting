@@ -1,3 +1,4 @@
+import semanticLayer from "@/lib/config/semanticLayer.json";
 import type { QueryMemory } from "@/lib/services/queryHistoryStore";
 import { validateQuery } from "@/lib/services/queryGuard";
 
@@ -26,20 +27,9 @@ export interface IntelligenceMatch {
   rationale: string[];
 }
 
-export const HEALTHCARE_ALIASES: Record<string, string[]> = {
-  adc: ["average daily census", "daily census"],
-  los: ["length of stay", "average length of stay"],
-  ar: ["accounts receivable", "receivables", "aging"],
-  ytd: ["year to date", "year-to-date"],
-  mtd: ["month to date", "month-to-date"],
-  wtd: ["week to date", "week-to-date"],
-  occupancy: ["occupancy rate", "capacity utilization"],
-  admissions: ["admits", "admitted", "new patients"],
-  discharges: ["discharged", "live discharges"],
-  payer_mix: ["payer mix", "payor mix", "insurance mix"],
-  caseload: ["case load", "patient load", "active patients"],
-  recertifications: ["recerts", "recertification", "re-certifications"],
-};
+export const HEALTHCARE_ALIASES: Record<string, string[]> = Object.fromEntries(
+  Object.entries(semanticLayer.terminology).map(([canonical, definition]) => [canonical, definition.aliases])
+);
 
 const STOP_WORDS = new Set(["a", "an", "and", "by", "for", "from", "in", "me", "of", "on", "please", "show", "the", "to", "with"]);
 

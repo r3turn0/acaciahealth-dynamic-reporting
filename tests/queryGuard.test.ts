@@ -72,6 +72,7 @@ describe("validateReadOnlySql", () => {
   it.each([
     "SELECT epi_id FROM CLIENT_EPISODES_ALL WHERE epi_SocDate BETWEEN @StartDate AND @EndDate",
     "WITH episodes AS (SELECT epi_id FROM CLIENT_EPISODES_ALL WHERE epi_SocDate BETWEEN @StartDate AND @EndDate) SELECT epi_id FROM episodes;",
+    ";WITH episodes AS (SELECT epi_id FROM CLIENT_EPISODES_ALL WHERE epi_SocDate BETWEEN @StartDate AND @EndDate) SELECT epi_id FROM episodes;",
     "-- governed query\nSELECT epi_id FROM CLIENT_EPISODES_ALL WHERE epi_SocDate >= @StartDate AND epi_SocDate < @EndDate",
     "SELECT 'update is prose' AS label FROM CLIENT_EPISODES_ALL WHERE epi_SocDate BETWEEN @StartDate AND @EndDate",
   ])("allows read-only SQL: %s", (sql) => {

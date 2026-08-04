@@ -19,6 +19,7 @@
  * IMPORTANT: This store is SERVER-SIDE only. Never import from a client component.
  */
 
+import semanticLayer from "@/lib/config/semanticLayer.json";
 import * as appClient from "@/lib/db/appClient";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -801,7 +802,14 @@ export interface QueryMemory {
 }
 
 function normalizeRequest(request: string): string {
-  return request.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  let normalized = request.toLowerCase();
+  for (const [canonical, definition] of Object.entries(semanticLayer.terminology)) {
+    for (const alias of [...definition.aliases].sort((a, b) => b.length - a.length)) {
+      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      normalized = normalized.replace(new RegExp(`\\b${escaped}\\b`, "g"), canonical);
+    }
+  }
+  return normalized.replace(/[^a-z0-9_]+/g, " ").trim();
 }
 
 function requestKeywords(request: string): string[] {

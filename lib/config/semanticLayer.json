@@ -1,4 +1,18 @@
 {
+  "terminology": {
+    "adc": { "label": "Average Daily Census", "aliases": ["average daily census", "daily census"] },
+    "los": { "label": "Length of Stay", "aliases": ["length of stay", "average length of stay"] },
+    "ar": { "label": "Accounts Receivable", "aliases": ["accounts receivable", "receivables", "aging"] },
+    "ytd": { "label": "Year to Date", "aliases": ["year to date", "year-to-date"] },
+    "mtd": { "label": "Month to Date", "aliases": ["month to date", "month-to-date"] },
+    "wtd": { "label": "Week to Date", "aliases": ["week to date", "week-to-date"] },
+    "occupancy": { "label": "Occupancy", "aliases": ["occupancy rate", "capacity utilization"] },
+    "admissions": { "label": "Admissions", "aliases": ["admits", "admitted", "new patients"] },
+    "discharges": { "label": "Discharges", "aliases": ["discharged", "live discharges"] },
+    "payer_mix": { "label": "Payer Mix", "aliases": ["payer mix", "payor mix", "insurance mix"] },
+    "caseload": { "label": "Caseload", "aliases": ["case load", "patient load", "active patients"] },
+    "recertifications": { "label": "Recertifications", "aliases": ["recerts", "recertification", "re-certifications"] }
+  },
   "tables": {
     "patients": {
       "physical_name": "tbl_Patient",

@@ -50,6 +50,18 @@ describe("query intelligence", () => {
     expect(result.candidate?.id).toBe("report");
   });
 
+  it("reuses governed SQL Server reports with a leading CTE terminator", async () => {
+    const cteSql = `;WITH episodes AS (
+      SELECT epi_id FROM CLIENT_EPISODES_ALL
+      WHERE epi_SocDate BETWEEN @StartDate AND @EndDate
+    ) SELECT COUNT(epi_id) AS admissions FROM episodes`;
+    const result = await resolveQueryIntelligence("weekly admissions", {
+      candidates: [candidate({ sql: cteSql })],
+    });
+    expect(result.reusable).toBe(true);
+    expect(result.sql).toBe(cteSql);
+  });
+
   it("falls back to generation below the quality threshold", async () => {
     const result = await resolveQueryIntelligence("accounts receivable aging", {
       candidates: [candidate({ name: "Weekly Admissions" })],
