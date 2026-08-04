@@ -2,7 +2,7 @@ import { buildCacheKey, withCache } from "@/lib/services/cache";
 import { executeQueryWithParams, type NamedParam } from "@/lib/services/db";
 import { validateQuery } from "@/lib/services/queryGuard";
 
-export type DashboardKpiKey = "admissions" | "census" | "revenue" | "discharges";
+export type DashboardKpiKey = "admissions" | "census" | "recerts" | "discharges";
 
 export interface DashboardKpiResult {
   value: number | null;
@@ -14,32 +14,42 @@ export interface DashboardSummary {
   generatedAt: string;
 }
 
-const KPI_QUERIES: Record<DashboardKpiKey, string> = {
+export const DASHBOARD_KPI_KEYS: readonly DashboardKpiKey[] = [
+  "admissions",
+  "census",
+  "recerts",
+  "discharges",
+];
+
+export const DASHBOARD_KPI_QUERIES: Readonly<Record<DashboardKpiKey, string>> = {
   admissions: `SELECT COUNT_BIG(1) AS value
     FROM dbo.CLIENT_EPISODES_ALL
     WHERE epi_status = 'CURRENT'
       AND epi_NonAdmitDate IS NULL
       AND epi_AdmitType = 'NEW ADMISSION'
       AND CAST(epi_SocDate AS date) BETWEEN @StartDate AND @EndDate`,
-  census: `SELECT COUNT_BIG(1) AS value
+  census: `SELECT COUNT_BIG(DISTINCT epi_paid) AS value
     FROM dbo.CLIENT_EPISODES_ALL
     WHERE epi_status = 'CURRENT'
       AND epi_NonAdmitDate IS NULL
       AND CAST(epi_SocDate AS date) <= @EndDate
-      AND (epi_DischargeDate IS NULL OR CAST(epi_DischargeDate AS date) >= @StartDate)`,
-  revenue: `SELECT CAST(COALESCE(SUM(li_calculatedamount), 0) AS decimal(18,2)) AS value
-    FROM Billing.LINE_ITEMS
-    WHERE li_deleted = 0
-      AND li_void = 0
-      AND li_includeonclaim = 1
-      AND CAST(li_servicedate AS date) BETWEEN @StartDate AND @EndDate`,
-  discharges: `SELECT COUNT_BIG(1) AS value
+      AND @StartDate <= @EndDate
+      AND (epi_DischargeDate IS NULL OR CAST(epi_DischargeDate AS date) > @EndDate)`,
+  recerts: `SELECT COALESCE(SUM(
+      CASE WHEN UPPER(LTRIM(RTRIM(epi_RecertFlag))) IN ('Y', '1', 'R', 'RECERT', 'TRUE')
+        THEN 1 ELSE 0 END
+    ), 0) AS value
     FROM dbo.CLIENT_EPISODES_ALL
-    WHERE epi_DischargeDate >= @StartDate
+    WHERE epi_status <> 'RECERTIFIED'
+      AND epi_NonAdmitDate IS NULL
+      AND CAST(epi_SocDate AS date) BETWEEN @StartDate AND @EndDate`,
+  discharges: `SELECT COUNT_BIG(DISTINCT epi_id) AS value
+    FROM dbo.CLIENT_EPISODES_ALL
+    WHERE epi_status = 'DISCHARGED'
+      AND epi_DischargeDate >= @StartDate
       AND epi_DischargeDate < DATEADD(DAY, 1, @EndDate)`,
 };
 
-const KPI_KEYS = Object.keys(KPI_QUERIES) as DashboardKpiKey[];
 const QUERY_TIMEOUT_MS = 7_000;
 const CACHE_TTL_MS = 60_000;
 
@@ -59,8 +69,8 @@ async function loadSummary(): Promise<DashboardSummary> {
     { name: "EndDate", value: end, type: "date" },
   ];
 
-  const settled = await Promise.allSettled(KPI_KEYS.map(async (key) => {
-    const query = KPI_QUERIES[key];
+  const settled = await Promise.allSettled(DASHBOARD_KPI_KEYS.map(async (key) => {
+    const query = DASHBOARD_KPI_QUERIES[key];
     const validation = validateQuery(query);
     if (!validation.valid) throw new Error(validation.errors.join("; "));
 
@@ -75,9 +85,11 @@ async function loadSummary(): Promise<DashboardSummary> {
     }
   }));
 
-  const kpis = Object.fromEntries(KPI_KEYS.map((key) => [key, { value: null, status: "unavailable" as const }])) as DashboardSummary["kpis"];
+  const kpis = Object.fromEntries(
+    DASHBOARD_KPI_KEYS.map((key) => [key, { value: null, status: "unavailable" as const }]),
+  ) as DashboardSummary["kpis"];
   settled.forEach((result, index) => {
-    const key = KPI_KEYS[index];
+    const key = DASHBOARD_KPI_KEYS[index];
     if (result.status === "fulfilled") {
       kpis[key] = { value: result.value[1], status: "ok" };
     }

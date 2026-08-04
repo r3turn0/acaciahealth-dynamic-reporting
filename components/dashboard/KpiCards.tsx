@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { TrendingUp, Users, DollarSign, Activity, Loader2 } from "lucide-react";
+import { TrendingUp, Users, ClipboardCheck, Activity, Loader2 } from "lucide-react";
 import type { DashboardKpiKey, DashboardSummary } from "@/lib/services/dashboardSummary";
 
 interface KpiMeta {
@@ -25,9 +25,8 @@ const KPI_DEFS: KpiMeta[] = [
     formatValue: (value) => value.toLocaleString(), demoValue: "1,842", demoDelta: "+3.1% vs last week", demoDeltaPositive: true,
   },
   {
-    label: "Billed Revenue (WTD)", icon: DollarSign, color: "text-chart-5", kpiKey: "revenue",
-    formatValue: (value) => value >= 1_000_000 ? `$${(value / 1_000_000).toFixed(2)}M` : `$${value.toLocaleString()}`,
-    demoValue: "$1.24M", demoDelta: "-2.8% vs last week", demoDeltaPositive: false,
+    label: "Recerts", icon: ClipboardCheck, color: "text-chart-5", kpiKey: "recerts",
+    formatValue: (value) => value.toLocaleString(), demoValue: "64", demoDelta: "+4.9% vs last week", demoDeltaPositive: true,
   },
   {
     label: "Discharges", icon: Activity, color: "text-chart-3", kpiKey: "discharges",
