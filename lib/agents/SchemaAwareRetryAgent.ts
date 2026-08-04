@@ -31,6 +31,7 @@ import {
   hashSql,
   isSqlDuplicate,
   getAttemptsForRequest,
+  getSimilarHistoricalRepairs,
   recordQueryAttempt,
   upsertLearnedMapping,
   learnFromSuccess,
@@ -110,7 +111,7 @@ function buildRetrySystemPrompt(
     "SCHEMA CONTEXT (use ONLY these approved tables):",
     contextSummary,
     "",
-    learnedMappingSummary ? `LEARNED MAPPINGS (high-confidence term → table resolutions from history):\n${learnedMappingSummary}\n` : "",
+    learnedMappingSummary ? `LEARNED MAPPINGS AND PRIOR REPAIRS:\n${learnedMappingSummary}\n` : "",
     "FAILURE REMEDIATION STRATEGIES:",
     "- TABLE_NOT_FOUND: Replace with the correct table from the schema above. Check learned mappings.",
     "- COLUMN_NOT_FOUND: Replace with the correct column name. Check column list above.",
@@ -159,7 +160,10 @@ export async function retryWithSchemaIntelligence(
   const failureClass = classifyFailure(input.errorMessage);
 
   // Fetch prior attempts to build known hash set
-  const priorAttempts = await getAttemptsForRequest(input.userRequest);
+  const [priorAttempts, historicalRepairs] = await Promise.all([
+    getAttemptsForRequest(input.userRequest),
+    getSimilarHistoricalRepairs(input.userRequest, failureClass),
+  ]);
   const triedHashes = new Set<string>(priorAttempts.map((a: QueryHistoryEntry) => hashSql(a.query_text)));
   triedHashes.add(hashSql(input.failedSql)); // Include the current failure
 
@@ -179,9 +183,15 @@ export async function retryWithSchemaIntelligence(
   // Get learned mappings for suggestions
   const allMappings = await getLearnedMappings(100);
   const mappingSuggestions = await suggestMappingsForError(input.errorMessage, failureClass);
-  const learnedMappingSummary = mappingSuggestions.length > 0
+  const mappingSummary = mappingSuggestions.length > 0
     ? mappingSuggestions.map((s) => `  "${s.term}" → "${s.suggestion}" (confidence: ${(s.confidence * 100).toFixed(0)}%)`).join("\n")
     : allMappings.filter((m) => m.confidence >= 0.7).slice(0, 5).map((m) => `  "${m.user_term}" → "${m.actual_object}" (confidence: ${(m.confidence * 100).toFixed(0)}%)`).join("\n");
+  const repairSummary = historicalRepairs.map((repair) => [
+    `  Similar request (${(repair.similarity * 100).toFixed(0)}%): ${repair.user_request}`,
+    repair.remediation_strategy ? `  Prior strategy: ${repair.remediation_strategy}` : "",
+    `  Successful correction: ${repair.corrected_sql}`,
+  ].filter(Boolean).join("\n")).join("\n");
+  const learnedMappingSummary = [mappingSummary, repairSummary].filter(Boolean).join("\n");
 
   // Build KG context for correction prompt injection
   const kgContext: KnowledgeGraphContext | undefined = contextResult ? {
@@ -268,11 +278,18 @@ export async function retryWithSchemaIntelligence(
         },
         {
           querySignature: input.userRequest,
-          retryHistory: priorAttempts.map((a: QueryHistoryEntry) => ({
-            userRequest: a.user_request,
-            failureReason: a.failure_reason ?? undefined,
-            fixStrategy:   a.remediation_strategy ?? undefined,
-          })),
+          retryHistory: [
+            ...priorAttempts.map((a: QueryHistoryEntry) => ({
+              userRequest: a.user_request,
+              failureReason: a.failure_reason ?? undefined,
+              fixStrategy: a.remediation_strategy ?? undefined,
+            })),
+            ...historicalRepairs.map((repair) => ({
+              userRequest: repair.user_request,
+              failureReason: repair.failure_reason ?? undefined,
+              fixStrategy: [repair.remediation_strategy, `Successful SQL: ${repair.corrected_sql}`].filter(Boolean).join("; "),
+            })),
+          ],
         }
       );
 

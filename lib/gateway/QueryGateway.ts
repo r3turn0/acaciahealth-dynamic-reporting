@@ -158,6 +158,16 @@ export interface GatewayResult {
   };
   /** History entry id for the initial attempt */
   historyId?: string;
+  /** Explainable report-first/query-memory retrieval decision. */
+  intelligence?: {
+    source: IntelligenceMatch["source"];
+    candidateId: string | null;
+    candidateName: string | null;
+    version: number | null;
+    similarity: number;
+    reused: boolean;
+    rationale: string[];
+  };
 }
 
 export interface IntentResult {
@@ -1147,9 +1157,43 @@ export async function runQueryGateway(req: GatewayRequest): Promise<GatewayResul
   const { result: semantic, stageResult: s2 } = await runSemanticSearchAgent(intent, req.query);
   pipeline.push(s2);
 
-  // Stage 3 — ApprovedPatternAgent
-  const { pattern: approvedPattern, stageResult: s3 } = await runApprovedPatternAgent(req.query, intent);
-  pipeline.push(s3);
+  // Stage 3 — report-first intelligence, then the legacy accepted-pattern fallback.
+  let intelligence: IntelligenceMatch = {
+    source: "generated", candidate: null, sql: null, similarity: 0, reusable: false,
+    rationale: [req.source === "sql_editor" ? "SQL editor submissions bypass retrieval" : "Retrieval unavailable"],
+  };
+  if (req.source !== "sql_editor") {
+    intelligence = await resolveQueryIntelligence(req.query).catch((error) => ({
+      source: "generated" as const,
+      candidate: null,
+      sql: null,
+      similarity: 0,
+      reusable: false,
+      rationale: [`Retrieval failed safely: ${error instanceof Error ? error.message : String(error)}`],
+    }));
+  }
+
+  const legacyPattern = intelligence.reusable ? null : await runApprovedPatternAgent(req.query, intent);
+  const approvedPattern: ApprovedPattern | null = intelligence.reusable && intelligence.sql && intelligence.candidate
+    ? {
+        id: intelligence.candidate.id,
+        intent: intelligence.candidate.name,
+        sql: intelligence.sql,
+        similarity: Math.max(0.85, intelligence.similarity),
+        source: "repository",
+        usageCount: 0,
+        lastUsedAt: intelligence.candidate.updatedAt,
+      }
+    : legacyPattern?.pattern ?? null;
+  pipeline.push(makeStage(
+    "ReportFirstIntelligence",
+    intelligence.reusable ? "ok" : legacyPattern?.pattern ? "fallback" : "fallback",
+    0,
+    intelligence.reusable
+      ? `Reusing ${intelligence.source} ${intelligence.candidate?.id} at ${(intelligence.similarity * 100).toFixed(1)}% confidence`
+      : intelligence.rationale.join("; ")
+  ));
+  if (legacyPattern) pipeline.push(legacyPattern.stageResult);
 
   // Stage 4 — SQLGeneratorAgent
   const { sql: rawGeneratedSql, explanation, confidence: sqlConfidence, stageResult: s4 } =
@@ -1178,6 +1222,7 @@ export async function runQueryGateway(req: GatewayRequest): Promise<GatewayResul
       confidence: 0, intent, semantic, approvedPattern, validation,
       execution: null, pipeline, role: req.role ?? "analyst",
       auditId, demoMode: !isDbConfigured(), elapsedMs: Date.now() - globalStart,
+      intelligence,
     });
   }
 
@@ -1205,8 +1250,9 @@ export async function runQueryGateway(req: GatewayRequest): Promise<GatewayResul
   pipeline.push(s7);
 
   // Stage 8 — LearningRepository
+  const learnedSql = executedSql ?? normalizedSql;
   const s8 = runLearningRepository(
-    req.query, intent, normalizedSql, sqlConfidence, validation, execution, req.source
+    req.query, intent, learnedSql, sqlConfidence, validation, execution, req.source
   );
   pipeline.push(s8);
 
@@ -1231,7 +1277,7 @@ export async function runQueryGateway(req: GatewayRequest): Promise<GatewayResul
     confidence: overallConfidence, intent, semantic, approvedPattern, validation,
     execution, pipeline, role: req.role ?? "analyst",
     auditId, demoMode, elapsedMs: Date.now() - globalStart,
-    retryInfo, historyId,
+    retryInfo, historyId, intelligence,
   });
 
   if (validation.valid && execution && req.source !== "sql_editor") {
@@ -1264,6 +1310,7 @@ function buildResult(p: {
   elapsedMs: number;
   retryInfo?: GatewayResult["retryInfo"];
   historyId?: string;
+  intelligence?: IntelligenceMatch;
 }): GatewayResult {
   // Extract lineage from SQL
   const tablesUsed = [...p.sql.matchAll(/(?:FROM|JOIN)\s+([\w.]+)/gi)]
@@ -1309,6 +1356,15 @@ function buildResult(p: {
     elapsedMs: p.elapsedMs,
     retryInfo: p.retryInfo,
     historyId: p.historyId,
+    intelligence: p.intelligence ? {
+      source: p.intelligence.source,
+      candidateId: p.intelligence.candidate?.id ?? null,
+      candidateName: p.intelligence.candidate?.name ?? null,
+      version: p.intelligence.candidate?.version ?? null,
+      similarity: p.intelligence.similarity,
+      reused: p.intelligence.reusable,
+      rationale: p.intelligence.rationale,
+    } : undefined,
   };
 }
 

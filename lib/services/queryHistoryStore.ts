@@ -877,6 +877,51 @@ export async function getQueryMemories(limit = 500): Promise<QueryMemory[]> {
   });
 }
 
+export interface HistoricalRepair {
+  user_request: string;
+  failed_sql: string;
+  corrected_sql: string;
+  failure_reason: FailureClass | null;
+  remediation_strategy: string | null;
+  similarity: number;
+}
+
+function keywordSimilarity(left: string, right: string): number {
+  const a = new Set(requestKeywords(left));
+  const b = new Set(requestKeywords(right));
+  if (a.size === 0 || b.size === 0) return 0;
+  const overlap = [...a].filter((token) => b.has(token)).length;
+  return overlap / Math.max(a.size, b.size);
+}
+
+/** Find successful historical corrections for semantically similar failures. */
+export async function getSimilarHistoricalRepairs(
+  userRequest: string,
+  failureReason: FailureClass,
+  limit = 3
+): Promise<HistoricalRepair[]> {
+  const entries = await getRecentQueryHistory(1_000);
+  const successful = entries.filter((entry) => entry.final_success_query && entry.status === "success");
+  return successful.map((success) => {
+    const failed = entries.find((entry) =>
+      entry.user_request === success.user_request
+      && entry.status === "failure"
+      && (!entry.failure_reason || entry.failure_reason === failureReason)
+    );
+    return {
+      user_request: success.user_request,
+      failed_sql: failed?.query_text ?? "",
+      corrected_sql: success.final_success_query as string,
+      failure_reason: failed?.failure_reason ?? failureReason,
+      remediation_strategy: success.remediation_strategy ?? failed?.remediation_strategy ?? null,
+      similarity: keywordSimilarity(userRequest, success.user_request),
+    };
+  })
+    .filter((repair) => repair.similarity >= 0.3)
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, Math.max(1, Math.min(limit, 10)));
+}
+
 /**
  * Retrieve all prior query attempts for a given user request string.
  * Used by SchemaAwareRetryAgent to build the tried-hashes set.
