@@ -133,7 +133,7 @@ function buildConfig(): sql.config | string | null {
           },
           pool: poolSettings(),
           requestTimeout: 30_000,
-          connectionTimeout: 15_000,
+          connectionTimeout: CONNECT_TIMEOUT_MS,
         };
       }
       console.warn(
@@ -189,16 +189,26 @@ async function connectWithRetry(attempt = 1): Promise<sql.ConnectionPool> {
       "Database is not configured. Set DB_HOST/DB_NAME/DB_USER/DB_PASS (or DATABASE_URL)."
     );
   }
+  const pool = new sql.ConnectionPool(config as sql.config);
+  pool.on("error", (err) => {
+    if (globalForDb.__mssql_pool === pool) {
+      globalForDb.__mssql_pool = undefined;
+      globalForDb.__mssql_unavailableUntil = Date.now() + FAILURE_COOLDOWN_MS;
+      globalForDb.__mssql_lastError = err.message;
+      console.error("[db] Active pool became unavailable:", err.message);
+    }
+  });
   try {
-    const pool = new sql.ConnectionPool(config as sql.config);
-    pool.on("error", (err) => console.error("[db] Pool error:", err.message));
     await pool.connect();
     return pool;
   } catch (err) {
+    await pool.close().catch(() => undefined);
     const code = (err as { code?: string }).code ?? "";
-    if (RETRYABLE_CODES.has(code) && attempt < MAX_RETRIES) {
+    const message = err instanceof Error ? err.message.toLowerCase() : "";
+    const retryable = RETRYABLE_CODES.has(code) || message.includes("timed out") || message.includes("timeout");
+    if (retryable && attempt < MAX_RETRIES) {
       const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
-      console.warn(`[db] Connect failed (${code}), retry in ${delay}ms (${attempt}/${MAX_RETRIES})`);
+      console.warn(`[db] Connection attempt ${attempt}/${MAX_RETRIES} failed; retrying in ${delay}ms.`);
       await sleep(delay);
       return connectWithRetry(attempt + 1);
     }
@@ -218,21 +228,10 @@ async function getPool(): Promise<sql.ConnectionPool> {
     );
   }
 
-  // Coalesce concurrent connection attempts.
+  // Coalesce concurrent connection attempts. The driver owns the timeout so
+  // there is no abandoned connect promise that can emit a late pool error.
   if (!globalForDb.__mssql_connecting) {
-    // Wrap the entire retry sequence in a hard timeout so a permanently
-    // unreachable host fails fast instead of blocking for many seconds.
-    const connectPromise = connectWithRetry();
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new BackendUnreachableError(
-          `Connection timed out after ${CONNECT_TIMEOUT_MS}ms. SQL Server is not reachable from this environment.`
-        )),
-        CONNECT_TIMEOUT_MS
-      )
-    );
-
-    globalForDb.__mssql_connecting = Promise.race([connectPromise, timeoutPromise])
+    globalForDb.__mssql_connecting = connectWithRetry()
       .then((pool) => {
         globalForDb.__mssql_pool = pool;
         globalForDb.__mssql_unavailableUntil = undefined;
@@ -436,7 +435,14 @@ export async function checkConnection(): Promise<boolean> {
     await pool.request().query("SELECT 1 AS ok");
     return true;
   } catch (err) {
-    console.error("[db] Health check failed:", (err as Error).message);
+    const pool = globalForDb.__mssql_pool;
+    globalForDb.__mssql_pool = undefined;
+    if (pool) await pool.close().catch(() => undefined);
+    const message = err instanceof Error ? err.message : "SQL Server is unreachable.";
+    const alreadyCoolingDown = Date.now() < (globalForDb.__mssql_unavailableUntil ?? 0);
+    globalForDb.__mssql_unavailableUntil = Date.now() + FAILURE_COOLDOWN_MS;
+    globalForDb.__mssql_lastError = message;
+    if (!alreadyCoolingDown) console.warn(`[db] Database unavailable; pausing health probes for ${FAILURE_COOLDOWN_MS / 1000}s.`);
     return false;
   }
 }
