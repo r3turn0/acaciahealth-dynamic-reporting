@@ -11,6 +11,7 @@
  * could write.
  */
 
+import { validateReadOnlySql } from "@/lib/services/queryGuard";
 import {
   executeQuery,
   executeQueryWithParams,
@@ -23,39 +24,29 @@ import {
   BackendUnreachableError,
   type QueryParams,
   type NamedParam,
+  type QueryResultSet,
 } from "@/lib/services/db";
 
 // ── Re-export error class so callers don't need two imports ─────────────────
 export { BackendUnreachableError };
+export type { QueryResultSet };
 
 // ── Query guard ─────────────────────────────────────────────────────────────
 
-const WRITE_PATTERN =
-  /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|EXEC(?:UTE)?|CREATE|GRANT|REVOKE|MERGE)\b/i;
-
-/**
- * Throws ReadOnlyViolationError when the SQL contains a write keyword.
- * Called before every query method.
- */
 export class ReadOnlyViolationError extends Error {
   readonly code = "READ_ONLY_VIOLATION";
-  constructor(keyword: string) {
-    super(
-      `ReadOnlyDataClient: "${keyword}" is not allowed. Only SELECT queries may be executed against the analytics data source.`
-    );
+  readonly reasons: string[];
+
+  constructor(reasons: string[]) {
+    super(`ReadOnlyDataClient rejected SQL: ${reasons.join("; ")}. Use a single parameterized SELECT or read-only CTE instead.`);
     this.name = "ReadOnlyViolationError";
+    this.reasons = reasons;
   }
 }
 
-function assertReadOnly(sql: string): void {
-  const match = sql.match(WRITE_PATTERN);
-  if (match) throw new ReadOnlyViolationError(match[0].toUpperCase());
-
-  // Must start with SELECT (or WITH for CTEs / subqueries)
-  const trimmed = sql.trimStart().toUpperCase();
-  if (!trimmed.startsWith("SELECT") && !trimmed.startsWith("WITH")) {
-    throw new ReadOnlyViolationError("non-SELECT statement");
-  }
+export function assertReadOnly(sql: string): void {
+  const result = validateReadOnlySql(sql);
+  if (!result.valid) throw new ReadOnlyViolationError(result.errors);
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -91,9 +82,9 @@ export async function queryWithParams(
 }
 
 /** Run one read-only command and return every dataset it produces. */
-export async function queryMultiple(sql: string, params: QueryParams) {
+export async function queryMultiple(sql: string, params: QueryParams, signal?: AbortSignal) {
   assertReadOnly(sql);
-  return executeMultiQuery(sql, params);
+  return executeMultiQuery(sql, params, signal);
 }
 
 /** Run one arbitrary-parameter read-only command and return every dataset. */

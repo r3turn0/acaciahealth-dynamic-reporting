@@ -20,7 +20,7 @@
 
 import { chatJSON, isAiConfigured } from "@/lib/ai/gateway";
 import { validateQuery } from "@/lib/services/queryGuard";
-import { executeMultiQuery, isDbConfigured, BackendUnreachableError, type QueryResultSet } from "@/lib/services/db";
+import { queryMultiple, isConfigured as isDbConfigured, BackendUnreachableError, type QueryResultSet } from "@/lib/db/readOnlyClient";
 import { parameterizeDates } from "@/lib/services/dateParams";
 
 // Hard ceiling for a single SQL execution attempt inside the gateway.
@@ -64,6 +64,7 @@ import {
   hashSql,
 } from "@/lib/services/queryHistoryStore";
 import { retryWithSchemaIntelligence } from "@/lib/agents/SchemaAwareRetryAgent";
+import { resolveQueryIntelligence, type IntelligenceMatch } from "@/lib/services/queryIntelligence";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -804,7 +805,7 @@ async function runExecutionEngine(
 
   try {
 const queryResult = await withAbortTimeout(
-(timeoutSignal) => executeMultiQuery(sql, { StartDate: startDate, EndDate: endDate }, timeoutSignal),
+(timeoutSignal) => queryMultiple(sql, { StartDate: startDate, EndDate: endDate }, timeoutSignal),
 signal,
 EXECUTION_TIMEOUT_MS,
 "executeMultiQuery"
@@ -906,10 +907,10 @@ EXECUTION_TIMEOUT_MS,
           const retryT0 = Date.now();
           try {
 const retryQueryResult = await withAbortTimeout(
-(timeoutSignal) => executeMultiQuery(correctedSql, { StartDate: startDate, EndDate: endDate }, timeoutSignal),
+(timeoutSignal) => queryMultiple(correctedSql, { StartDate: startDate, EndDate: endDate }, timeoutSignal),
 signal,
 EXECUTION_TIMEOUT_MS,
-"executeMultiQuery(retry)"
+"queryMultiple(retry)"
 );
             const retryRows = retryQueryResult.rows;
 

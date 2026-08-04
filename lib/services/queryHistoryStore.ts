@@ -778,6 +778,105 @@ export async function getQueryStats(): Promise<QueryHistoryStats> {
 /** Alias used by API routes. */
 export const getQueryHistoryStats = getQueryStats;
 
+export interface QueryMemory {
+  id: string;
+  normalized_request: string;
+  semantic_keywords: string[];
+  source_tables: string[];
+  versions: Array<{
+    version: number;
+    sql: string;
+    status: QueryStatus;
+    failure_reason: FailureClass | null;
+    remediation_strategy: string | null;
+    execution_ms: number;
+    created_at: string;
+  }>;
+  final_success_query: string | null;
+  success_count: number;
+  failure_count: number;
+  success_rate: number;
+  avg_execution_ms: number;
+  last_used_at: string;
+}
+
+function normalizeRequest(request: string): string {
+  return request.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function requestKeywords(request: string): string[] {
+  const stop = new Set(["a", "an", "and", "by", "for", "from", "in", "of", "on", "show", "the", "to", "with"]);
+  return [...new Set(normalizeRequest(request).split(" ").filter((token) => token.length > 1 && !stop.has(token)))];
+}
+
+export async function getRecentQueryHistory(limit = 500): Promise<QueryHistoryEntry[]> {
+  await ensureTables();
+  const pool = await appClient.getPool();
+  if (pool) {
+    try {
+      const result = await pool.query(
+        `SELECT * FROM query_history ORDER BY created_at DESC LIMIT $1`,
+        [Math.max(1, Math.min(limit, 2_000))]
+      );
+      return result.rows as QueryHistoryEntry[];
+    } catch (error) {
+      console.error("[queryHistoryStore] getRecentQueryHistory failed:", (error as Error).message);
+    }
+  }
+  return [..._historyStore]
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .slice(0, limit);
+}
+
+/** Aggregate immutable attempts into explainable, versioned query memories. */
+export async function getQueryMemories(limit = 500): Promise<QueryMemory[]> {
+  const entries = await getRecentQueryHistory(limit);
+  const groups = new Map<string, QueryHistoryEntry[]>();
+  for (const entry of entries) {
+    const key = normalizeRequest(entry.user_request);
+    if (!key) continue;
+    groups.set(key, [...(groups.get(key) ?? []), entry]);
+  }
+
+  return [...groups.entries()].map(([normalized_request, attempts]) => {
+    const ordered = [...attempts].sort((a, b) => a.created_at.localeCompare(b.created_at));
+    const successes = ordered.filter((entry) => entry.status === "success" || Boolean(entry.final_success_query));
+    const failures = ordered.filter((entry) => entry.status === "failure");
+    const successfulSql = [...ordered].reverse().find((entry) => entry.final_success_query)?.final_success_query
+      ?? [...ordered].reverse().find((entry) => entry.status === "success")?.query_text
+      ?? null;
+    const sourceTables = [...new Set(ordered.flatMap((entry) =>
+      [...entry.query_text.matchAll(/(?:FROM|JOIN)\s+([\w.[\]"]+)/gi)]
+        .map((match) => match[1].replace(/[\[\]"]/g, "").toUpperCase())
+    ))];
+    const executionSamples = ordered.filter((entry) => entry.execution_ms > 0);
+
+    return {
+      id: `memory_${hashSql(normalized_request)}`,
+      normalized_request,
+      semantic_keywords: requestKeywords(normalized_request),
+      source_tables: sourceTables,
+      versions: ordered.map((entry, index) => ({
+        version: index + 1,
+        sql: entry.query_text,
+        status: entry.status,
+        failure_reason: entry.failure_reason,
+        remediation_strategy: entry.remediation_strategy,
+        execution_ms: entry.execution_ms,
+        created_at: entry.created_at,
+      })),
+      final_success_query: successfulSql,
+      success_count: successes.length,
+      failure_count: failures.length,
+      success_rate: ordered.length > 0 ? successes.length / ordered.length : 0,
+      avg_execution_ms: executionSamples.length > 0
+        ? Math.round(executionSamples.reduce((sum, entry) => sum + entry.execution_ms, 0) / executionSamples.length)
+        : 0,
+      last_used_at: ordered.at(-1)?.created_at ?? new Date(0).toISOString(),
+    };
+  });
+}
+
 /**
  * Retrieve all prior query attempts for a given user request string.
  * Used by SchemaAwareRetryAgent to build the tried-hashes set.

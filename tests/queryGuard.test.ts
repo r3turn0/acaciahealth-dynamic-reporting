@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { validateQuery } from "@/lib/services/queryGuard";
+import { validateQuery, validateReadOnlySql } from "@/lib/services/queryGuard";
+import { assertReadOnly, ReadOnlyViolationError } from "@/lib/db/readOnlyClient";
 
 const VALID = `SELECT b.branch_name, COUNT(*) AS admissions
 FROM CLIENT_EPISODES_ALL epi
@@ -64,5 +65,44 @@ describe("validateQuery", () => {
     );
     expect(r.valid).toBe(false);
     expect(r.errors.join(" ")).toMatch(/allowed/i);
+  });
+});
+
+describe("validateReadOnlySql", () => {
+  it.each([
+    "SELECT epi_id FROM CLIENT_EPISODES_ALL WHERE epi_SocDate BETWEEN @StartDate AND @EndDate",
+    "WITH episodes AS (SELECT epi_id FROM CLIENT_EPISODES_ALL WHERE epi_SocDate BETWEEN @StartDate AND @EndDate) SELECT epi_id FROM episodes;",
+    "-- governed query\nSELECT epi_id FROM CLIENT_EPISODES_ALL WHERE epi_SocDate >= @StartDate AND epi_SocDate < @EndDate",
+    "SELECT 'update is prose' AS label FROM CLIENT_EPISODES_ALL WHERE epi_SocDate BETWEEN @StartDate AND @EndDate",
+  ])("allows read-only SQL: %s", (sql) => {
+    expect(validateReadOnlySql(sql)).toEqual({ valid: true, errors: [] });
+  });
+
+  it.each([
+    "INSERT INTO x VALUES (1)",
+    "UPDATE x SET value = 1",
+    "DELETE FROM x",
+    "MERGE x USING y ON 1 = 1 WHEN MATCHED THEN UPDATE SET x.a = y.a;",
+    "CREATE TABLE x (id int)",
+    "ALTER TABLE x ADD value int",
+    "DROP TABLE x",
+    "TRUNCATE TABLE x",
+    "RENAME OBJECT x TO y",
+    "GRANT SELECT ON x TO y",
+    "REVOKE SELECT ON x FROM y",
+    "DENY SELECT ON x TO y",
+    "USE master; SELECT name FROM sys.tables",
+    "EXEC dbo.Report",
+    "EXECUTE('SELECT 1')",
+    "SELECT epi_id INTO archived FROM CLIENT_EPISODES_ALL WHERE epi_SocDate BETWEEN @StartDate AND @EndDate",
+    "SELECT epi_id FROM CLIENT_EPISODES_ALL WHERE epi_SocDate >= @StartDate; DELETE FROM CLIENT_EPISODES_ALL",
+    "/* harmless */ UPDATE CLIENT_EPISODES_ALL SET epi_id = 1",
+    "SELECT value FROM OPENROWSET('SQLNCLI', 'server=x', 'SELECT 1')",
+  ])("blocks write-capable SQL: %s", (sql) => {
+    expect(validateReadOnlySql(sql).valid).toBe(false);
+  });
+
+  it("uses the same policy at the data-client boundary", () => {
+    expect(() => assertReadOnly("select 1; update x set y = 2")).toThrow(ReadOnlyViolationError);
   });
 });
