@@ -1,32 +1,29 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import dynamic from "next/dynamic";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { DashboardHome } from "@/components/dashboard/DashboardHome";
 
-// ── Lazy-loaded hub components (R-12) ─────────────────────────────────────────
-// All heavy tab components are dynamically imported so they don't inflate the
-// initial JS bundle. Each gets a shared skeleton fallback during load.
+// Top-level hubs are imported with the main route so local navigation never
+// blocks on a separate on-demand client compilation after a tab click.
+import { DataExplorer } from "@/components/data/DataExplorer";
+import { DatasetStudioHub } from "@/components/dataset/DatasetStudioHub";
+import { ReportStudio } from "@/components/studio/ReportStudio";
+import { BiStudio } from "@/components/bi/BiStudio";
+import { KpiIntelligenceHub } from "@/components/kpi/KpiIntelligenceHub";
+import { SchemaHub } from "@/components/schema/SchemaHub";
+import { AdministrationHub } from "@/components/admin/AdministrationHub";
+import { IntelligenceCenter } from "@/components/intelligence/IntelligenceCenter";
 
 function TabSkeleton() {
   return (
-    <div className="flex flex-col gap-4 animate-pulse w-full" aria-busy="true" aria-label="Loading">
-      <div className="h-10 rounded-lg bg-muted w-72" />
-      <div className="h-64 rounded-xl bg-muted w-full" />
-      <div className="h-48 rounded-xl bg-muted w-full" />
+    <div className="flex w-full animate-pulse flex-col gap-4" aria-busy="true" aria-label="Loading">
+      <div className="h-10 w-72 rounded-lg bg-muted" />
+      <div className="h-64 w-full rounded-xl bg-muted" />
+      <div className="h-48 w-full rounded-xl bg-muted" />
     </div>
   );
 }
-
-const DataExplorer      = dynamic(() => import("@/components/data/DataExplorer").then(m => ({ default: m.DataExplorer })),           { loading: () => <TabSkeleton />, ssr: false });
-const DatasetStudioHub  = dynamic(() => import("@/components/dataset/DatasetStudioHub").then(m => ({ default: m.DatasetStudioHub })), { loading: () => <TabSkeleton />, ssr: false });
-const ReportStudio      = dynamic(() => import("@/components/studio/ReportStudio").then(m => ({ default: m.ReportStudio })),         { loading: () => <TabSkeleton />, ssr: false });
-const BiStudio          = dynamic(() => import("@/components/bi/BiStudio").then(m => ({ default: m.BiStudio })),                     { loading: () => <TabSkeleton />, ssr: false });
-const KpiIntelligenceHub = dynamic(() => import("@/components/kpi/KpiIntelligenceHub").then(m => ({ default: m.KpiIntelligenceHub })), { loading: () => <TabSkeleton />, ssr: false });
-const SchemaHub         = dynamic(() => import("@/components/schema/SchemaHub").then(m => ({ default: m.SchemaHub })),               { loading: () => <TabSkeleton />, ssr: false });
-const AdministrationHub = dynamic(() => import("@/components/admin/AdministrationHub").then(m => ({ default: m.AdministrationHub })), { loading: () => <TabSkeleton />, ssr: false });
-const IntelligenceCenter = dynamic(() => import("@/components/intelligence/IntelligenceCenter").then(m => ({ default: m.IntelligenceCenter })), { loading: () => <TabSkeleton />, ssr: false });
 
 import { LoginPage }    from "@/components/auth/LoginPage";
 import type { AuthUser } from "@/components/auth/LoginPage";
