@@ -353,8 +353,8 @@ function SchemaIntelligencePanel({
                   </div>
                   <p className="text-[11px] font-mono text-primary/80 bg-muted/50 rounded px-2 py-1">{def.formula}</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {def.dependsOn.map((f) => (
-                      <span key={f} className="text-[10px] font-mono text-muted-foreground bg-muted/60 border border-border rounded px-1.5 py-0.5">{f}</span>
+                    {def.dependsOn.map((f, dependencyIndex) => (
+                      <span key={`${def.kpiName}-${f}-${dependencyIndex}`} className="text-[10px] font-mono text-muted-foreground bg-muted/60 border border-border rounded px-1.5 py-0.5">{f}</span>
                     ))}
                   </div>
                 </div>
@@ -1133,9 +1133,9 @@ export function KpiIntelligence() {
 
       {/* KPI Cards grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        {filteredCards.map((card) => (
+        {filteredCards.map((card, index) => (
           <KpiCardComponent
-            key={card.kpiKey}
+            key={`${card.kpiKey}-${card.domain}-${index}`}
             card={card}
             isActive={activeCard?.kpiKey === card.kpiKey}
             onPromptClick={handlePromptClick}
