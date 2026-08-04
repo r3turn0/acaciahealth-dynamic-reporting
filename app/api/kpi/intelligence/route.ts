@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import kpiConfig from "@/lib/config/kpiConfig.json";
+import { collectKpiEvidence } from "@/lib/services/kpiEvidenceService";
+import { analyzeKpiEvidence, type KpiEvidenceAnalysis } from "@/lib/services/kpiEvidenceAnalyzer";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -571,6 +574,29 @@ export async function GET(_req: NextRequest) {
   return NextResponse.json(buildIntelligence());
 }
 
-export async function POST(_req: NextRequest) {
-  return NextResponse.json(buildIntelligence());
+const EvidenceRequestSchema = z.object({
+  kpiKey: z.string().min(1).max(120),
+  startDate: z.iso.date(),
+  endDate: z.iso.date(),
+}).refine((value) => value.startDate <= value.endDate, {
+  message: "startDate must be on or before endDate",
+  path: ["endDate"],
+});
+
+export async function POST(req: NextRequest) {
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const parsed = EvidenceRequestSchema.safeParse(raw);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid evidence request", details: parsed.error.flatten().fieldErrors }, { status: 400 });
+  }
+  const { kpiKey, startDate, endDate } = parsed.data;
+  const bundle = await collectKpiEvidence(kpiKey, startDate, endDate);
+  if (!bundle) return NextResponse.json({ error: "Unknown KPI key" }, { status: 404 });
+  const analysis: KpiEvidenceAnalysis = await analyzeKpiEvidence(bundle, startDate, endDate);
+  return NextResponse.json({ analysis });
 }

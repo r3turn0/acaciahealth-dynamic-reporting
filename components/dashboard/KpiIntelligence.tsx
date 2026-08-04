@@ -29,6 +29,7 @@ import {
   Target,
   X,
 } from "lucide-react";
+import type { KpiEvidenceAnalysis } from "@/lib/services/kpiEvidenceAnalyzer";
 import { cn, copyToClipboard } from "@/lib/utils";
 import { FileUploadButton } from "@/components/ui/FileUpload";
 import type { UploadedFile } from "@/components/ui/FileUpload";
@@ -918,6 +919,75 @@ function AskAiBox({
   );
 }
 
+function EvidenceAnalysisPanel({
+  card,
+  analysis,
+  loading,
+  error,
+  onAnalyze,
+}: {
+  card: KpiCard;
+  analysis: KpiEvidenceAnalysis | null;
+  loading: boolean;
+  error: string | null;
+  onAnalyze: (startDate: string, endDate: string) => void;
+}) {
+  const range = defaultRange();
+  const [startDate, setStartDate] = useState(range.start);
+  const [endDate, setEndDate] = useState(range.end);
+  const modeStyles = {
+    live: "bg-chart-1/10 text-chart-1 border-chart-1/25",
+    cached: "bg-primary/10 text-primary border-primary/25",
+    partial: "bg-chart-5/10 text-chart-5 border-chart-5/25",
+    "metadata-fallback": "bg-muted text-muted-foreground border-border",
+  };
+  const modeLabels = { live: "Live evidence", cached: "Cached evidence", partial: "Partial evidence", "metadata-fallback": "Metadata fallback" };
+  const citations = new Map(analysis?.citations.map((citation) => [citation.id, citation]) ?? []);
+  return (
+    <section className="rounded-xl border border-border bg-card" aria-labelledby="evidence-analysis-title">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border p-5">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Database className="h-4 w-4 text-primary" />
+            <h3 id="evidence-analysis-title" className="text-sm font-semibold text-foreground">Report evidence analysis</h3>
+          </div>
+          <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">Runs only the top governed reports mapped to {card.kpiName} and its dependencies. Static card values remain available as the hybrid fallback.</p>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">From<input type="date" value={startDate} max={endDate} onChange={(event) => setStartDate(event.target.value)} className="rounded-md border border-border bg-background px-2 py-1 text-xs normal-case text-foreground" /></label>
+          <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">To<input type="date" value={endDate} min={startDate} onChange={(event) => setEndDate(event.target.value)} className="rounded-md border border-border bg-background px-2 py-1 text-xs normal-case text-foreground" /></label>
+          <button onClick={() => onAnalyze(startDate, endDate)} disabled={loading || startDate > endDate} className="flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50">
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            Analyze with report evidence
+          </button>
+        </div>
+      </div>
+      <div className="flex flex-col gap-4 p-5">
+        {error && <p className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
+        {!analysis && !loading && <p className="text-sm text-muted-foreground">Choose a reporting window to generate a cited, evidence-based analysis.</p>}
+        {loading && <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin text-primary" />Executing governed reports and validating evidence...</div>}
+        {analysis && !loading && (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={cn("rounded border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide", modeStyles[analysis.mode])}>{modeLabels[analysis.mode]}</span>
+              <span className="rounded border border-border bg-muted/30 px-2 py-1 text-[10px] font-mono text-muted-foreground">Confidence {analysis.confidence.score}% · {analysis.confidence.band}</span>
+              <span className="text-[10px] text-muted-foreground">{analysis.dateRange.startDate} to {analysis.dateRange.endDate}</span>
+            </div>
+            <p className="text-sm leading-relaxed text-foreground">{analysis.executiveSummary}</p>
+            {analysis.fallbackReason && <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">{analysis.fallbackReason}</p>}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="flex flex-col gap-2"><h4 className="text-xs font-semibold text-foreground">Evidence and drivers</h4>{[...analysis.dependencyObservations, ...analysis.keyDrivers].map((item, index) => <div key={`${item.statement}-${index}`} className="rounded-lg border border-border bg-background p-3"><p className="text-xs leading-relaxed text-foreground">{item.statement}</p><p className="mt-2 text-[10px] text-muted-foreground">{item.classification === "hypothesis" ? "Hypothesis" : "Observed fact"} · {item.citationIds.join(", ")}</p></div>)}</div>
+              <div className="flex flex-col gap-2"><h4 className="text-xs font-semibold text-foreground">Confidence and gaps</h4>{analysis.confidence.explanation.map((line) => <p key={line} className="text-xs text-muted-foreground">{line}</p>)}{analysis.missingEvidence.length > 0 && <div className="rounded-lg border border-chart-5/25 bg-chart-5/10 p-3"><p className="text-xs font-semibold text-chart-5">Missing evidence</p><p className="mt-1 text-xs text-muted-foreground">{analysis.missingEvidence.join(", ")}</p></div>}</div>
+            </div>
+            {analysis.citations.length > 0 && <div className="flex flex-col gap-2 border-t border-border pt-4"><h4 className="text-xs font-semibold text-foreground">Sources</h4>{analysis.citations.map((citation) => <div key={citation.id} className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="text-foreground">[{citation.id}] {citation.reportName}</span><span className="font-mono text-[10px] text-muted-foreground">v{citation.version} · result {citation.resultSet} · {citation.rowCount} rows · {citation.source}</span></div>)}</div>}
+            {analysis.recommendations.length > 0 && <div className="flex flex-col gap-2 border-t border-border pt-4"><h4 className="text-xs font-semibold text-foreground">Evidence-based actions</h4>{analysis.recommendations.map((recommendation) => <div key={recommendation.action} className="flex gap-2"><Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" /><p className="text-xs leading-relaxed text-muted-foreground"><span className="font-medium text-foreground">{recommendation.action}</span> {recommendation.rationale} {recommendation.citationIds.map((id) => citations.has(id) ? `[${id}]` : "").join(" ")}</p></div>)}</div>}
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
 // ── Main KpiIntelligence component ────────────────────────────────────────────
 
 export function KpiIntelligence() {
@@ -927,6 +997,9 @@ export function KpiIntelligence() {
   const [activeCard, setActiveCard] = useState<KpiCard | null>(null);
   const [activePrompt, setActivePrompt] = useState<{ prompt: string; kpi: string } | null>(null);
   const [filter, setFilter] = useState<string>("All");
+  const [evidenceAnalysis, setEvidenceAnalysis] = useState<KpiEvidenceAnalysis | null>(null);
+  const [evidenceLoading, setEvidenceLoading] = useState(false);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -945,8 +1018,33 @@ export function KpiIntelligence() {
 
   function handlePromptClick(prompt: string, kpiName: string) {
     setActivePrompt({ prompt, kpi: kpiName });
-    // Scroll to ask box
     document.getElementById("kpi-ask-box")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  async function analyzeWithEvidence(startDate: string, endDate: string) {
+    if (!activeCard) return;
+    setEvidenceLoading(true);
+    setEvidenceError(null);
+    try {
+      const response = await fetch("/api/kpi/intelligence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kpiKey: activeCard.kpiKey, startDate, endDate }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Evidence analysis failed");
+      setEvidenceAnalysis(payload.analysis as KpiEvidenceAnalysis);
+    } catch (requestError) {
+      setEvidenceError(requestError instanceof Error ? requestError.message : "Evidence analysis failed");
+    } finally {
+      setEvidenceLoading(false);
+    }
+  }
+
+  function selectCard(card: KpiCard) {
+    setActiveCard((previous) => previous?.kpiKey === card.kpiKey ? null : card);
+    setEvidenceAnalysis(null);
+    setEvidenceError(null);
   }
 
   // Derive distinct domain values from the cards so filter tabs always match
@@ -1039,7 +1137,7 @@ export function KpiIntelligence() {
             card={card}
             isActive={activeCard?.kpiKey === card.kpiKey}
             onPromptClick={handlePromptClick}
-            onSelect={(c) => setActiveCard((prev) => prev?.kpiKey === c.kpiKey ? null : c)}
+            onSelect={selectCard}
           />
         ))}
       </div>
@@ -1049,7 +1147,17 @@ export function KpiIntelligence() {
         <KpiDetailPanel
           card={activeCard}
           onPromptClick={handlePromptClick}
-          onClose={() => setActiveCard(null)}
+          onClose={() => { setActiveCard(null); setEvidenceAnalysis(null); }}
+        />
+      )}
+
+      {activeCard && (
+        <EvidenceAnalysisPanel
+          card={activeCard}
+          analysis={evidenceAnalysis}
+          loading={evidenceLoading}
+          error={evidenceError}
+          onAnalyze={analyzeWithEvidence}
         />
       )}
 
@@ -1059,7 +1167,7 @@ export function KpiIntelligence() {
       {/* Ask AI box */}
       <div id="kpi-ask-box">
         <AskAiBox
-          context={data.askContext}
+          context={evidenceAnalysis?.askContext ?? data.askContext}
           activePrompt={activePrompt}
           onClear={() => setActivePrompt(null)}
         />
