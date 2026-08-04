@@ -58,13 +58,21 @@ export function LoginPage({ onAuthenticated, onConditionalAccessBlocked }: Login
   const [user, setUser] = useState<AuthUser | null>(null);
   const [redirecting, setRedirecting] = useState(false);
 
+  async function parseAuthResponse(res: Response) {
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      throw new Error("Authentication service returned an invalid response.");
+    }
+    return res.json() as Promise<{ error?: string; message?: string; user?: AuthUser }>;
+  }
+
   async function callValidate(payload: Record<string, string>) {
     const res = await fetch("/api/auth/validate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
+    const data = await parseAuthResponse(res);
     if (!res.ok) {
       if (data.error === "DEVICE_NON_COMPLIANT" || data.error === "NETWORK_NOT_ALLOWED") {
         onConditionalAccessBlocked?.(data.error);
@@ -116,7 +124,7 @@ export function LoginPage({ onAuthenticated, onConditionalAccessBlocked }: Login
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ method: "credentials", email: email.trim(), password }),
       });
-      const data = await res.json();
+      const data = await parseAuthResponse(res);
       if (!res.ok) {
         if (data.error === "DEVICE_NON_COMPLIANT" || data.error === "NETWORK_NOT_ALLOWED") {
           onConditionalAccessBlocked?.(data.error);

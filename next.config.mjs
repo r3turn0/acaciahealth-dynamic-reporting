@@ -24,12 +24,9 @@ const nextConfig = {
     AZURE_OPENAI_API_KEY:   process.env.AZURE_OPENAI_API_KEY,
     AZURE_OPENAI_ENDPOINT:  process.env.AZURE_OPENAI_ENDPOINT,
     AZURE_OPENAI_DEPLOYMENT:process.env.AZURE_OPENAI_DEPLOYMENT,
-    // Auth
-    NEXTAUTH_URL:           process.env.NEXTAUTH_URL,
-    NEXTAUTH_SECRET:        process.env.NEXTAUTH_SECRET,
-    AZURE_AD_CLIENT_ID:     process.env.AZURE_AD_CLIENT_ID,
-    AZURE_AD_CLIENT_SECRET: process.env.AZURE_AD_CLIENT_SECRET,
-    AZURE_AD_TENANT_ID:     process.env.AZURE_AD_TENANT_ID,
+    // Public feature switch only. NextAuth and Azure credentials remain
+    // server-runtime variables and are never inlined into client bundles.
+    NEXT_PUBLIC_AZURE_AUTH_ENABLED: process.env.AZURE_AD_CLIENT_ID ? "true" : "false",
   },
 }
 

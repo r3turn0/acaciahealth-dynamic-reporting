@@ -173,6 +173,35 @@ function getPrimaryView(view: View): string {
 }
 
 const SESSION_KEY = "acacia_auth_user";
+const AZURE_AUTH_ENABLED = process.env.NEXT_PUBLIC_AZURE_AUTH_ENABLED === "true";
+
+type AzureSessionBridgeProps = {
+  authUser: AuthUser | null | false;
+  setAuthUser: (user: AuthUser) => void;
+  onSessionState: (authenticated: boolean) => void;
+};
+
+function AzureSessionBridge({ authUser, setAuthUser, onSessionState }: AzureSessionBridgeProps) {
+  const { data: session, status } = useSession();
+  useEffect(() => {
+    onSessionState(status === "authenticated");
+    if (status !== "authenticated" || !session?.user || authUser !== false) return;
+    const user: AuthUser = {
+      id: (session.user as { id?: string }).id ?? session.user.email ?? "azure-ad",
+      name: session.user.name ?? session.user.email ?? "User",
+      email: session.user.email ?? "",
+      role: ((session as { roles?: string[] }).roles ?? []).includes("Admin") ? "Admin" : "Analyst",
+      department: "Azure AD",
+      mfa_method: "azure_ad",
+      aal: "AAL2",
+      device_compliant: true,
+      last_login: new Date().toISOString(),
+    };
+    setAuthUser(user);
+    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(user)); } catch { /* ignore */ }
+  }, [authUser, onSessionState, session, setAuthUser, status]);
+  return null;
+}
 
 export default function Home() {
   const [view, setView]               = useState<View>("home");
@@ -180,17 +209,11 @@ export default function Home() {
   const [todayLabel, setTodayLabel]   = useState<string>("");
   const [loadedReport, setLoadedReport] = useState<LoadedReport | null>(null);
   const [authUser, setAuthUser]       = useState<AuthUser | null | false>(null);
+  const [azureAuthenticated, setAzureAuthenticated] = useState(false);
   // KPI pre-selection: set when user clicks "Interpret" on a saved report
   const [preselectedKpi, setPreselectedKpi] = useState<string | null>(null);
   // Report pre-selection: set when a dashboard pin is clicked — opens KPI Interpreter with that report
   const [preselectedReportName, setPreselectedReportName] = useState<string | null>(null);
-
-  // NextAuth is only used when Azure AD is configured in production.
-  // In dev/preview (no AZURE_AD_CLIENT_ID) the custom /api/auth/validate
-  // flow owns authentication and stores the session in sessionStorage.
-  // We still call useSession() unconditionally (Rules of Hooks), but we only
-  // honour its result in production.
-  const { data: nextAuthSession, status: nextAuthStatus } = useSession();
   useEffect(() => {
     setTodayLabel(
       new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -202,26 +225,6 @@ export default function Home() {
       setAuthUser(false);
     }
   }, []);
-
-  // If NextAuth resolves an Azure AD session, promote it to the custom authUser
-  // so the rest of the app has a single AuthUser object to work with.
-  useEffect(() => {
-    if (nextAuthStatus === "authenticated" && nextAuthSession?.user && authUser === false) {
-      const u: AuthUser = {
-        id:             (nextAuthSession.user as { id?: string }).id ?? nextAuthSession.user.email ?? "azure-ad",
-        name:           nextAuthSession.user.name ?? nextAuthSession.user.email ?? "User",
-        email:          nextAuthSession.user.email ?? "",
-        role:           ((nextAuthSession as { roles?: string[] }).roles ?? []).includes("Admin") ? "Admin" : "Analyst",
-        department:     "Azure AD",
-        mfa_method:     "azure_ad",
-        aal:            "AAL2",
-        device_compliant: true,
-        last_login:     new Date().toISOString(),
-      };
-      setAuthUser(u);
-      try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(u)); } catch { /* ignore */ }
-    }
-  }, [nextAuthStatus, nextAuthSession, authUser]);
 
   function navigate(raw: string) {
     // Special token: "kpi:interpret:<kpiName>" — jump to KPI Interpreter with KPI pre-selection
@@ -255,20 +258,18 @@ export default function Home() {
   function handleSignOut() {
     setAuthUser(false);
     try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
-    if (nextAuthSession) { signOut({ callbackUrl: "/login" }); return; }
+    if (AZURE_AUTH_ENABLED && azureAuthenticated) { void signOut({ callbackUrl: "/login" }); return; }
     setView("home");
   }
 
-  // authUser === null means the sessionStorage read hasn't completed yet
-  // (it happens in a useEffect, so there's one render pass with null).
-  // Do NOT block on nextAuthStatus — in dev/preview it stays "unauthenticated"
-  // because Azure AD is not configured; the custom /api/auth/validate flow is
-  // the only gate in that environment.
-  if (authUser === null) return null;
-  // Show login wall when the custom session is absent AND NextAuth hasn't
-  // produced an authenticated session either.
-  if (authUser === false && nextAuthStatus !== "authenticated") {
-    return <LoginPage onAuthenticated={handleAuthenticated} />;
+  const azureBridge = AZURE_AUTH_ENABLED
+    ? <AzureSessionBridge authUser={authUser} setAuthUser={setAuthUser} onSessionState={setAzureAuthenticated} />
+    : null;
+
+  // authUser === null means the sessionStorage read hasn't completed yet.
+  if (authUser === null) return azureBridge;
+  if (authUser === false && !azureAuthenticated) {
+    return <>{azureBridge}<LoginPage onAuthenticated={handleAuthenticated} /></>;
   }
 
   const user          = authUser as AuthUser;
@@ -314,6 +315,8 @@ export default function Home() {
   const kpiTab = resolveKpiTab(subTab);
 
   return (
+    <>
+    {azureBridge}
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Mobile overlay */}
       {sidebarOpen && (
@@ -501,6 +504,7 @@ export default function Home() {
         </main>
       </div>
     </div>
+    </>
   );
 }
 

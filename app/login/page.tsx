@@ -9,9 +9,23 @@
 import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { SessionProvider } from "@/components/SessionProvider";
 import { LogIn, Loader2, ShieldCheck } from "lucide-react";
 
 export default function LoginPage() {
+  if (process.env.NEXT_PUBLIC_AZURE_AUTH_ENABLED !== "true") {
+    return <CustomAuthRedirect />;
+  }
+  return <SessionProvider><AzureLoginPage /></SessionProvider>;
+}
+
+function CustomAuthRedirect() {
+  const router = useRouter();
+  useEffect(() => { router.replace("/"); }, [router]);
+  return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
+}
+
+function AzureLoginPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
