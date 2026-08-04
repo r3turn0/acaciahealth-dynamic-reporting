@@ -1,199 +1,91 @@
 /**
- * POST /api/run-sql
- * SQL Execution Agent endpoint.
- * Accepts a pre-validated SQL string + date params, enforces read-only rules,
- * caps results at MAX_ROWS, and times out at 30 seconds.
+ * POST /api/run-sql  →  GATEWAY ADAPTER
+ *
+ * This route is now a thin adapter. All SQL execution is routed through
+ * QueryGateway — the single permitted SQL execution entry point.
+ *
+ * Legacy callers (SQL Editor, Report Studio, Report Runner) pass:
+ *   sql, start_date, end_date, report_name, report_id, original_prompt
+ *
+ * The gateway treats this as source="sql_editor" and enforces all 9 stages.
  */
 
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { validateQuery } from "@/lib/services/queryGuard";
-import { executeQuery, isDbConfigured, BackendUnreachableError } from "@/lib/services/db";
-import { formatReport } from "@/lib/services/formatter";
+import { runQueryGateway } from "@/lib/gateway/QueryGateway";
 import { parameterizeDates } from "@/lib/services/dateParams";
-import { buildCacheKey, getCache, setCache } from "@/lib/services/cache";
-import { correctQueryOnce } from "@/lib/services/queryCorrectionService";
-import { isAiConfigured } from "@/lib/ai/gateway";
-import type { ReportOutput } from "@/lib/services/formatter";
-
-const MAX_ROWS = 10_000;
+import { BackendUnreachableError } from "@/lib/services/db";
+import { RunSqlBodySchema } from "@/lib/validation/apiSchemas";
 
 export async function POST(req: NextRequest) {
   const start = Date.now();
 
   try {
-    const body = await req.json();
-    const { sql, start_date, end_date, report_name, report_id } = body;
-
-    if (!sql || typeof sql !== "string") {
-      return NextResponse.json({ error: "sql is required" }, { status: 400 });
-    }
-    if (!start_date || !end_date) {
+    const raw = await req.json();
+    const parsed = RunSqlBodySchema.safeParse(raw);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "start_date and end_date are required" },
+        { error: "Invalid request body", details: parsed.error.flatten().fieldErrors },
         { status: 400 }
       );
     }
+    const { sql, start_date, end_date, report_name, report_id, original_prompt } = parsed.data;
 
-    // Link the date pickers to the query: rewrite any hardcoded date-range
-    // literals (e.g. BETWEEN CONVERT(date, '2017-03-02') AND ...) back into the
-    // @StartDate / @EndDate parameters that are bound below. Without this the
-    // date filters are silently ignored whenever the SQL embeds literal dates.
-    const { sql: paramSql, replaced: dateParamsApplied } = parameterizeDates(sql);
+    // Normalize date params before passing to gateway
+    const { sql: normalizedSql, replaced: dateParamsApplied } = parameterizeDates(sql);
 
-    // Security validation — enforced unconditionally
-    const validation = validateQuery(paramSql);
-    if (!validation.valid) {
+    const result = await runQueryGateway({
+      query: original_prompt ?? normalizedSql,
+      source: "sql_editor",
+      rawSql: normalizedSql,
+      startDate: start_date,
+      endDate: end_date,
+      reportName: report_name,
+    });
+
+    if (!result.validation.valid) {
       return NextResponse.json(
-        {
-          error: "Query failed security validation",
-          details: validation.errors,
-        },
+        { error: "Query failed security validation", details: result.validation.errors },
         { status: 422 }
       );
     }
 
-    // Inject TOP guard if not already present
-    const safeSql = /^\s*SELECT\s+TOP\s+\d+/i.test(paramSql)
-      ? paramSql
-      : paramSql.replace(/^\s*SELECT\s+/i, `SELECT TOP ${MAX_ROWS} `);
-
-    // Cache check
-    const cacheKey = buildCacheKey(`run-sql:${safeSql}`, { start_date, end_date });
-    const cached = getCache<ReportOutput>(cacheKey);
-    if (cached) {
-      return NextResponse.json({
-        ...cached,
-        cache_hit: true,
-        execution_ms: Date.now() - start,
-        date_params_applied: dateParamsApplied,
-        executed_sql: paramSql,
-      });
-    }
-
-    // Demo mode — no DB configured
-    if (!isDbConfigured()) {
-      const demo = buildDemoResult(safeSql, report_name ?? "Custom Query", start_date, end_date);
-      return NextResponse.json({
-        ...demo,
-        demo_mode: true,
-        cache_hit: false,
-        execution_ms: Date.now() - start,
-        date_params_applied: dateParamsApplied,
-        executed_sql: paramSql,
-      });
-    }
-
-    let finalSql = safeSql;
-    let correctionApplied = false;
-    let correctionAttempts: number | undefined;
-
-    let data: unknown[];
-    try {
-      data = await executeQuery(finalSql, {
-        StartDate: start_date,
-        EndDate: end_date,
-      });
-    } catch (execErr) {
-      // Self-healing: if execution fails and AI is available, attempt correction
-      const execErrMsg = execErr instanceof Error ? execErr.message : String(execErr);
-
-      if (isAiConfigured() && body.original_prompt) {
-        console.error("[v0] Execution error — attempting AI correction:", execErrMsg);
-        const correction = await correctQueryOnce({
-          originalPrompt: body.original_prompt,
-          failedSQL: finalSql,
-          errorMessage: execErrMsg,
-          startDate: start_date,
-          endDate: end_date,
-          branchCode: body.branch_code,
-        });
-
-        if (correction.plan && correction.plan.sql) {
-          finalSql = correction.plan.sql;
-          correctionApplied = true;
-          correctionAttempts = 1;
-          // Retry execution with corrected SQL
-          data = await executeQuery(finalSql, {
-            StartDate: start_date,
-            EndDate: end_date,
-          });
-        } else {
-          throw execErr; // Correction failed — propagate original error
-        }
-      } else {
-        throw execErr;
-      }
-    }
-
-    const report = formatReport(
-      report_name ?? "Custom Query",
-      { date_range: { start_date, end_date } },
-      data as Record<string, unknown>[],
-      "custom",
-      finalSql
-    );
-
-    setCache(cacheKey, report);
+    const execution = result.execution;
+    const rows = execution?.rows ?? [];
 
     return NextResponse.json({
-      ...report,
+      rows,
+      columns: execution?.columns ?? [],
+      rowCount: execution?.rowCount ?? 0,
+      resultSets: execution?.resultSets ?? [],
+      resultSetCount: execution?.resultSets.length ?? 0,
       cache_hit: false,
-      execution_ms: Date.now() - start,
+      execution_ms: execution?.executionMs ?? Date.now() - start,
       report_id: report_id ?? null,
       date_params_applied: dateParamsApplied,
-      executed_sql: correctionApplied ? finalSql : paramSql,
-      correction_applied: correctionApplied,
-      correction_attempts: correctionAttempts ?? 0,
+      executed_sql: result.sql,
+      demo_mode: result.demoMode,
+      // Phase 9: expose retry intelligence to the client
+      retry_info: result.retryInfo ?? null,
+      history_id: result.historyId ?? null,
+      gateway: {
+        requestId: result.requestId,
+        confidence: result.confidence,
+        pipeline: result.pipeline,
+        validation: result.validation,
+        lineage: result.lineage,
+        governance: result.governance,
+      },
     });
   } catch (err) {
-    console.error("[db] /api/run-sql error:", err);
-    // Backend connectivity problems get a clear, actionable message + 503.
+    console.error("[Gateway→run-sql] error:", err);
     if (err instanceof BackendUnreachableError) {
       return NextResponse.json(
-        {
-          error: err.message,
-          code: err.code,
-          hint: "Start the VM backend service and point ngrok at it (ngrok http <backend-port>), then retry.",
-        },
+        { error: err.message, code: err.code, hint: "Start the VM backend service and retry." },
         { status: 503 }
       );
     }
-    // Never expose raw DB error messages to the client
     return NextResponse.json({ error: "Query execution failed" }, { status: 500 });
   }
-}
-
-function buildDemoResult(
-  sql: string,
-  name: string,
-  startDate: string,
-  endDate: string
-): ReportOutput {
-  const days = Math.ceil(
-    (new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000
-  );
-  const weeks = Math.max(1, Math.floor(days / 7));
-  const branches = ["Hospice OC", "Home Health", "Hospice GI", "Hospice IRC", "Palliative Care"];
-  const kpiHint = sql.toLowerCase().includes("li_amount") ? "revenue" : "admissions";
-
-  const data: Record<string, unknown>[] = [];
-  for (const branch of branches) {
-    for (let w = 1; w <= weeks; w++) {
-      const val =
-        kpiHint === "revenue"
-          ? Math.round(50000 + Math.random() * 80000)
-          : Math.round(5 + Math.random() * 30);
-      data.push({ branch_name: branch, week_number: w, [kpiHint]: val });
-    }
-  }
-
-  return formatReport(
-    name,
-    { date_range: { start_date: startDate, end_date: endDate } },
-    data,
-    kpiHint,
-    sql
-  );
 }

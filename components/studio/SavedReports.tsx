@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { ensureKpiReportsSeeded } from "@/lib/services/seedReportsClient";
 import {
   Bookmark,
   Play,
@@ -24,6 +25,9 @@ import {
   CheckCircle2,
   MoreHorizontal,
   Eye,
+  TrendingUp,
+  Wand2,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -70,6 +74,8 @@ interface SavedReportsProps {
   allowCreate?: boolean;
   /** Current result rows for download (populated after a report is run). */
   currentRows?: Record<string, unknown>[];
+  /** Called when user wants to interpret a report's KPI in the KPI Interpreter. */
+  onInterpretKpi?: (kpi: string) => void;
 }
 
 type SortKey = "created_date" | "last_run_date" | "run_count" | "name";
@@ -397,7 +403,7 @@ function VersionHistoryDrawer({
   );
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// ── Main Component ────────────────────�����───────────────────────────────────────
 
 export function SavedReports({
   onLoad,
@@ -405,6 +411,7 @@ export function SavedReports({
   onSaveDone,
   allowCreate = false,
   currentRows,
+  onInterpretKpi,
 }: SavedReportsProps) {
   const [reports, setReports] = useState<SavedReport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -422,6 +429,11 @@ export function SavedReports({
   const [manualSql, setManualSql] = useState("");
   const [manualKpi, setManualKpi] = useState("custom");
 
+  // Zero-row rewrite state — tracks which report is being rewritten and its result
+  const [rewritingId, setRewritingId] = useState<string | null>(null);
+  const [rewriteResultId, setRewriteResultId] = useState<string | null>(null);
+  const [rewriteError, setRewriteError] = useState<string | null>(null);
+
   useDashboardPins();
 
   // Filter state
@@ -434,10 +446,13 @@ export function SavedReports({
 
   const fetchReports = useCallback(async () => {
     try {
+      // Idempotent seed: populates SQL library reports if not yet present.
+      await ensureKpiReportsSeeded().catch(() => {});
       const res = await fetch("/api/reports");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setReports(json.reports ?? []);
-    } catch { /* silent */ } finally {
+    } catch { /* silent — fallback to empty list */ } finally {
       setLoading(false);
     }
   }, []);
@@ -556,6 +571,71 @@ export function SavedReports({
     } else {
       const stub = [{ report_name: r.name, sql: r.sql, kpi: r.kpi, tags: r.tags.join(","), created_date: r.created_date }];
       downloadDataset(stub as Record<string, unknown>[], r.name + "_definition", fmt);
+    }
+  }
+
+  // ── Zero-row SQL rewrite + re-run ──────────────────────────────────────────
+  async function handleRewriteAndRun(r: SavedReport) {
+    if (!r.sql) return;
+    setRewritingId(r.id);
+    setRewriteResultId(null);
+    setRewriteError(null);
+
+    try {
+      // Step 1: Ask the fix-query agent to rewrite the SQL
+      const fixRes = await fetch("/api/fix-query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userQuery: r.prompt || r.name,
+          generatedSQL: r.sql,
+          apiError: "Query returned 0 rows",
+          dbErrorLogs: "Zero rows returned — date range or filter conditions may be too restrictive",
+        }),
+      });
+
+      if (!fixRes.ok) throw new Error(`fix-query responded ${fixRes.status}`);
+      const fixJson = await fixRes.json();
+      const rewrittenSql: string = fixJson.fixedSQL ?? "";
+
+      if (!rewrittenSql || rewrittenSql === r.sql) {
+        throw new Error("Rewritten SQL is identical to original — no improvement possible.");
+      }
+
+      // Step 2: Execute the rewritten SQL via /api/run-sql
+      const today = new Date();
+      const thirtyDaysAgo = new Date(today);
+      thirtyDaysAgo.setDate(today.getDate() - 30);
+      const start_date = thirtyDaysAgo.toISOString().split("T")[0];
+      const end_date   = today.toISOString().split("T")[0];
+
+      const runRes = await fetch("/api/run-sql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sql: rewrittenSql,
+          start_date,
+          end_date,
+          report_name: r.name,
+          original_prompt: r.prompt,
+        }),
+      });
+
+      if (!runRes.ok) throw new Error(`run-sql responded ${runRes.status}`);
+      const runJson = await runRes.json();
+      const retryRows: Record<string, unknown>[] = runJson.rows ?? [];
+
+      if (retryRows.length === 0) {
+        throw new Error("Rewritten SQL also returned 0 rows. The date range may contain no data.");
+      }
+
+      // Step 3: Load the report into the editor with the rewritten SQL so the user can see/save it
+      onLoad({ ...r, sql: rewrittenSql });
+      setRewriteResultId(r.id);
+    } catch (err) {
+      setRewriteError(err instanceof Error ? err.message : "SQL rewrite failed.");
+    } finally {
+      setRewritingId(null);
     }
   }
 
@@ -790,8 +870,13 @@ export function SavedReports({
                         {r.run_count > 0 && (
                           <span className="text-[11px] text-muted-foreground">{r.run_count} run{r.run_count !== 1 ? "s" : ""}</span>
                         )}
-                        {r.last_row_count !== null && (
+                        {r.last_row_count !== null && r.last_row_count > 0 && (
                           <span className="text-[11px] text-muted-foreground">{r.last_row_count.toLocaleString()} rows</span>
+                        )}
+                        {r.last_row_count === 0 && (
+                          <span className="flex items-center gap-1 text-[11px] text-chart-5 font-medium">
+                            <AlertCircle className="w-3 h-3" /> 0 rows last run
+                          </span>
                         )}
                         {r.visibility && r.visibility !== "team" && (
                           <span className="text-[10px] text-muted-foreground capitalize">· {r.visibility}</span>
@@ -821,6 +906,25 @@ export function SavedReports({
                         onDownloadReport={(fmt) => handleDownloadReport(r, fmt)}
                       />
 
+                      {/* Zero-row: Rewrite & Re-run */}
+                      {r.last_row_count === 0 && r.sql && (
+                        <button
+                          onClick={() => handleRewriteAndRun(r)}
+                          disabled={rewritingId === r.id}
+                          className="flex items-center gap-1.5 text-xs text-chart-5 hover:text-chart-5/80 transition-colors px-2.5 py-1.5 rounded border border-chart-5/30 hover:bg-chart-5/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Rewrite SQL and re-run to resolve zero-row result"
+                        >
+                          {rewritingId === r.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : rewriteResultId === r.id ? (
+                            <CheckCircle2 className="w-3 h-3" />
+                          ) : (
+                            <Wand2 className="w-3 h-3" />
+                          )}
+                          {rewritingId === r.id ? "Rewriting..." : rewriteResultId === r.id ? "Rewritten" : "Fix & Retry"}
+                        </button>
+                      )}
+
                       {/* Load */}
                       <button
                         onClick={() => onLoad(r)}
@@ -830,6 +934,18 @@ export function SavedReports({
                         <Play className="w-3 h-3" />
                         Load
                       </button>
+
+                      {/* Interpret KPI */}
+                      {onInterpretKpi && r.kpi && (
+                        <button
+                          onClick={() => onInterpretKpi(r.kpi)}
+                          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2.5 py-1.5 rounded border border-border hover:border-primary/30 hover:bg-accent/40"
+                          title="Interpret this KPI with AI"
+                        >
+                          <TrendingUp className="w-3 h-3" />
+                          Interpret
+                        </button>
+                      )}
 
                       {/* More actions */}
                       <ActionMenu
@@ -847,6 +963,20 @@ export function SavedReports({
           </div>
         )}
       </div>
+
+      {/* Zero-row rewrite error */}
+      {rewriteError && (
+        <div className="flex items-start gap-2 bg-destructive/5 border border-destructive/30 rounded-lg px-3 py-2.5 text-xs text-destructive">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span className="flex-1">{rewriteError}</span>
+          <button
+            onClick={() => setRewriteError(null)}
+            className="text-destructive/60 hover:text-destructive transition-colors shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Edit metadata modal */}
       {editingReport && (

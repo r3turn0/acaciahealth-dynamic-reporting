@@ -55,7 +55,7 @@ function inferColumnRole(
 ): ColumnRole {
   // Explicit role in raw data (legacy formats)
   if (col.role) {
-    const r = col.role.toLowerCase();
+    const r = (col.role ?? "").toLowerCase();
     if (r.includes("primary")) return "primary_key";
     if (r.includes("foreign")) return "foreign_key";
     if (r.includes("time") || r.includes("date")) return "time_dimension";
@@ -63,7 +63,7 @@ function inferColumnRole(
     if (r.includes("dimension")) return "dimension";
   }
 
-  const name = col.name.toLowerCase();
+  const name = (col.name ?? "").toLowerCase();
   const bare = stripColumnPrefix(name);
   const dataType = (col.data_type ?? col.type ?? "").toLowerCase();
 
@@ -71,10 +71,10 @@ function inferColumnRole(
   if (isAuditColumn(col.name)) return "audit";
 
   // Primary key
-  if (tablePKs.map((k) => k.toLowerCase()).includes(name)) return "primary_key";
+  if (tablePKs.map((k) => (k ?? "").toLowerCase()).includes(name)) return "primary_key";
 
   // Foreign key — column is referenced by a FK constraint
-  if (fkColumns.has(col.name)) return "foreign_key";
+  if (col.name && fkColumns.has(col.name)) return "foreign_key";
 
   // Time dimension
   if (
@@ -106,6 +106,8 @@ function normalizeColumn(
   tablePKs: string[],
   fkColumns: Set<string>
 ): Column {
+  // Guard: skip columns with no name (malformed metadata)
+  if (!raw.name) raw = { ...raw, name: "(unnamed)" };
   const role = inferColumnRole(raw, tablePKs, fkColumns);
   const type = raw.data_type ?? raw.type ?? "varchar";
 
@@ -152,8 +154,8 @@ function normalizeForeignKey(
 
     // Only emit FKs that actually belong to THIS table
     if (
-      raw.from.schema.toLowerCase() !== thisSchema.toLowerCase() ||
-      raw.from.table.toLowerCase() !== thisTable.toLowerCase()
+      (raw.from.schema ?? "").toLowerCase() !== thisSchema.toLowerCase() ||
+      (raw.from.table ?? "").toLowerCase() !== thisTable.toLowerCase()
     ) {
       return null;
     }
@@ -224,8 +226,13 @@ function inferEntityType(tableName: string): string {
 function normalizeTable(raw: RawTable, defaultSchema: string, providedDomain?: string): Table {
   // Real format: raw.schema + raw.table
   // Legacy format: raw.name or raw.table_name, raw.table_schema
-  const schemaName = raw.schema ?? raw.table_schema ?? defaultSchema;
-  const tableName = raw.table ?? raw.name ?? raw.table_name ?? "unknown";
+  const schemaName = raw.schema ?? raw.table_schema ?? defaultSchema ?? "dbo";
+  const tableName  = raw.table ?? raw.name ?? raw.table_name ?? "unknown";
+
+  // Guard against null values that would crash .toLowerCase() downstream
+  if (!schemaName || typeof schemaName !== "string") {
+    (raw as RawTable & { schema: string }).schema = defaultSchema ?? "dbo";
+  }
   const id = `${schemaName}.${tableName}`;
 
   // PKs — real format is primary_keys: string[], legacy is primaryKey/primary_key: string

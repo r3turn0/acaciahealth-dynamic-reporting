@@ -18,12 +18,27 @@ import {
   Boxes,
   Check,
   Lock,
+  Sparkles,
 } from "lucide-react";
-import schemaConfig from "@/lib/config/schemaConfig.json";
+import schemaConfig    from "@/lib/config/schemaConfig.json";
 import {
   addTableToDraft,
   useDatasetDraft,
 } from "@/lib/access/datasetDraft";
+import { SemanticSearchPanel } from "@/components/discover/SemanticSearchPanel";
+import { downloadDataset, estimateCSVBytes } from "@/lib/utils/download";
+import { logExport } from "@/lib/services/observabilityStore";
+import { orchestrate } from "@/lib/orchestration/requestRegistry";
+
+// Try to load the seeded full table list; fall back to schemaConfig keys.
+let allTablesJson: string[] = [];
+try {
+  // Dynamic require so a missing file doesn't break the build.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  allTablesJson = require("@/lib/config/allTables.json") as string[];
+} catch {
+  allTablesJson = [];
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -39,7 +54,10 @@ interface DataPage {
   source:     "demo" | "live_db";
 }
 
-const TABLES = Object.keys(schemaConfig) as Array<keyof typeof schemaConfig>;
+const TABLES: string[] =
+  allTablesJson.length > 0
+    ? allTablesJson
+    : (Object.keys(schemaConfig) as string[]);
 const PAGE_SIZES = [25, 50, 100, 200];
 
 // ── Cell renderer ─────────────────────────────────────────────────────────────
@@ -118,6 +136,7 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
   // static). Falls back to the statically-known schemaConfig tables.
   const [tableList, setTableList] = useState<string[]>(TABLES as string[]);
   const [tableSource, setTableSource] = useState<"live_db" | "static_config">("static_config");
+  const [tableListLoading, setTableListLoading] = useState(false);
 
   function handleAddToDataset() {
     addTableToDraft(selectedTable);
@@ -131,8 +150,10 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
   const [data, setData]         = useState<DataPage | null>(null);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState<string | null>(null);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters]   = useState(false);
+  const [showSemanticSearch, setShowSemanticSearch] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dataIntentRef = useRef(0);
 
   const fetchData = useCallback(async (
     table: string,
@@ -142,6 +163,7 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
     sd: "asc" | "desc",
     f: Record<string, string>
   ) => {
+    const intent = ++dataIntentRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -153,14 +175,22 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
           ? { filters: JSON.stringify(f) }
           : {}),
       });
-      const res  = await fetch(`/api/data/${encodeURIComponent(table)}?${params}`);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Failed to load");
-      setData(json);
+      const json = await orchestrate({ scope: "data-explorer", operation: "preview", resource: table, params: { pg, ps, s, sd, f }, policy: "latest", timeoutMs: 30_000 }, async (signal) => {
+        const res = await fetch(`/api/data/${encodeURIComponent(table)}?${params}`, { signal });
+        if (!res.ok) {
+          const text = await res.text();
+          let msg = `HTTP ${res.status}`;
+          try { msg = (JSON.parse(text) as { error?: string }).error ?? msg; } catch { /* keep HTTP status */ }
+          throw new Error(msg);
+        }
+        return res.json() as Promise<DataPage>;
+      });
+      if (intent === dataIntentRef.current) setData(json);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error");
+      if (e instanceof Error && (e.name === "AbortError" || e.name === "StaleRequestError")) return;
+      if (intent === dataIntentRef.current) setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
-      setLoading(false);
+      if (intent === dataIntentRef.current) setLoading(false);
     }
   }, []);
 
@@ -181,33 +211,50 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
-  // Load the complete table list from the Schema Intelligence API so the
-  // dropdown reflects every table in the database (live) or the known config.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/schema");
-        if (!res.ok) return;
-        const json = await res.json();
-        const tables: string[] = Array.isArray(json?.tables)
-          ? json.tables.map((t: { table_name: string; table_schema?: string }) =>
-              t.table_name.includes(".") || !t.table_schema || t.table_schema === "dbo"
-                ? t.table_name
-                : `${t.table_schema}.${t.table_name}`
-            )
-          : [];
-        if (cancelled) return;
-        // Union with the statically-known tables, de-duped and sorted.
-        const merged = Array.from(new Set([...(TABLES as string[]), ...tables])).sort();
-        if (merged.length > 0) setTableList(merged);
-        if (json?.source === "live_db") setTableSource("live_db");
-      } catch {
-        // Keep the static fallback list.
+  // Load the complete table list via /api/schema/tables — a dedicated endpoint
+  // that bypasses the security validator (schema introspection is always allowed).
+  const loadTableList = useCallback(async () => {
+    setTableListLoading(true);
+    try {
+      const res = await fetch("/api/schema/tables");
+      const json = await res.json() as {
+        source: string;
+        count: number;
+        tables: { table_schema: string; table_name: string; qualified_name: string }[];
+        error?: string;
+      };
+      if (!res.ok || !json.tables) return;
+      // Only swap to the live list when there are meaningfully more tables than
+      // the static fallback (avoids showing an empty list on DB-unreachable).
+      if (json.source === "live_db" && json.tables.length > 6) {
+        const names = json.tables.map((t) => t.qualified_name).sort();
+        setTableList(names);
+        setTableSource("live_db");
+        try { localStorage.setItem("hchb_table_list", JSON.stringify(names)); } catch { /* noop */ }
       }
-    })();
-    return () => { cancelled = true; };
+    } catch {
+      // Keep the static fallback list.
+    } finally {
+      setTableListLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    // Seed immediately from localStorage (previous session) so dropdown is
+    // populated before the async fetch returns.
+    try {
+      const cached = localStorage.getItem("hchb_table_list");
+      if (cached) {
+        const names: string[] = JSON.parse(cached);
+        if (names.length > 6) {
+          setTableList(names);
+          setTableSource("live_db");
+        }
+      }
+    } catch { /* noop */ }
+    // Always re-fetch fresh from the server
+    loadTableList();
+  }, [loadTableList]);
 
   function handleTableChange(t: string) {
     setSelectedTable(t);
@@ -241,23 +288,30 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
 
   function exportCSV() {
     if (!data) return;
-    const header = data.columns.join(",");
-    const rows   = data.rows.map((r) =>
-      data.columns.map((c) => {
-        const v = r[c];
-        if (v === null || v === undefined) return "";
-        const s = String(v);
-        return s.includes(",") || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
-      }).join(",")
-    );
-    const csv   = [header, ...rows].join("\n");
-    const blob  = new Blob([csv], { type: "text/csv" });
-    const url   = URL.createObjectURL(blob);
-    const a     = document.createElement("a");
-    a.href      = url;
-    a.download  = `${selectedTable}_page${data.page}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const t0 = performance.now();
+    try {
+      downloadDataset(data.rows as Record<string, unknown>[], `${selectedTable}_page${data.page}`, "csv");
+      const dur = Math.round(performance.now() - t0);
+      logExport({
+        format:        "csv",
+        rowCount:      data.rows.length,
+        columnCount:   data.columns.length,
+        fileSizeBytes: estimateCSVBytes(data.rows.length, data.columns.length),
+        reportName:    selectedTable,
+        durationMs:    dur,
+        success:       true,
+      });
+    } catch (e) {
+      logExport({
+        format:        "csv",
+        rowCount:      data.rows.length,
+        columnCount:   data.columns.length,
+        fileSizeBytes: 0,
+        reportName:    selectedTable,
+        success:       false,
+        error:         e instanceof Error ? e.message : "Unknown error",
+      });
+    }
   }
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
@@ -293,16 +347,50 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
             {tableList.length} table{tableList.length !== 1 ? "s" : ""}
           </span>
           <span
+            className={cn(
+              "flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium border",
+              tableSource === "live_db"
+                ? "bg-chart-3/10 text-chart-3 border-chart-3/25"
+                : "bg-muted text-muted-foreground border-border"
+            )}
+            title={tableSource === "live_db" ? "Tables loaded from live database" : "Using static config — click refresh to load from database"}
+          >
+            <Database className="w-2.5 h-2.5" />
+            {tableSource === "live_db" ? "Live DB" : "Static"}
+          </span>
+          <span
             className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium bg-muted text-muted-foreground border border-border"
             title="Tables are read-only in Discover Data"
           >
             <Lock className="w-2.5 h-2.5" />
             Read-only
           </span>
+          <button
+            onClick={() => loadTableList()}
+            disabled={tableListLoading}
+            title="Reload full table list from database"
+            className="flex items-center gap-1 text-[10px] px-2 py-1 rounded border border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={cn("w-3 h-3", tableListLoading && "animate-spin")} />
+            {tableListLoading ? "Loading…" : "Reload tables"}
+          </button>
         </div>
 
         {/* Actions */}
         <div className="flex items-center gap-2 sm:ml-auto shrink-0">
+          <button
+            onClick={() => setShowSemanticSearch((s) => !s)}
+            className={cn(
+              "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-colors",
+              showSemanticSearch
+                ? "bg-primary/15 border-primary/40 text-primary"
+                : "border-border text-muted-foreground hover:text-foreground hover:bg-accent/30"
+            )}
+            title="Semantic search — find tables by meaning, not just name"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Search
+          </button>
           <button
             onClick={() => setShowFilters((s) => !s)}
             className={cn(
@@ -353,6 +441,20 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
           </button>
         </div>
       </div>
+
+      {/* Semantic Search Panel */}
+      {showSemanticSearch && (
+        <div className="bg-muted/20 border border-border rounded-xl p-4">
+          <SemanticSearchPanel
+            onSelectTable={(id) => {
+              // Strip schema prefix for table selector compatibility
+              const tableName = id.includes(".") ? id.split(".").pop()! : id;
+              handleTableChange(tableName);
+              setShowSemanticSearch(false);
+            }}
+          />
+        </div>
+      )}
 
       {/* Stats bar */}
       {data && (

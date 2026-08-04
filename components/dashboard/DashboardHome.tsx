@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { ensureKpiReportsSeeded } from "@/lib/services/seedReportsClient";
 import {
   Pin,
   X,
@@ -83,22 +84,29 @@ export function DashboardHome({ onNavigate, onOpenReport }: DashboardHomeProps) 
     }
   }, []);
 
-  // Refresh pins + recent reports each time the dashboard mounts.
+  // On first mount: seed default reports + pins for all KPIs, then refresh.
+  // The seed endpoint is idempotent — subsequent mounts are no-ops.
   useEffect(() => {
-    void refreshPins();
-    void loadRecent();
+    async function seedAndRefresh() {
+      try {
+        await ensureKpiReportsSeeded();
+      } catch {
+        // Non-critical — dashboard renders fine without seeded pins.
+      }
+      void refreshPins();
+      void loadRecent();
+    }
+    void seedAndRefresh();
   }, [loadRecent]);
 
   function openPin(pin: DashboardPin) {
+    // Both report and KPI pins go directly to KPI Intelligence — Interpreter tab.
+    // Report pins pre-select the specific report by name.
+    // KPI pins pre-select by KPI key.
     if (pin.type === "report") {
-      onOpenReport({
-        sql: String(pin.meta.sql ?? ""),
-        prompt: String(pin.meta.prompt ?? ""),
-        kpi: pin.kpi,
-        name: pin.title,
-      });
+      onNavigate(`kpi:report:${pin.title}`);
     } else {
-      onNavigate("kpi");
+      onNavigate(`kpi:interpret:${pin.kpi}`);
     }
   }
 
@@ -114,8 +122,8 @@ export function DashboardHome({ onNavigate, onOpenReport }: DashboardHomeProps) 
           <RecentReportsList
             reports={recent}
             loading={loadingRecent}
-            onOpen={onOpenReport}
-            onViewAll={() => onNavigate("saved")}
+            onOpen={(r) => onNavigate(`kpi:report:${r.name}`)}
+            onViewAll={() => onNavigate("reports-saved")}
           />
         </div>
         <div>
@@ -222,7 +230,7 @@ function PinnedBoard({
         </div>
         {pins.length > 0 && (
           <button
-            onClick={() => onNavigate("saved")}
+            onClick={() => onNavigate("reports-saved")}
             className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
           >
             View all reports <ArrowRight className="w-3 h-3" />
@@ -242,7 +250,7 @@ function PinnedBoard({
           </p>
           <div className="flex items-center gap-2 mt-1">
             <button
-              onClick={() => onNavigate("saved")}
+              onClick={() => onNavigate("reports-saved")}
               className="text-xs text-primary hover:text-primary/80 underline underline-offset-2"
             >
               Go to Saved Reports
@@ -414,28 +422,80 @@ function RecentReportsList({
   );
 }
 
-// ── Quick actions ─────────────────────────────────────────────────────────────
+// ── Quick actions ─────────────────���───────────────────────────────────────────
+// All IDs are canonical 7-item nav IDs — no legacy aliases.
 
 function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {
-  const actions = [
-    { id: "data", label: "1 · Discover Data", desc: "Search, preview, and sample tables from the warehouse" },
-    { id: "contracts", label: "2 · Build Dataset", desc: "Pick tables, columns, and relationships into a reusable dataset" },
-    { id: "kpi", label: "3 · KPI Explorer", desc: "Analyze your dataset and browse KPI definitions" },
-    { id: "studio", label: "Report Studio", desc: "Ask AI, write SQL, run queries, save reports" },
+  // Workflow-first order: Discover → Dataset Studio → Reports → KPI �� Schema → Admin
+  const actions: { id: string; step?: number; label: string; desc: string; badge?: string }[] = [
+    {
+      id:    "discover",
+      step:  1,
+      label: "Discover Data",
+      desc:  "Global search — tables, columns, relationships, lineage, and semantic search",
+    },
+    {
+      id:    "dataset-studio",
+      step:  2,
+      label: "Dataset Studio",
+      desc:  "Build, validate, and publish datasets — single governed workflow",
+      badge: "Single Source",
+    },
+    {
+      id:    "reports",
+      step:  3,
+      label: "Reports",
+      desc:  "AI-assisted Report Studio, BI canvas, and the full report catalog",
+    },
+    {
+      id:    "kpi",
+      step:  4,
+      label: "KPI Intelligence",
+      desc:  "AI-powered KPI analysis, KPI Registry, and governance in one surface",
+      badge: "Registry",
+    },
+    {
+      id:    "schema",
+      label: "Schema Hub",
+      desc:  "Single metadata authority — schema, lineage, glossary, and published datasets",
+      badge: "Authority",
+    },
+    {
+      id:    "administration",
+      label: "Administration",
+      desc:  "Audit, security, sessions, agent registry, pipeline, and settings",
+    },
   ];
 
   return (
     <div className="bg-card border border-border rounded-lg p-5">
-      <h2 className="text-sm font-semibold text-foreground mb-4">Quick Actions</h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-foreground">Platform Navigation</h2>
+        <span className="text-[10px] text-muted-foreground bg-muted border border-border rounded px-2 py-0.5">
+          7 primary modules · max 3-click depth
+        </span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         {actions.map((a) => (
           <button
             key={a.id}
             onClick={() => onNavigate(a.id)}
-            className="text-left border border-border rounded-lg p-4 hover:border-primary/50 hover:bg-primary/5 transition-colors"
+            className="text-left border border-border rounded-lg p-4 hover:border-primary/50 hover:bg-primary/5 transition-colors flex flex-col gap-1.5"
           >
-            <p className="text-sm font-medium text-foreground">{a.label}</p>
-            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{a.desc}</p>
+            <div className="flex items-center gap-1.5">
+              {a.step && (
+                <span className="flex items-center justify-center w-4 h-4 rounded text-[9px] font-bold border bg-muted/60 border-border text-muted-foreground shrink-0">
+                  {a.step}
+                </span>
+              )}
+              <p className="text-sm font-medium text-foreground leading-tight">{a.label}</p>
+              {a.badge && (
+                <span className="text-[9px] font-semibold px-1 py-0.5 rounded border bg-muted/60 border-border text-muted-foreground shrink-0">
+                  {a.badge}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">{a.desc}</p>
           </button>
         ))}
       </div>

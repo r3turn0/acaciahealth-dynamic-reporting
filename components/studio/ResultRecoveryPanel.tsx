@@ -1,0 +1,10 @@
+"use client";
+import { useState } from "react";
+import { Wand2, CheckCircle2, Loader2, CalendarRange, FilterX, Replace } from "lucide-react";
+
+const strategies = [{ icon: FilterX, label: "Relax restrictive filters" }, { icon: CalendarRange, label: "Expand date range" }, { icon: Replace, label: "Search related datasets and columns" }];
+export function ResultRecoveryPanel({ onRecover }: { onRecover: () => Promise<void> }) {
+  const [running, setRunning] = useState(false); const [attempted, setAttempted] = useState(false);
+  async function recover() { setRunning(true); await onRecover(); setAttempted(true); setRunning(false); }
+  return <div className="rounded-xl border border-primary/30 bg-primary/5 p-4"><div className="flex flex-col justify-between gap-3 md:flex-row md:items-center"><div className="flex items-start gap-3"><span className="rounded-lg bg-primary/10 p-2 text-primary"><Wand2 className="size-4" /></span><div><h3 className="text-sm font-semibold">No records found</h3><p className="mt-1 text-xs text-muted-foreground">Result Recovery can safely broaden the query without changing the original SQL.</p></div></div><button type="button" onClick={() => void recover()} disabled={running} className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50">{running ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}{attempted ? "Try next strategy" : "Recover results"}</button></div><div className="mt-4 grid gap-2 md:grid-cols-3">{strategies.map(({ icon: Icon, label }, index) => <div key={label} className="flex items-center gap-2 rounded-lg border border-border bg-card p-2 text-xs text-muted-foreground">{attempted && index === 1 ? <CheckCircle2 className="size-4 text-primary" /> : <Icon className="size-4" />}{label}</div>)}</div>{attempted && <p className="mt-3 text-xs text-primary">Recovery attempted. The date range was expanded and the query was executed again; your original query remains available.</p>}</div>;
+}

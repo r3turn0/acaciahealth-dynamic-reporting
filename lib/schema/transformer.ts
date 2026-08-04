@@ -13,6 +13,15 @@ import type {
 } from "./types";
 import { createHash } from "crypto";
 
+// Static import of tableTagger — server-side only, pure TypeScript, no browser APIs
+import * as _tableTaggerModule from "@/lib/agents/tableTagger";
+function getTagger() {
+  // Guard: only run on the server; the transformer may be imported client-side for
+  // type-check purposes, but tagAllTables must never be called in the browser.
+  if (typeof window !== "undefined") return null;
+  return _tableTaggerModule;
+}
+
 // ── Graph construction ────────────────────────────────────────────────────────
 
 function buildGraph(tables: Table[]): Graph {
@@ -102,7 +111,8 @@ function buildSearchIndex(
 ): Record<string, string[]> {
   const index: Record<string, string[]> = { ...(providedIndex ?? {}) };
 
-  function add(keyword: string, tableId: string) {
+  function add(keyword: string | null | undefined, tableId: string) {
+    if (!keyword) return;
     const k = keyword.toLowerCase().trim();
     if (!k || k.length < 2) return;
     if (!index[k]) index[k] = [];
@@ -111,7 +121,7 @@ function buildSearchIndex(
 
   for (const table of tables) {
     // Table name words
-    table.name
+    (table.name ?? "")
       .replace(/([a-z])([A-Z])/g, "$1 $2")
       .split(/[_\s]+/)
       .filter(Boolean)
@@ -134,13 +144,13 @@ function buildSearchIndex(
 
     // FK target table names (so searching "branches" surfaces tables that join to BRANCHES)
     for (const fk of table.foreignKeys) {
-      const refTableName = fk.references.table.split(".").pop() ?? "";
+      const refTableName = (fk.references?.table ?? "").split(".").pop() ?? "";
       refTableName.split(/[_\s]+/).filter(Boolean).forEach((w) => add(w, table.id));
     }
 
     // Trigger/index names often contain domain keywords
-    for (const trigger of table.meta.triggers) {
-      trigger.split(/[_\s]+/).filter(Boolean).forEach((w) => add(w.toLowerCase(), table.id));
+    for (const trigger of table.meta?.triggers ?? []) {
+      trigger.split(/[_\s]+/).filter(Boolean).forEach((w) => add(w, table.id));
     }
   }
 
@@ -156,9 +166,10 @@ function buildDomains(
   const domains: Record<string, string[]> = { ...(providedDomains ?? {}) };
 
   for (const table of tables) {
-    if (!domains[table.domain]) domains[table.domain] = [];
-    if (!domains[table.domain].includes(table.id)) {
-      domains[table.domain].push(table.id);
+    const domain = table.domain ?? "uncategorised";
+    if (!domains[domain]) domains[domain] = [];
+    if (!domains[domain].includes(table.id)) {
+      domains[domain].push(table.id);
     }
   }
 
@@ -187,9 +198,9 @@ function buildEntityHints(tables: Table[]): Record<string, EntityHints> {
           commonFilters.push(col.name);
           break;
         case "dimension":
-          dimensions.push(col.name);
+          if (col.name) dimensions.push(col.name);
           {
-            const bare = col.name.toLowerCase();
+            const bare = (col.name ?? "").toLowerCase();
             if (
               bare.includes("status") || bare.includes("type") ||
               bare.includes("code") || bare.includes("branch") ||
@@ -231,16 +242,28 @@ export function transformToSchemaModel(
   tables: Table[],
   rawMeta?: RawMetadata
 ): SchemaModel {
+  // Augment each table with auto-assigned healthcare tags (server-side only)
+  const tagger = getTagger();
+  const preTagged = tables.every((t) => t.tags !== undefined);
+  const tagStore = (tagger && !preTagged) ? tagger.tagAllTables(tables) : null;
+  const taggedTables: Table[] = tables.map((t) => {
+    if (tagStore && !t.tags) {
+      const entry = tagStore[t.id];
+      return entry ? { ...t, tags: entry.tags } : t;
+    }
+    return t;
+  });
+
   const tableMap: Record<string, Table> = {};
-  for (const t of tables) {
+  for (const t of taggedTables) {
     tableMap[t.id] = t;
   }
 
-  const graph = buildGraph(tables);
+  const graph = buildGraph(taggedTables);
   const joinPaths = bfsJoinPaths(graph);
-  const searchIndex = buildSearchIndex(tables, rawMeta?.searchIndex);
-  const domains = buildDomains(tables, rawMeta?.domains);
-  const entityHints = buildEntityHints(tables);
+  const searchIndex = buildSearchIndex(taggedTables, rawMeta?.searchIndex);
+  const domains = buildDomains(taggedTables, rawMeta?.domains);
+  const entityHints = buildEntityHints(taggedTables);
 
   return {
     tables: tableMap,

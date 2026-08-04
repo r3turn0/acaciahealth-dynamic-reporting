@@ -40,6 +40,12 @@ export interface NamedParam {
 
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 500;
+// Hard ceiling: if the entire connect-with-retry sequence hasn't resolved in
+// this many ms, abort and throw BackendUnreachableError immediately.
+const CONNECT_TIMEOUT_MS = 5_000;
+// Avoid making every tab wait through the same failed network handshake when a
+// local/private SQL Server cannot be reached from the preview environment.
+const FAILURE_COOLDOWN_MS = 30_000;
 
 // Connection error codes that are safe to retry (transient network/handshake).
 const RETRYABLE_CODES = new Set([
@@ -68,6 +74,8 @@ export class BackendUnreachableError extends Error {
 const globalForDb = globalThis as unknown as {
   __mssql_pool?: sql.ConnectionPool;
   __mssql_connecting?: Promise<sql.ConnectionPool>;
+  __mssql_unavailableUntil?: number;
+  __mssql_lastError?: string;
 };
 
 // ── Config ──────────────────────────────────────────────────────────────────────
@@ -125,7 +133,7 @@ function buildConfig(): sql.config | string | null {
           },
           pool: poolSettings(),
           requestTimeout: 30_000,
-          connectionTimeout: 15_000,
+          connectionTimeout: CONNECT_TIMEOUT_MS,
         };
       }
       console.warn(
@@ -148,7 +156,7 @@ function buildConfig(): sql.config | string | null {
       database,
       user,
       password,
-      options: { ...commonOptions(), readOnlyIntent: true },
+      options: { ...commonOptions() },
       pool: poolSettings(),
       requestTimeout: 30_000,
       connectionTimeout: 15_000,
@@ -181,16 +189,26 @@ async function connectWithRetry(attempt = 1): Promise<sql.ConnectionPool> {
       "Database is not configured. Set DB_HOST/DB_NAME/DB_USER/DB_PASS (or DATABASE_URL)."
     );
   }
+  const pool = new sql.ConnectionPool(config as sql.config);
+  pool.on("error", (err) => {
+    if (globalForDb.__mssql_pool === pool) {
+      globalForDb.__mssql_pool = undefined;
+      globalForDb.__mssql_unavailableUntil = Date.now() + FAILURE_COOLDOWN_MS;
+      globalForDb.__mssql_lastError = err.message;
+      console.error("[db] Active pool became unavailable:", err.message);
+    }
+  });
   try {
-    const pool = new sql.ConnectionPool(config as sql.config);
-    pool.on("error", (err) => console.error("[db] Pool error:", err.message));
     await pool.connect();
     return pool;
   } catch (err) {
+    await pool.close().catch(() => undefined);
     const code = (err as { code?: string }).code ?? "";
-    if (RETRYABLE_CODES.has(code) && attempt < MAX_RETRIES) {
+    const message = err instanceof Error ? err.message.toLowerCase() : "";
+    const retryable = RETRYABLE_CODES.has(code) || message.includes("timed out") || message.includes("timeout");
+    if (retryable && attempt < MAX_RETRIES) {
       const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
-      console.warn(`[db] Connect failed (${code}), retry in ${delay}ms (${attempt}/${MAX_RETRIES})`);
+      console.warn(`[db] Connection attempt ${attempt}/${MAX_RETRIES} failed; retrying in ${delay}ms.`);
       await sleep(delay);
       return connectWithRetry(attempt + 1);
     }
@@ -203,24 +221,45 @@ async function getPool(): Promise<sql.ConnectionPool> {
   const existing = globalForDb.__mssql_pool;
   if (existing?.connected) return existing;
 
-  // Coalesce concurrent connection attempts.
+  const unavailableUntil = globalForDb.__mssql_unavailableUntil ?? 0;
+  if (Date.now() < unavailableUntil) {
+    throw new BackendUnreachableError(
+      globalForDb.__mssql_lastError ?? "SQL Server is temporarily unreachable."
+    );
+  }
+
+  // Coalesce concurrent connection attempts. The driver owns the timeout so
+  // there is no abandoned connect promise that can emit a late pool error.
   if (!globalForDb.__mssql_connecting) {
     globalForDb.__mssql_connecting = connectWithRetry()
       .then((pool) => {
         globalForDb.__mssql_pool = pool;
+        globalForDb.__mssql_unavailableUntil = undefined;
+        globalForDb.__mssql_lastError = undefined;
         return pool;
       })
       .catch((err) => {
+        globalForDb.__mssql_pool = undefined;
         const code = (err as { code?: string }).code ?? "";
+        const message = err instanceof Error ? err.message : "SQL Server is unreachable.";
+        globalForDb.__mssql_unavailableUntil = Date.now() + FAILURE_COOLDOWN_MS;
+        globalForDb.__mssql_lastError = message;
         // DNS/refused/timeout → surface a clear "unreachable" error.
-        if (["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "ETIMEDOUT", "ESOCKET"].includes(code)) {
-          throw new BackendUnreachableError(
-            `Cannot reach SQL Server (${code}). Verify the host is correct and reachable from where the app runs.`
-          );
+        if (
+          err instanceof BackendUnreachableError ||
+          ["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "ETIMEDOUT", "ESOCKET"].includes(code)
+        ) {
+          throw err instanceof BackendUnreachableError
+            ? err
+            : new BackendUnreachableError(
+                `Cannot reach SQL Server (${code}). Verify the host is correct and reachable from where the app runs.`
+              );
         }
         throw err;
       })
       .finally(() => {
+        // Always clear the in-flight promise so subsequent requests don't
+        // wait on a permanently-failed connection attempt.
         globalForDb.__mssql_connecting = undefined;
       });
   }
@@ -264,15 +303,54 @@ function bindParam(request: sql.Request, p: NamedParam): void {
 
 // ── Core query runner ─────────────────────────────────────────────────────────
 
+export interface QueryResultSet {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  rowCount: number;
+}
+
+export interface MultiQueryResult {
+  /** Result Set 1, retained for backward-compatible consumers. */
+  columns: string[];
+  rows: Record<string, unknown>[];
+  rowCount: number;
+  /** Every result set returned by the single SQL command. */
+  resultSets: QueryResultSet[];
+}
+
+async function runMultiQuery(
+  sqlText: string,
+  params: NamedParam[],
+  signal?: AbortSignal,
+): Promise<MultiQueryResult> {
+  if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+  const pool = await getPool();
+  const request = pool.request();
+  request.multiple = true;
+  for (const p of params) bindParam(request, p);
+  const cancel = () => request.cancel();
+  signal?.addEventListener("abort", cancel, { once: true });
+  let result;
+  try {
+    result = await request.query(sqlText);
+  } finally {
+    signal?.removeEventListener("abort", cancel);
+  }
+  const recordsets = (result.recordsets ?? []) as Record<string, unknown>[][];
+  const resultSets = recordsets.map((rows) => ({
+    columns: rows.length > 0 ? Object.keys(rows[0]) : [],
+    rows,
+    rowCount: rows.length,
+  }));
+  const first = resultSets[0] ?? { columns: [], rows: [], rowCount: 0 };
+  return { ...first, resultSets };
+}
+
 async function runQuery(
   sqlText: string,
   params: NamedParam[]
 ): Promise<Record<string, unknown>[]> {
-  const pool = await getPool();
-  const request = pool.request();
-  for (const p of params) bindParam(request, p);
-  const result = await request.query(sqlText);
-  return (result.recordset ?? []) as Record<string, unknown>[];
+  return (await runMultiQuery(sqlText, params)).rows;
 }
 
 // ── Public API (unchanged signatures for existing callers) ──────────────────────
@@ -301,9 +379,35 @@ export async function executeQuery(
  */
 export async function executeQueryWithParams(
   query: string,
-  inputs: NamedParam[]
+  inputs: NamedParam[],
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>[]> {
-  return runQuery(query, inputs);
+  return (await runMultiQuery(query, inputs, signal)).rows;
+}
+
+/** Execute one parameterized SQL command and consume every returned result set. */
+export async function executeMultiQueryWithParams(
+  query: string,
+  inputs: NamedParam[],
+  signal?: AbortSignal,
+): Promise<MultiQueryResult> {
+  return runMultiQuery(query, inputs, signal);
+}
+
+/** Execute one standard date-range command and consume every result set. */
+export async function executeMultiQuery(
+  query: string,
+  params: QueryParams,
+  signal?: AbortSignal,
+): Promise<MultiQueryResult> {
+  const named: NamedParam[] = [
+    { name: "StartDate", value: params.StartDate, type: "date" },
+    { name: "EndDate", value: params.EndDate, type: "date" },
+  ];
+  if (params.BranchCode !== undefined) {
+    named.push({ name: "BranchCode", value: params.BranchCode, type: "nvarchar" });
+  }
+  return runMultiQuery(query, named, signal);
 }
 
 /**
@@ -316,6 +420,11 @@ export async function executeRawQuery(
   return runQuery(query, []);
 }
 
+/** Introspection-only multi-result execution. Never pass user input. */
+export async function executeRawMultiQuery(query: string): Promise<MultiQueryResult> {
+  return runMultiQuery(query, []);
+}
+
 /**
  * Health check — returns true if a connection to SQL Server succeeds.
  */
@@ -326,7 +435,14 @@ export async function checkConnection(): Promise<boolean> {
     await pool.request().query("SELECT 1 AS ok");
     return true;
   } catch (err) {
-    console.error("[db] Health check failed:", (err as Error).message);
+    const pool = globalForDb.__mssql_pool;
+    globalForDb.__mssql_pool = undefined;
+    if (pool) await pool.close().catch(() => undefined);
+    const message = err instanceof Error ? err.message : "SQL Server is unreachable.";
+    const alreadyCoolingDown = Date.now() < (globalForDb.__mssql_unavailableUntil ?? 0);
+    globalForDb.__mssql_unavailableUntil = Date.now() + FAILURE_COOLDOWN_MS;
+    globalForDb.__mssql_lastError = message;
+    if (!alreadyCoolingDown) console.warn(`[db] Database unavailable; pausing health probes for ${FAILURE_COOLDOWN_MS / 1000}s.`);
     return false;
   }
 }

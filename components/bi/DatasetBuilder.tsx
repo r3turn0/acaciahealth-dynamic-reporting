@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
+  BookMarked,
   Boxes,
   Check,
   ChevronDown,
@@ -35,6 +36,7 @@ import type {
 } from "@/lib/bi/types";
 import {
   createDataset,
+  createReport,
   deleteDataset,
   updateDataset,
   useBiStore,
@@ -77,6 +79,9 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
   const [saving, setSaving] = useState(false);
   const [bumpVersion, setBumpVersion] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [reportName, setReportName] = useState("");
+  const [savingReport, setSavingReport] = useState(false);
+  const [savedReportFlash, setSavedReportFlash] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
@@ -242,6 +247,33 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
     setBumpVersion(false);
     setUploadError(null);
     setShowAdvanced(true);
+  }
+
+  async function saveReport() {
+    if (!draft.id || !reportName.trim()) return;
+    setSavingReport(true);
+    try {
+      // Default to a count-all report; user can refine it in the KPI Explorer
+      const numericFields = draft.fields.filter((f) => f.type === "number");
+      const dateFields = draft.fields.filter((f) => f.type === "date");
+      const r = await createReport({
+        name: reportName.trim(),
+        datasetId: draft.id,
+        metrics: numericFields.length > 0
+          ? [{ agg: "sum", field: numericFields[0].name }]
+          : [{ agg: "count", field: null }],
+        dimensions: dateFields.length > 0 ? [dateFields[0].name] : [],
+        filters: [],
+        chart: "bar",
+      });
+      if (r) {
+        setSavedReportFlash(true);
+        setReportName("");
+        setTimeout(() => setSavedReportFlash(false), 2000);
+      }
+    } finally {
+      setSavingReport(false);
+    }
   }
 
   const activeVersion = editingExisting
@@ -681,6 +713,35 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
                 <AlertTriangle className="w-3 h-3 shrink-0" /> {w}
               </p>
             ))}
+          </div>
+        )}
+
+        {/* Save as Report — only shown once the dataset has been saved */}
+        {editingExisting && (
+          <div className="flex flex-col gap-2 rounded-lg border border-primary/25 bg-primary/5 p-4">
+            <div className="flex items-center gap-2">
+              <BookMarked className="w-4 h-4 text-primary" />
+              <span className="text-sm font-semibold text-foreground">Save as Report</span>
+              <span className="text-[10px] text-muted-foreground">
+                Creates a starter report you can refine in the KPI Explorer
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                value={reportName}
+                onChange={(e) => setReportName(e.target.value)}
+                placeholder={`e.g. ${draft.name} Overview`}
+                className="flex-1 min-w-0 px-3 py-2 rounded-md bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+              />
+              <button
+                onClick={saveReport}
+                disabled={!reportName.trim() || savingReport}
+                className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+              >
+                <BookMarked className="w-4 h-4" />
+                {savedReportFlash ? "Saved!" : "Save Report"}
+              </button>
+            </div>
           </div>
         )}
 

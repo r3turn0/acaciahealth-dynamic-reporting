@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 /**
  * GET    /api/reports/[id]  — get single report
  * PATCH  /api/reports/[id]  — update report fields (creates version if sql/note provided)

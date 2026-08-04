@@ -37,6 +37,7 @@ export interface WorkspaceTab {
   fixExplanation?: string;
   fixConfidence?: number;
   fixChanges?: { type: string; from: string; to: string; reason?: string }[];
+  fixTier?: "deterministic" | "ai_fallback" | "failed";
   autoRetried?: boolean;
   // Vector context used for last generation
   vectorSources?: string[];
@@ -47,6 +48,8 @@ export interface WorkspaceTab {
   showFeedbackModal: boolean;
   showFixPanel: boolean;
   showHistory: boolean;
+  /** "nl" = natural language → generate → run. "sql" = direct SQL editor → run */
+  inputMode: "nl" | "sql";
 }
 
 function defaultTab(overrides: Partial<WorkspaceTab> = {}): WorkspaceTab {
@@ -64,6 +67,7 @@ function defaultTab(overrides: Partial<WorkspaceTab> = {}): WorkspaceTab {
     showFeedbackModal: false,
     showFixPanel: false,
     showHistory: false,
+    inputMode: "nl",
     ...overrides,
   };
 }
@@ -255,6 +259,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
               fixExplanation: fix.explanation,
               fixConfidence: fix.confidence,
               fixChanges: fix.changes,
+              fixTier: (fix as { tier?: "deterministic" | "ai_fallback" | "failed" }).tier,
               showFixPanel: true,
               showFeedbackModal: false,
             }

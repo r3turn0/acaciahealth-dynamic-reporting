@@ -11,6 +11,9 @@ import {
   Minus,
   BarChart2,
   TableIcon,
+  FileSpreadsheet,
+  X,
+  Maximize2,
 } from "lucide-react";
 import {
   BarChart,
@@ -30,6 +33,11 @@ export interface ReportResult {
   kpi: string;
   sql_used: string;
   data: Record<string, unknown>[];
+  result_sets?: Array<{
+    columns: string[];
+    rows: Record<string, unknown>[];
+    rowCount: number;
+  }>;
   summary: {
     row_count: number;
     columns: string[];
@@ -130,6 +138,25 @@ export function ResultsTable({ result }: ResultsTableProps) {
   const [pageSize, setPageSize] = useState(25);
   const [sort, setSort] = useState<SortConfig | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "chart">("table");
+  // Expanded cell modal: { col, rowIndex, value }
+  const [expandedCell, setExpandedCell] = useState<{ col: string; value: string } | null>(null);
+
+  // Columns that are likely to contain long narrative text
+  const summaryCols: string[] =
+    result.summary?.columns ??
+    (result.data[0] ? Object.keys(result.data[0]) : []);
+  const narrativeCols = useMemo(
+    () =>
+      new Set(
+        summaryCols.filter((c) =>
+          /narrative|assessment|note|comment|description|text|reason/i.test(c)
+        )
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [summaryCols.join(",")]
+  );
+
+  const TRUNCATE_LENGTH = 120;
 
   const insights = useMemo(() => deriveInsights(result), [result]);
   const chartData = useMemo(() => deriveChartData(result), [result]);
@@ -160,13 +187,35 @@ export function ResultsTable({ result }: ResultsTableProps) {
     setPage(0);
   }
 
+  // ── Export helpers ────────────────────────────────────────────────────────
+
+  /**
+   * RFC 4180-compliant CSV cell escape.
+   * - Wraps every value in double-quotes.
+   * - Escapes embedded double-quotes as "".
+   * - Replaces embedded newlines with a single space so each data row stays on
+   *   exactly one CSV line. This is what was causing Excel to explode multi-line
+   *   narrative fields (cevn_Assessment, cevn_VisitNarrative) across hundreds of
+   *   rows.
+   */
+  function csvCell(value: unknown): string {
+    const str = String(value ?? "")
+      .replace(/\r\n/g, " ")   // CRLF → space
+      .replace(/\r/g, " ")     // CR   → space
+      .replace(/\n/g, " ")     // LF   → space
+      .replace(/"/g, '""');    // escape embedded quotes
+    return `"${str}"`;
+  }
+
   function exportCsv() {
     const cols = result.summary.columns;
-    const header = cols.join(",");
+    const header = cols.map(csvCell).join(",");
     const rows = sorted
-      .map((r) => cols.map((c) => `"${String(r[c] ?? "").replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const blob = new Blob([header + "\n" + rows], { type: "text/csv" });
+      .map((r) => cols.map((c) => csvCell(r[c])).join(","))
+      .join("\r\n");
+    const blob = new Blob(["\uFEFF" + header + "\r\n" + rows], {
+      type: "text/csv;charset=utf-8;",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -175,7 +224,47 @@ export function ResultsTable({ result }: ResultsTableProps) {
     URL.revokeObjectURL(url);
   }
 
+  /**
+   * Excel (XLSX) export via SheetJS.
+   * Long text fields (Assessment, VisitNarrative, etc.) get wrap-text formatting
+   * so each row stays as one row and the content is readable inside the cell.
+   */
+  async function exportXlsx() {
+    const XLSX = await import("xlsx");
+    const cols = result.summary.columns;
+
+    // Build plain array-of-arrays so SheetJS preserves newlines inside cells
+    const aoaData: unknown[][] = [
+      cols, // header row
+      ...sorted.map((r) => cols.map((c) => r[c] ?? "")),
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(aoaData);
+
+    // Apply wrap-text to every cell so multi-line narratives don't break layout
+    const range = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
+    for (let R = range.s.r; R <= range.e.r; R++) {
+      for (let C = range.s.c; C <= range.e.c; C++) {
+        const addr = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!ws[addr]) continue;
+        ws[addr].s = { alignment: { wrapText: true, vertical: "top" } };
+      }
+    }
+
+    // Set column widths: narrow for IDs, wider for narrative fields
+    ws["!cols"] = cols.map((c) => {
+      const isNarrative = /narrative|assessment|note|comment/i.test(c);
+      const isName = /name|firstname|lastname/i.test(c);
+      return { wch: isNarrative ? 60 : isName ? 20 : 14 };
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Report");
+    XLSX.writeFile(wb, `${result.report_name.replace(/\s+/g, "_")}.xlsx`);
+  }
+
   return (
+    <>
     <div className="flex flex-col gap-4">
       {/* KPI Insights */}
       {insights.length > 0 && (
@@ -235,6 +324,11 @@ export function ResultsTable({ result }: ResultsTableProps) {
             <span className="text-xs text-muted-foreground">
               {result.summary.row_count.toLocaleString()} rows
             </span>
+            {(result.result_sets?.length ?? 0) > 1 && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
+                {result.result_sets?.length} datasets
+              </span>
+            )}
             {result.demo_mode && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-chart-5/15 text-chart-5 border border-chart-5/25">
                 Demo Data
@@ -288,10 +382,19 @@ export function ResultsTable({ result }: ResultsTableProps) {
             )}
             <button
               onClick={exportCsv}
+              title="Export as CSV (newlines in narrative fields are collapsed to spaces)"
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded border border-border hover:border-primary/40"
             >
               <Download className="w-3.5 h-3.5" />
               CSV
+            </button>
+            <button
+              onClick={exportXlsx}
+              title="Export as Excel — narrative fields render as wrapped cells"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded border border-border hover:border-primary/40"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              XLSX
             </button>
           </div>
         </div>
@@ -371,23 +474,40 @@ export function ResultsTable({ result }: ResultsTableProps) {
                   {result.summary.columns.map((col) => {
                     const val = row[col];
                     const isNum = typeof val === "number";
+                    const strVal = val != null ? String(val) : "";
+                    const isLong = narrativeCols.has(col) || strVal.length > TRUNCATE_LENGTH;
+                    const truncated = isLong
+                      ? strVal.replace(/[\r\n]+/g, " ").slice(0, TRUNCATE_LENGTH) + "…"
+                      : strVal;
+
                     return (
-                      <td key={col} className="px-4 py-2.5">
-                        <span
-                          className={`text-sm ${
-                            isNum
-                              ? "text-foreground tabular-nums font-medium"
-                              : "text-foreground"
-                          }`}
-                        >
-                          {isNum
-                            ? (val as number) > 999
+                      <td key={col} className="px-4 py-2.5 max-w-xs">
+                        {isNum ? (
+                          <span className="text-sm text-foreground tabular-nums font-medium">
+                            {(val as number) > 999
                               ? (val as number).toLocaleString()
-                              : String(val)
-                            : val != null
-                            ? String(val)
-                            : "—"}
-                        </span>
+                              : String(val)}
+                          </span>
+                        ) : isLong ? (
+                          <div className="flex items-start gap-2">
+                            <span className="text-sm text-foreground leading-snug line-clamp-2 flex-1">
+                              {truncated}
+                            </span>
+                            <button
+                              onClick={() =>
+                                setExpandedCell({ col, value: strVal })
+                              }
+                              title="View full text"
+                              className="shrink-0 mt-0.5 text-muted-foreground hover:text-primary transition-colors"
+                            >
+                              <Maximize2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-foreground">
+                            {strVal || "—"}
+                          </span>
+                        )}
                       </td>
                     );
                   })}
@@ -441,5 +561,58 @@ export function ResultsTable({ result }: ResultsTableProps) {
         )}
       </div>
     </div>
+
+      {/* Expanded narrative cell modal */}
+      {expandedCell && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setExpandedCell(null)}
+        >
+          <div
+            className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
+              <span className="text-sm font-semibold text-foreground">
+                {expandedCell.col.replace(/_/g, " ")}
+              </span>
+              <button
+                onClick={() => setExpandedCell(null)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {/* Modal body — scrollable */}
+            <div className="overflow-y-auto flex-1 px-5 py-4">
+              <pre className="text-sm text-foreground whitespace-pre-wrap font-sans leading-relaxed">
+                {expandedCell.value}
+              </pre>
+            </div>
+            {/* Modal footer */}
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border shrink-0">
+              <span className="text-xs text-muted-foreground mr-auto">
+                {expandedCell.value.length.toLocaleString()} characters
+              </span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(expandedCell.value).catch(() => {});
+                }}
+                className="text-xs px-3 py-1.5 rounded border border-border hover:border-primary/40 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Copy
+              </button>
+              <button
+                onClick={() => setExpandedCell(null)}
+                className="text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-25T16:42:46.357Z",
+  "generated_at": "2026-07-29T19:26:13.681Z",
   "tables": [
     {
       "schema": "Accounting",
@@ -6377,7 +6377,8 @@
       },
       "replication": {
         "is_for_replication": null
-      }
+      },
+      "description": "Billing line items. li_epiid links to CLIENT_EPISODES_ALL; li_iid links to INVOICES. Used for revenue, unbilled, and billing holds reporting."
     },
     {
       "schema": "dbo",
@@ -125718,7 +125719,8 @@
       },
       "replication": {
         "is_for_replication": null
-      }
+      },
+      "description": "Lookup of clinical care type descriptions (e.g. wound care, cardiac). Joined via CLIENT_EPISODE_CARE_TYPES."
     },
     {
       "schema": "dbo",
@@ -139457,7 +139459,8 @@
       },
       "replication": {
         "is_for_replication": null
-      }
+      },
+      "description": "Certification documents per episode. Presence of a record (ceat_epiid) indicates certification compliance for QA reporting."
     },
     {
       "schema": "dbo",
@@ -140035,7 +140038,8 @@
       },
       "replication": {
         "is_for_replication": null
-      }
+      },
+      "description": "Maps episodes to one or more care types; cect_primary = Y indicates the primary care type for the episode."
     },
     {
       "schema": "dbo",
@@ -150567,7 +150571,8 @@
       },
       "replication": {
         "is_for_replication": null
-      }
+      },
+      "description": "Recertification history for episodes. cerh_epiid links to CLIENT_EPISODES_ALL. Used for QA recertification compliance checks."
     },
     {
       "schema": "dbo",
@@ -228296,7 +228301,8 @@
       },
       "replication": {
         "is_for_replication": null
-      }
+      },
+      "description": "Lookup of non-admit reason codes and descriptions, including refusal-of-service flag (nac_refusalofservice)."
     },
     {
       "schema": "dbo",
@@ -276976,7 +276982,8 @@
       },
       "replication": {
         "is_for_replication": null
-      }
+      },
+      "description": "PDGM HIPPS code reference table. ph_hipps is the code; ph_lupaThreshold is the minimum visit count threshold for LUPA determination."
     },
     {
       "schema": "dbo",
@@ -304394,7 +304401,8 @@
       },
       "replication": {
         "is_for_replication": null
-      }
+      },
+      "description": "Lookup of service lines (e.g. HOME HEALTH, HOSPICE). Joined to CLIENT_EPISODES_ALL on sl_id = epi_slid."
     },
     {
       "schema": "dbo",
@@ -381431,6 +381439,778 @@
       "replication": {
         "is_for_replication": null
       }
+    },
+    {
+      "schema": "dbo",
+      "table": "CLIENT_EPISODES_ALL",
+      "description": "Master episode table containing all home health and hospice patient episodes. epi_id is the primary key; epi_paid is the patient ID; epi_slid links to SERVICE_LINES; epi_branchcode links to BRANCHES. Key status/date fields: epi_status, epi_SocDate, epi_DischargeDate, epi_NonAdmitDate, epi_DateOfReferral, epi_AdmitType, epi_RecertFlag, epi_DcCode, epi_branchcode.",
+      "primary_keys": [
+        "epi_id"
+      ],
+      "columns": [
+        {
+          "name": "epi_id",
+          "type": "int",
+          "is_nullable": false,
+          "is_primary_key": true,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "epi_paid",
+          "type": "int",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "epi_firstname",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "epi_lastname",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "epi_status",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "epi_SocDate",
+          "type": "datetime",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "epi_DischargeDate",
+          "type": "datetime",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "epi_NonAdmitDate",
+          "type": "datetime",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "epi_DateOfReferral",
+          "type": "datetime",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "epi_AdmitType",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "epi_RecertFlag",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "epi_DcCode",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "epi_branchcode",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "epi_slid",
+          "type": "int",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "epi_NonAdmitCode",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "FK_CEA_SERVICE_LINES",
+          "from": {
+            "schema": "dbo",
+            "table": "CLIENT_EPISODES_ALL",
+            "columns": [
+              "epi_slid"
+            ]
+          },
+          "to": {
+            "schema": "dbo",
+            "table": "SERVICE_LINES",
+            "columns": [
+              "sl_id"
+            ]
+          },
+          "is_for_replication": null
+        },
+        {
+          "name": "FK_CEA_BRANCHES",
+          "from": {
+            "schema": "dbo",
+            "table": "CLIENT_EPISODES_ALL",
+            "columns": [
+              "epi_branchcode"
+            ]
+          },
+          "to": {
+            "schema": "dbo",
+            "table": "BRANCHES",
+            "columns": [
+              "branch_code"
+            ]
+          },
+          "is_for_replication": null
+        }
+      ],
+      "indexes": [],
+      "row_count": null
+    },
+    {
+      "schema": "dbo",
+      "table": "CLIENT_EPISODE_VISITS",
+      "description": "Visit records for patient episodes. cev_epiid links to CLIENT_EPISODES_ALL. cev_setsocdateflag = Y identifies the BP1 (first SOC visit). cev_visitdate is the visit date/time.",
+      "primary_keys": [
+        "CEV_ID"
+      ],
+      "columns": [
+        {
+          "name": "CEV_ID",
+          "type": "int",
+          "is_nullable": false,
+          "is_primary_key": true,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "cev_epiid",
+          "type": "int",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "cev_visitdate",
+          "type": "datetime",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "cev_setsocdateflag",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "cev_deleted",
+          "type": "bit",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "CEV_BILLABLE",
+          "type": "bit",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "CEV_VISITDATE",
+          "type": "datetime",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "FK_CEV_CLIENT_EPISODES_ALL",
+          "from": {
+            "schema": "dbo",
+            "table": "CLIENT_EPISODE_VISITS",
+            "columns": [
+              "cev_epiid"
+            ]
+          },
+          "to": {
+            "schema": "dbo",
+            "table": "CLIENT_EPISODES_ALL",
+            "columns": [
+              "epi_id"
+            ]
+          },
+          "is_for_replication": null
+        }
+      ],
+      "indexes": [],
+      "row_count": null
+    },
+    {
+      "schema": "dbo",
+      "table": "CLIENT_EPISODE_VISITS_ALL",
+      "description": "Extended visit records for all episodes. CEV_EPIID links to CLIENT_EPISODES_ALL. CEV_BILLABLE indicates a billable visit; cev_deleted soft-deletes. Used in PDGM LUPA calculations by counting billable visits within a PDGM period date range.",
+      "primary_keys": [
+        "CEV_ID"
+      ],
+      "columns": [
+        {
+          "name": "CEV_ID",
+          "type": "int",
+          "is_nullable": false,
+          "is_primary_key": true,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "CEV_EPIID",
+          "type": "int",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "CEV_VISITDATE",
+          "type": "datetime",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "CEV_BILLABLE",
+          "type": "bit",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "cev_deleted",
+          "type": "bit",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "FK_CEVA_CLIENT_EPISODES_ALL",
+          "from": {
+            "schema": "dbo",
+            "table": "CLIENT_EPISODE_VISITS_ALL",
+            "columns": [
+              "CEV_EPIID"
+            ]
+          },
+          "to": {
+            "schema": "dbo",
+            "table": "CLIENT_EPISODES_ALL",
+            "columns": [
+              "epi_id"
+            ]
+          },
+          "is_for_replication": null
+        }
+      ],
+      "indexes": [],
+      "row_count": null
+    },
+    {
+      "schema": "dbo",
+      "table": "CLIENT_EPISODE_VISIT_NOTES",
+      "description": "Clinical visit notes for episodes. cevn_epiid links to CLIENT_EPISODES_ALL. Contains agent name, assessment, and visit narrative fields for clinical documentation reporting.",
+      "primary_keys": [
+        "cevn_id"
+      ],
+      "columns": [
+        {
+          "name": "cevn_id",
+          "type": "int",
+          "is_nullable": false,
+          "is_primary_key": true,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "cevn_epiid",
+          "type": "int",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "cevn_AgentName",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "cevn_Assessment",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "cevn_VisitNarrative",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "FK_CEVN_CLIENT_EPISODES_ALL",
+          "from": {
+            "schema": "dbo",
+            "table": "CLIENT_EPISODE_VISIT_NOTES",
+            "columns": [
+              "cevn_epiid"
+            ]
+          },
+          "to": {
+            "schema": "dbo",
+            "table": "CLIENT_EPISODES_ALL",
+            "columns": [
+              "epi_id"
+            ]
+          },
+          "is_for_replication": null
+        }
+      ],
+      "indexes": [],
+      "row_count": null
+    },
+    {
+      "schema": "dbo",
+      "table": "BRANCHES",
+      "description": "Branch locations for the agency. branch_code is the short code used in CLIENT_EPISODES_ALL.epi_branchcode; branch_name is the full branch description.",
+      "primary_keys": [
+        "branch_id"
+      ],
+      "columns": [
+        {
+          "name": "branch_id",
+          "type": "int",
+          "is_nullable": false,
+          "is_primary_key": true,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "branch_code",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "branch_name",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "branch_active",
+          "type": "bit",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        }
+      ],
+      "foreign_keys": [],
+      "indexes": [],
+      "row_count": null
+    },
+    {
+      "schema": "dbo",
+      "table": "CLIENT_EPISODE_FACETOFACE",
+      "description": "Face-to-face encounter records for episodes. ceftf_f2fappliestoepiid links to CLIENT_EPISODES_ALL. ceftf_active = 1 indicates a valid active F2F record. Used in QA compliance checks.",
+      "primary_keys": [
+        "ceftf_id"
+      ],
+      "columns": [
+        {
+          "name": "ceftf_id",
+          "type": "int",
+          "is_nullable": false,
+          "is_primary_key": true,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "ceftf_f2fappliestoepiid",
+          "type": "int",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "ceftf_active",
+          "type": "bit",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "FK_CEFTF_CLIENT_EPISODES_ALL",
+          "from": {
+            "schema": "dbo",
+            "table": "CLIENT_EPISODE_FACETOFACE",
+            "columns": [
+              "ceftf_f2fappliestoepiid"
+            ]
+          },
+          "to": {
+            "schema": "dbo",
+            "table": "CLIENT_EPISODES_ALL",
+            "columns": [
+              "epi_id"
+            ]
+          },
+          "is_for_replication": null
+        }
+      ],
+      "indexes": [],
+      "row_count": null
+    },
+    {
+      "schema": "dbo",
+      "table": "CLIENT_EPISODE_FS",
+      "description": "PDGM functional status records per episode. cefs_id is the primary key; cefs_epiid links to CLIENT_EPISODES_ALL. Used to join PDGM_PERIOD to episodes.",
+      "primary_keys": [
+        "cefs_id"
+      ],
+      "columns": [
+        {
+          "name": "cefs_id",
+          "type": "int",
+          "is_nullable": false,
+          "is_primary_key": true,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "cefs_epiid",
+          "type": "int",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "FK_CEFS_CLIENT_EPISODES_ALL",
+          "from": {
+            "schema": "dbo",
+            "table": "CLIENT_EPISODE_FS",
+            "columns": [
+              "cefs_epiid"
+            ]
+          },
+          "to": {
+            "schema": "dbo",
+            "table": "CLIENT_EPISODES_ALL",
+            "columns": [
+              "epi_id"
+            ]
+          },
+          "is_for_replication": null
+        }
+      ],
+      "indexes": [],
+      "row_count": null
+    },
+    {
+      "schema": "PDGM",
+      "table": "PDGM_PERIOD",
+      "description": "PDGM 30-day payment periods. pp_cefsId links to CLIENT_EPISODE_FS; pp_endDate is the period end date; pp_reimbursementType indicates LUPA or standard; pp_currentHipps is the HIPPS code; pp_periodEnded = 1 means the period is closed; pp_deleted = 0 for active records.",
+      "primary_keys": [
+        "pp_id"
+      ],
+      "columns": [
+        {
+          "name": "pp_id",
+          "type": "int",
+          "is_nullable": false,
+          "is_primary_key": true,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "pp_cefsId",
+          "type": "int",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "pp_startDate",
+          "type": "date",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "pp_endDate",
+          "type": "date",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "pp_reimbursementType",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "pp_currentHipps",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "pp_periodEnded",
+          "type": "bit",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "pp_deleted",
+          "type": "bit",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        }
+      ],
+      "foreign_keys": [
+        {
+          "name": "FK_PP_CLIENT_EPISODE_FS",
+          "from": {
+            "schema": "PDGM",
+            "table": "PDGM_PERIOD",
+            "columns": [
+              "pp_cefsId"
+            ]
+          },
+          "to": {
+            "schema": "dbo",
+            "table": "CLIENT_EPISODE_FS",
+            "columns": [
+              "cefs_id"
+            ]
+          },
+          "is_for_replication": null
+        },
+        {
+          "name": "FK_PP_PDGM_HIPPS",
+          "from": {
+            "schema": "PDGM",
+            "table": "PDGM_PERIOD",
+            "columns": [
+              "pp_currentHipps"
+            ]
+          },
+          "to": {
+            "schema": "dbo",
+            "table": "PDGM_HIPPS",
+            "columns": [
+              "ph_hipps"
+            ]
+          },
+          "is_for_replication": null
+        }
+      ],
+      "indexes": [],
+      "row_count": null
+    },
+    {
+      "schema": "Billing",
+      "table": "INVOICES",
+      "description": "Invoice records in the billing system. i_id is the primary key; i_branchcode links to BRANCHES; i_balance is the outstanding balance; i_postdate is the invoice post date; i_status can be HOLD or HELD. Used for AR aging and billing holds reporting.",
+      "primary_keys": [
+        "i_id"
+      ],
+      "columns": [
+        {
+          "name": "i_id",
+          "type": "int",
+          "is_nullable": false,
+          "is_primary_key": true,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "i_branchcode",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "i_balance",
+          "type": "decimal",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "i_postdate",
+          "type": "datetime",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        },
+        {
+          "name": "i_status",
+          "type": "varchar",
+          "is_nullable": true,
+          "is_primary_key": false,
+          "is_foreign_key": false,
+          "default_value": null,
+          "description": null
+        }
+      ],
+      "foreign_keys": [],
+      "indexes": [],
+      "row_count": null
     }
   ],
   "schemas": {

@@ -1,5 +1,8 @@
 "use client";
 
+import { KpiIntelligenceWorkspace } from "./KpiIntelligenceWorkspace";
+import { ensureKpiReportsSeeded } from "@/lib/services/seedReportsClient";
+
 import { useState, useCallback, useRef, useEffect } from "react";
 import { copyToClipboard } from "@/lib/utils";
 import {
@@ -13,6 +16,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleAlert,
+  Copy,
   Download,
   Lightbulb,
   Loader2,
@@ -43,7 +47,29 @@ interface FollowUpMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  loading?: boolean;
+  streaming?: boolean;
+}
+
+// ── Simple plain-text → JSX renderer ─────────────────────────────────────────
+
+function SimpleMarkdown({ text }: { text: string }) {
+  const lines = text.split("\n");
+  return (
+    <div className="flex flex-col gap-1.5 text-sm leading-relaxed text-foreground/85">
+      {lines.map((line, i) => {
+        if (line.startsWith("- ") || line.startsWith("• ")) {
+          return (
+            <div key={i} className="flex gap-2 items-start">
+              <span className="text-primary mt-1 shrink-0">•</span>
+              <span>{line.slice(2)}</span>
+            </div>
+          );
+        }
+        if (!line.trim()) return <div key={i} className="h-1" />;
+        return <p key={i}>{line}</p>;
+      })}
+    </div>
+  );
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -195,6 +221,7 @@ function FollowUpThread({
   const [messages, setMessages] = useState<FollowUpMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -212,8 +239,10 @@ function FollowUpThread({
   async function ask(question: string) {
     if (!question.trim() || loading) return;
     if (startDate && endDate && startDate > endDate) return;
+
     const userMsg: FollowUpMessage = { id: Date.now().toString(), role: "user", content: question };
-    const placeholder: FollowUpMessage = { id: `${Date.now()}-loading`, role: "assistant", content: "", loading: true };
+    const assistantId = `${Date.now()}-a`;
+    const placeholder: FollowUpMessage = { id: assistantId, role: "assistant", content: "", streaming: true };
     setMessages((prev) => [...prev, userMsg, placeholder]);
     setInput("");
     setLoading(true);
@@ -231,16 +260,31 @@ function FollowUpThread({
           end_date: endDate,
         }),
       });
-      const data = await res.json();
-      const answer = data.answer ?? "Sorry, I could not generate an answer.";
+
+      if (!res.ok || !res.body) throw new Error("Stream failed");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        accumulated += decoder.decode(value, { stream: true });
+        const current = accumulated;
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, content: current } : m))
+        );
+      }
+
       setMessages((prev) =>
-        prev.map((m) => (m.id === placeholder.id ? { ...m, content: answer, loading: false } : m))
+        prev.map((m) => (m.id === assistantId ? { ...m, streaming: false } : m))
       );
     } catch {
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === placeholder.id
-            ? { ...m, content: "Failed to get a response. Please try again.", loading: false }
+          m.id === assistantId
+            ? { ...m, content: "Failed to get a response. Please try again.", streaming: false }
             : m
         )
       );
@@ -250,19 +294,36 @@ function FollowUpThread({
     }
   }
 
+  async function copyMsg(content: string, id: string) {
+    await copyToClipboard(content);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  }
+
+  const userMessageCount = messages.filter((m) => m.role === "user").length;
+
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
       <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border bg-muted/20">
         <MessageSquare className="w-4 h-4 text-primary" />
         <h3 className="text-sm font-semibold text-foreground">Ask Follow-Up Questions</h3>
         {messages.length > 0 && (
-          <span className="ml-auto text-[10px] text-muted-foreground">
-            {Math.ceil(messages.filter((m) => m.role === "user").length)} question{messages.filter((m) => m.role === "user").length !== 1 ? "s" : ""} asked
-          </span>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-[10px] text-muted-foreground">
+              {userMessageCount} question{userMessageCount !== 1 ? "s" : ""} asked
+            </span>
+            <button
+              onClick={() => setMessages([])}
+              className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <RefreshCw className="w-3 h-3" />
+              Clear
+            </button>
+          </div>
         )}
       </div>
 
-      {/* Date range filter — scopes follow-up answers to a period */}
+      {/* Date range filter */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-2.5 border-b border-border bg-muted/10">
         <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <Calendar className="w-3.5 h-3.5 text-primary" /> Date range
@@ -290,14 +351,15 @@ function FollowUpThread({
       </div>
 
       <div className="p-4 flex flex-col gap-3">
-        {/* Suggestion chips — only shown when no messages yet */}
+        {/* Suggestion chips — always visible when no messages */}
         {messages.length === 0 && (
           <div className="flex flex-wrap gap-2">
             {SUGGESTIONS.map((s) => (
               <button
                 key={s}
                 onClick={() => ask(s)}
-                className="text-xs text-muted-foreground hover:text-primary border border-border hover:border-primary/40 rounded-full px-3 py-1 transition-colors bg-muted/30 hover:bg-primary/5"
+                disabled={loading}
+                className="text-xs text-muted-foreground hover:text-primary border border-border hover:border-primary/40 rounded-full px-3 py-1 transition-colors bg-muted/30 hover:bg-primary/5 disabled:opacity-50"
               >
                 {s}
               </button>
@@ -313,22 +375,33 @@ function FollowUpThread({
                 key={m.id}
                 className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
               >
-                <div
-                  className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed ${
-                    m.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted border border-border text-foreground"
-                  }`}
-                >
-                  {m.loading ? (
-                    <span className="flex items-center gap-2 text-muted-foreground">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      Thinking...
-                    </span>
-                  ) : (
-                    m.content
-                  )}
-                </div>
+                {m.role === "user" ? (
+                  <div className="max-w-[85%] rounded-xl px-3.5 py-2.5 bg-primary text-primary-foreground text-sm leading-relaxed">
+                    {m.content}
+                  </div>
+                ) : (
+                  <div className="max-w-[95%] rounded-xl px-4 py-3 bg-muted border border-border flex flex-col gap-2">
+                    {m.streaming && !m.content ? (
+                      <span className="flex items-center gap-2 text-muted-foreground text-sm">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Thinking...
+                      </span>
+                    ) : (
+                      <>
+                        <SimpleMarkdown text={m.content} />
+                        {!m.streaming && (
+                          <button
+                            onClick={() => copyMsg(m.content, m.id)}
+                            className="self-end flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-1"
+                          >
+                            <Copy className="w-3 h-3" />
+                            {copiedId === m.id ? "Copied!" : "Copy"}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
             <div ref={bottomRef} />
@@ -368,7 +441,14 @@ function FollowUpThread({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function KpiInterpreter() {
+interface KpiInterpreterProps {
+  /** When set, auto-loads reports and pre-selects the first report matching this KPI key */
+  preselectedKpi?: string | null;
+  /** When set, auto-selects the report whose name matches exactly (takes priority over preselectedKpi) */
+  preselectedReportName?: string | null;
+}
+
+export function KpiInterpreter({ preselectedKpi, preselectedReportName }: KpiInterpreterProps = {}) {
   const [reports, setReports] = useState<SavedReport[] | null>(null);
   const [loadingReports, setLoadingReports] = useState(false);
   const [selectedReport, setSelectedReport] = useState<SavedReport | null>(null);
@@ -384,23 +464,105 @@ export function KpiInterpreter() {
     };
   });
   const [interpreting, setInterpreting] = useState(false);
+  const [interpretStage, setInterpretStage] = useState<string>("");
   const [insights, setInsights] = useState<BusinessInsights | null>(null);
   const [meta, setMeta] = useState<InterpretMeta | null>(null);
   const [showJson, setShowJson] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadReports = useCallback(async () => {
+  // Stable ref so interpret() can be called from effects without being a dep
+  const interpretRef = useRef<(() => Promise<void>) | null>(null);
+
+  const loadReports = useCallback(async (autoSelectKpi?: string) => {
     setLoadingReports(true);
     try {
+      // Idempotent seed: populates SQL library reports if not yet present.
+      await ensureKpiReportsSeeded().catch(() => {});
       const res = await fetch("/api/reports");
       const json = await res.json();
-      setReports(json.reports ?? []);
+      const loaded: SavedReport[] = json.reports ?? [];
+      setReports(loaded);
+      // Auto-select first matching report when a KPI is pre-selected
+      const kpiToMatch = autoSelectKpi;
+      if (kpiToMatch) {
+        const match = loaded.find((r) => r.kpi === kpiToMatch);
+        if (match) {
+          setSelectedReport(match);
+          setInsights(null);
+          // Interpretation will auto-trigger via the selectedReport effect below
+        }
+      }
     } catch {
       setError("Failed to load saved reports.");
     } finally {
       setLoadingReports(false);
     }
   }, []);
+
+  // Auto-load reports on first mount so the selector is immediately populated
+  // without requiring a manual button click.
+  useEffect(() => {
+    loadReports();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When preselectedKpi changes (user clicked a KPI card in another tab),
+  // auto-load reports and highlight the matching report.
+  useEffect(() => {
+    if (!preselectedKpi) return;
+    if (reports) {
+      // Reports already loaded — just update selection
+      const match = reports.find((r) => r.kpi === preselectedKpi);
+      if (match) {
+        setSelectedReport(match);
+        setInsights(null);
+        // Interpretation will auto-trigger via the selectedReport effect below
+      }
+    } else {
+      // Reports not yet loaded — load with auto-selection
+      loadReports(preselectedKpi);
+    }
+  }, [preselectedKpi]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When a specific report name is pre-selected (e.g. from a dashboard pin),
+  // find and select it by name — takes priority over preselectedKpi.
+  useEffect(() => {
+    if (!preselectedReportName) return;
+    if (reports) {
+      const match = reports.find(
+        (r) => r.name.toLowerCase() === preselectedReportName.toLowerCase()
+      );
+      if (match) {
+        setSelectedReport(match);
+        setInsights(null);
+      }
+    } else {
+      // Reports not yet loaded — load first, then select by name
+      loadReports();
+    }
+  }, [preselectedReportName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When reports finish loading and we have a pending preselectedReportName, select it
+  useEffect(() => {
+    if (!preselectedReportName || !reports) return;
+    const match = reports.find(
+      (r) => r.name.toLowerCase() === preselectedReportName.toLowerCase()
+    );
+    if (match && selectedReport?.name !== match.name) {
+      setSelectedReport(match);
+      setInsights(null);
+    }
+  }, [reports]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-run interpretation whenever the selected report changes (and we have dates)
+  useEffect(() => {
+    if (!selectedReport) return;
+    // Use the ref so we always call the latest version of interpret()
+    // without adding it as a dep (avoids infinite loop)
+    const timer = setTimeout(() => {
+      interpretRef.current?.();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [selectedReport?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Derived filter
   const allKpis = reports
@@ -424,6 +586,7 @@ export function KpiInterpreter() {
     setInsights(null);
     setMeta(null);
     setError(null);
+    setInterpretStage("Running report query...");
 
     try {
       const runRes = await fetch("/api/report/run", {
@@ -438,8 +601,63 @@ export function KpiInterpreter() {
         }),
       });
       const runJson = await runRes.json();
-      const rows: Record<string, unknown>[] = runJson.data ?? [];
+      let rows: Record<string, unknown>[] = runJson.data ?? [];
+
+      // ── Zero-row retry: rewrite SQL and re-execute ────────────────────────
+      if (rows.length === 0 && selectedReport.sql) {
+        setInterpretStage("No data returned — rewriting SQL query...");
+
+        try {
+          const fixRes = await fetch("/api/fix-query", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userQuery: selectedReport.prompt || selectedReport.name,
+              generatedSQL: selectedReport.sql,
+              apiError: "Query returned 0 rows",
+              dbErrorLogs: "Zero rows returned — date range or filter conditions may be too restrictive",
+              start_date: dateRange.start,
+              end_date: dateRange.end,
+            }),
+          });
+
+          if (fixRes.ok) {
+            const fixJson = await fixRes.json();
+            const rewrittenSql: string = fixJson.fixedSQL ?? "";
+
+            if (rewrittenSql && rewrittenSql !== selectedReport.sql) {
+              setInterpretStage("Retrying with rewritten SQL...");
+
+              const retryRes = await fetch("/api/run-sql", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  sql: rewrittenSql,
+                  start_date: dateRange.start,
+                  end_date: dateRange.end,
+                  report_name: selectedReport.name,
+                  original_prompt: selectedReport.prompt,
+                }),
+              });
+
+              if (retryRes.ok) {
+                const retryJson = await retryRes.json();
+                const retryRows: Record<string, unknown>[] = retryJson.rows ?? [];
+                if (retryRows.length > 0) {
+                  rows = retryRows;
+                }
+              }
+            }
+          }
+        } catch {
+          // Rewrite failed — fall through with 0 rows (demo fallback in interpret API)
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       const columns: string[] = rows.length > 0 ? Object.keys(rows[0]) : [];
+
+      setInterpretStage(`Analysing ${rows.length} row${rows.length !== 1 ? "s" : ""} with AI...`);
 
       const intRes = await fetch("/api/kpi/interpret", {
         method: "POST",
@@ -460,8 +678,12 @@ export function KpiInterpreter() {
       setError("Interpretation failed. Please try again.");
     } finally {
       setInterpreting(false);
+      setInterpretStage("");
     }
   }
+
+  // Keep ref in sync so the auto-trigger effect always calls the latest closure
+  interpretRef.current = interpret;
 
   // ── Empty state ─────────���──────────────────────────────────────────────────
 
@@ -469,38 +691,29 @@ export function KpiInterpreter() {
     return (
       <div className="flex flex-col items-center justify-center py-16 gap-4">
         <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-          <Sparkles className="w-6 h-6 text-primary" />
+          <Loader2 className="w-6 h-6 text-primary animate-spin" />
         </div>
         <div className="text-center">
-          <p className="text-sm font-medium text-foreground">KPI Interpreter</p>
-          <p className="text-xs text-muted-foreground mt-1 max-w-xs leading-relaxed">
-            Load your saved reports, select one, and the AI will generate a structured business
-            insights JSON with trends, alerts, and recommendations.
-          </p>
+          <p className="text-sm font-medium text-foreground">Loading reports…</p>
+          <p className="text-xs text-muted-foreground mt-1">Fetching your saved report library.</p>
         </div>
-        <button
-          onClick={loadReports}
-          disabled={loadingReports}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
-        >
-          {loadingReports ? <Loader2 className="w-4 h-4 animate-spin" /> : <BookOpen className="w-4 h-4" />}
-          Load Saved Reports
-        </button>
       </div>
     );
   }
 
-  // ── Main view ──────────────────────────────────────────────────────���───────
+  // ── Main view ────────────────────────────────���─────────────────────���───────
 
   return (
     <div className="flex flex-col gap-5">
+
+      <KpiIntelligenceWorkspace />
 
       {/* Report selector */}
       <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-foreground">Select a Report to Interpret</h3>
           <button
-            onClick={loadReports}
+            onClick={() => loadReports()}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             <RefreshCw className="w-3 h-3" />
@@ -619,15 +832,30 @@ export function KpiInterpreter() {
               {interpreting ? (
                 <><Loader2 className="w-4 h-4 animate-spin" />Interpreting...</>
               ) : (
-                <><Sparkles className="w-4 h-4" />Generate Insights</>
+                <><Sparkles className="w-4 h-4" />Re-run Insights</>
               )}
             </button>
           </div>
+          {interpreting && interpretStage && (
+            <div className="mt-3 flex items-center gap-2 text-xs text-primary">
+              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+              <span>{interpretStage}</span>
+            </div>
+          )}
           {error && (
             <p className="mt-3 text-xs text-destructive flex items-center gap-1.5">
               <AlertTriangle className="w-3.5 h-3.5" />{error}
             </p>
           )}
+        </div>
+      )}
+
+      {/* Interpreting spinner — shown between report selection and insights appearing */}
+      {interpreting && !insights && (
+        <div className="flex flex-col items-center justify-center py-12 gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <p className="text-sm font-medium text-foreground">{interpretStage || "Generating insights..."}</p>
+          <p className="text-xs text-muted-foreground">Running the report query and analysing with AI</p>
         </div>
       )}
 

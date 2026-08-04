@@ -21,7 +21,10 @@ import kpiConfig from "@/lib/config/kpiConfig.json";
 import schemaConfig from "@/lib/config/schemaConfig.json";
 import type { QueryPlan } from "./AskAI";
 
-type KpiKey = keyof typeof kpiConfig;
+// kpiConfig is a structured JSON with a top-level "kpis" sub-object.
+// Derive KpiKey from the nested kpis map so string literals like "admissions" are valid.
+const kpis = kpiConfig.kpis as Record<string, Record<string, unknown>>;
+type KpiKey = keyof typeof kpiConfig.kpis;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -68,7 +71,7 @@ const GROUPING_LABELS: Record<string, string> = {
   service_line: "Service Line",
 };
 
-const FILTER_FIELDS: Record<KpiKey, { value: string; label: string; type: "text" | "number" | "select" }[]> = {
+const FILTER_FIELDS: Partial<Record<KpiKey, { value: string; label: string; type: "text" | "number" | "select" }[]>> = {
   admissions: [
     { value: "b.branch_name", label: "Branch Name", type: "text" },
     { value: "epi.epi_branchcode", label: "Branch Code", type: "text" },
@@ -255,11 +258,13 @@ function FilterRowItem({
 // ── SQL preview builder ───────────────────────────────────────────────────────
 
 function buildPreviewSQL(state: BuilderState, startDate: string, endDate: string): string {
-  const kpi = kpiConfig[state.kpi];
+  const kpiEntry = kpis[state.kpi] ?? {};
+  const tableAlias = (kpiEntry.alias as string | undefined) ?? "epi";
+  const dateCol = (kpiEntry.date_column as string | undefined) ?? "epi_SocDate";
   const groupDefs: Record<string, { selectExpr: string; groupExpr: string; alias: string }> = {
     branch: { selectExpr: "b.branch_name", groupExpr: "b.branch_name", alias: "branch_name" },
-    week: { selectExpr: `DATEPART(WEEK, ${kpi.alias}.${kpi.date_column})`, groupExpr: `DATEPART(WEEK, ${kpi.alias}.${kpi.date_column})`, alias: "week_number" },
-    month: { selectExpr: `DATEPART(MONTH, ${kpi.alias}.${kpi.date_column})`, groupExpr: `DATEPART(MONTH, ${kpi.alias}.${kpi.date_column})`, alias: "month" },
+    week: { selectExpr: `DATEPART(WEEK, ${tableAlias}.${dateCol})`, groupExpr: `DATEPART(WEEK, ${tableAlias}.${dateCol})`, alias: "week_number" },
+    month: { selectExpr: `DATEPART(MONTH, ${tableAlias}.${dateCol})`, groupExpr: `DATEPART(MONTH, ${tableAlias}.${dateCol})`, alias: "month" },
     care_type: { selectExpr: "ct.ct_name", groupExpr: "ct.ct_name", alias: "care_type" },
     service_line: { selectExpr: "sl.sl_name", groupExpr: "sl.sl_name", alias: "service_line" },
     region: { selectExpr: "b.branch_name", groupExpr: "b.branch_name", alias: "region" },
@@ -274,14 +279,16 @@ function buildPreviewSQL(state: BuilderState, startDate: string, endDate: string
     selectCols.push(`    ${def.selectExpr} AS ${def.alias}`);
     groupExprs.push(def.groupExpr);
   }
-  selectCols.push(`    ${kpi.aggregation} AS ${state.kpi}`);
+  const aggregation = (kpiEntry.aggregation as string | undefined) ?? "COUNT(DISTINCT epi.epi_id)";
+  selectCols.push(`    ${aggregation} AS ${state.kpi}`);
 
   // JOINs
   const joins: string[] = [];
   const needsBranch = state.groupBy.includes("branch") || state.groupBy.includes("region");
   const needsCareType = state.groupBy.includes("care_type");
   const needsServiceLine = state.groupBy.includes("service_line");
-  const isRevenue = kpi.fact_table === "Billing.LINE_ITEMS";
+  const factTable = (kpiEntry.fact_table as string | undefined) ?? (kpiEntry.source as string | undefined) ?? "CLIENT_EPISODES_ALL";
+  const isRevenue = factTable === "Billing.LINE_ITEMS";
 
   if (needsBranch) {
     if (isRevenue) {
@@ -307,7 +314,7 @@ function buildPreviewSQL(state: BuilderState, startDate: string, endDate: string
 
   // WHERE
   const whereFilters = [
-    `${kpi.alias}.${kpi.date_column} BETWEEN @StartDate AND @EndDate`,
+    `${tableAlias}.${dateCol} BETWEEN @StartDate AND @EndDate`,
     `-- @StartDate = '${startDate}', @EndDate = '${endDate}'`,
     ...state.filters
       .filter((f) => f.field && f.value)
@@ -328,7 +335,7 @@ function buildPreviewSQL(state: BuilderState, startDate: string, endDate: string
   const lines: string[] = [
     `SELECT`,
     selectCols.join(",\n"),
-    `FROM ${kpi.fact_table} ${kpi.alias}`,
+    `FROM ${factTable} ${tableAlias}`,
     ...joins,
     `WHERE`,
     `    ${whereFilters.join("\n    AND ")}`,
@@ -361,15 +368,16 @@ export function VisualQueryBuilder({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
 
-  const kpi = kpiConfig[state.kpi];
-  const allowedGroups = kpi.grouping_options as string[];
-  const filterFields = FILTER_FIELDS[state.kpi];
+  const kpi = kpis[state.kpi] ?? {};
+  const allowedGroups = (kpi.grouping_options as string[] | undefined) ?? ["branch", "week", "month", "region", "care_type", "service_line"];
+  const filterFields = FILTER_FIELDS[state.kpi] ?? [];
   const previewSQL = buildPreviewSQL(state, startDate, endDate);
 
   // Reset groupBy when KPI changes to only keep valid groups
   function setKpi(k: KpiKey) {
-    const newKpiConfig = kpiConfig[k];
-    const allowed = new Set(newKpiConfig.grouping_options as string[]);
+    const newKpiConfig = kpis[k] ?? {};
+    const rawGroups = (newKpiConfig.grouping_options as string[] | undefined) ?? ["branch", "week", "month", "region", "care_type", "service_line"];
+    const allowed = new Set(rawGroups);
     setState((s) => ({
       ...s,
       kpi: k,
@@ -429,14 +437,16 @@ export function VisualQueryBuilder({
     const baseExplanation = `Visual Builder query: ${kpi.label} grouped by ${state.groupBy
       .map((g) => GROUPING_LABELS[g] ?? g)
       .join(", ")}.`;
+    const kpiLabel = (kpi.label as string | undefined) ?? state.kpi;
+    const kpiFactTable = (kpi.fact_table as string | undefined) ?? (kpi.source as string | undefined) ?? "CLIENT_EPISODES_ALL";
     const filtersApplied = [
       `Date: ${startDate} → ${endDate}`,
-      `KPI: ${kpi.label}`,
+      `KPI: ${kpiLabel}`,
       `Group by: ${state.groupBy.map((g) => GROUPING_LABELS[g] ?? g).join(", ")}`,
       ...state.filters.filter((f) => f.field && f.value).map((f) => `${f.field} ${f.operator} ${f.value}`),
     ];
-    const tablesUsed = [
-      kpi.fact_table,
+    const tablesUsed: string[] = [
+      kpiFactTable,
       "BRANCHES",
       ...(state.groupBy.includes("care_type") ? ["CARE_TYPES"] : []),
       ...(state.groupBy.includes("service_line") ? ["SERVICE_LINES"] : []),
@@ -448,7 +458,7 @@ export function VisualQueryBuilder({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: `${kpi.label} by ${state.groupBy.join(" and ")} from ${startDate} to ${endDate}`,
+          prompt: `${kpiLabel} by ${state.groupBy.join(" and ")} from ${startDate} to ${endDate}`,
           start_date: startDate,
           end_date: endDate,
           // Pass builder state directly so the route can use it for structured generation
@@ -641,7 +651,7 @@ export function VisualQueryBuilder({
                 onChange={(e) => setState((s) => ({ ...s, orderBy: e.target.value }))}
                 className="appearance-none bg-muted border border-border rounded-md px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-7 min-w-[120px]"
               >
-                <option value={state.kpi}>{kpi.label} (metric)</option>
+                <option value={state.kpi}>{(kpi.label as string | undefined) ?? state.kpi} (metric)</option>
                 {state.groupBy.map((g) => (
                   <option key={g} value={GROUPING_LABELS[g]?.toLowerCase().replace(/ /g, "_") ?? g}>
                     {GROUPING_LABELS[g] ?? g}

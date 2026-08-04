@@ -34,7 +34,9 @@ const ConfigSchema = z.object({
     )
     .describe("Filters to apply. Use last_n_days with a number for recent date windows."),
   chart: z.enum(["bar", "line", "pie", "table"]),
-  explanation: z.string().describe("One sentence explaining the chosen config."),
+  title: z.string().describe("A concise title for the proposed visualization."),
+  action: z.enum(["create_visualization", "update_visualization", "add_filter", "forecast", "explain"]).default("create_visualization"),
+  explanation: z.string().describe("One sentence explaining the chosen config and why it is appropriate."),
 });
 
 export async function POST(req: NextRequest) {
@@ -53,7 +55,9 @@ You are given the available dataset fields (name + type). Rules:
 - Numeric fields are candidates for metrics; string fields for dimensions; date fields for trends/date filters.
 - "total/sum" -> sum, "average/avg" -> avg, "count/number of" -> count (field null).
 - Phrases like "last 30 days" -> a last_n_days filter of 30 on a date field.
-- Choose the best chart: bar (comparison), line (time trend), pie (share), table (raw).`;
+- Choose the best chart: bar (comparison), line (time trend), pie (share), table (raw).
+- Return a proposed action only. The user must confirm before it is applied or saved.
+- You receive schema metadata only. Do not request, infer, or expose patient-level identifiers or source rows.`;
 
     const user = `Available fields:
 ${fields.map((f) => `- ${f.name} (${f.type})`).join("\n")}
@@ -140,6 +144,8 @@ function heuristicConfig(prompt: string, fields: DatasetField[]) {
     dimensions: dimension ? [dimension] : [],
     filters,
     chart,
+    title: `${agg === "count" ? "Count" : `${agg} ${metricField ?? "metric"}`}${dimension ? ` by ${dimension}` : ""}`,
+    action: /forecast|project|predict/.test(p) ? "forecast" : filters.length ? "add_filter" : "create_visualization",
     explanation: `Heuristic: ${agg}${metricField ? ` of ${metricField}` : ""}${
       dimension ? ` by ${dimension}` : ""
     }${filters.length ? " over recent window" : ""}.`,

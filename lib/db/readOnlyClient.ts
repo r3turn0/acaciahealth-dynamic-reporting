@@ -14,7 +14,10 @@
 import {
   executeQuery,
   executeQueryWithParams,
+  executeMultiQuery,
+  executeMultiQueryWithParams,
   executeRawQuery,
+  executeRawMultiQuery,
   checkConnection,
   isDbConfigured,
   BackendUnreachableError,
@@ -87,6 +90,18 @@ export async function queryWithParams(
   return executeQueryWithParams(sql, inputs);
 }
 
+/** Run one read-only command and return every dataset it produces. */
+export async function queryMultiple(sql: string, params: QueryParams) {
+  assertReadOnly(sql);
+  return executeMultiQuery(sql, params);
+}
+
+/** Run one arbitrary-parameter read-only command and return every dataset. */
+export async function queryMultipleWithParams(sql: string, inputs: NamedParam[]) {
+  assertReadOnly(sql);
+  return executeMultiQueryWithParams(sql, inputs);
+}
+
 /**
  * Run a schema-introspection query (no user params).
  * Only safe, hardcoded SQL should ever be passed here.
@@ -96,4 +111,10 @@ export async function introspect(
 ): Promise<Record<string, unknown>[]> {
   assertReadOnly(sql);
   return executeRawQuery(sql);
+}
+
+/** Run a hardcoded read-only introspection batch and consume every dataset. */
+export async function introspectMultiple(sql: string) {
+  assertReadOnly(sql);
+  return executeRawMultiQuery(sql);
 }

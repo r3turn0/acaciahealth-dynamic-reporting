@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Bookmark, Check, Loader2, X, AlertTriangle, GitMerge } from "lucide-react";
+import { Bookmark, Check, Loader2, X, AlertTriangle, GitMerge, Wand2, MessageSquareWarning } from "lucide-react";
 import { AskAI } from "./AskAI";
 import { SQLEditor } from "./SQLEditor";
 import { QueryExplanation } from "./QueryExplanation";
@@ -10,6 +10,7 @@ import { PostQueryAnalytics } from "./PostQueryAnalytics";
 import { SemanticQueryPanel } from "./SemanticQueryPanel";
 import { SavedReports } from "./SavedReports";
 import { VisualQueryBuilder } from "./VisualQueryBuilder";
+import { ResultRecoveryPanel } from "./ResultRecoveryPanel";
 import type { QueryPlan } from "./AskAI";
 import type { ReportResult } from "./ResultsTable";
 
@@ -23,21 +24,20 @@ export interface LoadedReport {
 }
 
 interface ReportStudioProps {
-  initialReport?: LoadedReport | null;
+  initialReport?:  LoadedReport | null;
+  initialTab?:     StudioTab;
+  onNavigate?:     (view: string) => void;
 }
 
-export function ReportStudio({ initialReport }: ReportStudioProps) {
-  const [tab, setTab] = useState<StudioTab>("ask");
-  // Dates initialized empty to avoid SSR/client mismatch; populated in useEffect
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-
-  useEffect(() => {
-    const end = new Date();
-    const start = new Date(end.getTime() - 28 * 24 * 60 * 60 * 1000);
-    setStartDate(start.toISOString().split("T")[0]);
-    setEndDate(end.toISOString().split("T")[0]);
-  }, []);
+export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportStudioProps) {
+  const [tab, setTab] = useState<StudioTab>(initialTab ?? "ask");
+  // Lazy initializers — safe in a client component; avoids SSR/client mismatch
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 28);
+    return d.toISOString().split("T")[0];
+  });
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
 
   // SQL Editor state — pre-populate from initialReport if provided
   const [sql, setSql] = useState(initialReport?.sql ?? "");
@@ -64,6 +64,7 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
   const [executing, setExecuting] = useState(false);
   const [result, setResult] = useState<ReportResult | null>(null);
   const [execError, setExecError] = useState<string | null>(null);
+  const [autoFixing, setAutoFixing] = useState(false);
   // Set when the server rewrote hardcoded date literals to @StartDate/@EndDate
   const [dateLinkNote, setDateLinkNote] = useState(false);
 
@@ -82,6 +83,11 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
   const [saveModalSaving, setSaveModalSaving] = useState(false);
   const [saveModalDone, setSaveModalDone] = useState(false);
   const saveNameRef = useRef<HTMLInputElement>(null);
+
+  // Respond to parent navigation while this component is already mounted
+  useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
 
   // Sync when an external saved report is pushed in after initial render
   useEffect(() => {
@@ -193,11 +199,71 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
           setSql(json.executed_sql);
         }
       }
-      setResult(json);
+      // Normalize the gateway response into the ReportResult shape expected by ResultsTable.
+      // The gateway returns { rows, columns, rowCount, ... } but ResultsTable expects
+      // { data, summary: { columns, row_count }, ... }.
+      const rows: Record<string, unknown>[] = json.rows ?? json.data ?? [];
+      const cols: string[] = json.columns ?? (rows[0] ? Object.keys(rows[0]) : []);
+      const normalized: ReportResult = {
+        report_name: currentPlan?.kpi_detected
+          ? `${currentPlan.kpi_detected} Report`
+          : "Custom Query",
+        generated_at: new Date().toISOString(),
+        kpi: currentPlan?.kpi_detected ?? "custom",
+        sql_used: json.executed_sql ?? sql,
+        data: rows,
+        result_sets: Array.isArray(json.resultSets) ? json.resultSets : undefined,
+        summary: {
+          row_count: json.rowCount ?? rows.length,
+          columns: cols,
+          aggregates: undefined,
+        },
+        cache_hit: json.cache_hit ?? false,
+        demo_mode: json.demo_mode ?? false,
+        execution_ms: json.execution_ms,
+      };
+      setResult(normalized);
     } catch (e) {
       setExecError(e instanceof Error ? e.message : "Network error");
     } finally {
       setExecuting(false);
+    }
+  }
+
+  async function autoFixSQL() {
+    if (!sql.trim() || !execError) return;
+    setAutoFixing(true);
+    try {
+      const res = await fetch("/api/generate-query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: `The following SQL query produced an error. Fix the SQL so it runs correctly. 
+Original prompt: ${currentPlan?.explanation ?? ""}
+Failed SQL:
+${sql}
+
+Error message:
+${execError}
+
+Return only the corrected SQL.`,
+          start_date: startDate,
+          end_date: endDate,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.sql) {
+        setSql(json.sql);
+        setSqlDirty(false);
+        setExecError(null);
+        setCurrentPlan((prev) =>
+          prev ? { ...prev, sql: json.sql, correction_applied: true } : prev
+        );
+      }
+    } catch {
+      // Silent — user can still fix manually
+    } finally {
+      setAutoFixing(false);
     }
   }
 
@@ -367,14 +433,45 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
             </div>
           )}
 
-          {/* Execution error */}
+          {/* SQL Feedback dialogue */}
           {execError && (
-            <div className="flex flex-col gap-2 bg-destructive/10 border border-destructive/30 rounded-lg p-4">
-              <p className="text-sm font-medium text-destructive">Execution failed</p>
-              <p className="text-xs text-destructive/80">{execError}</p>
-              {currentPlan && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Tip: Try rephrasing your prompt or check the SQL for syntax errors.
+            <div className="flex flex-col gap-3 bg-destructive/8 border border-destructive/30 rounded-lg p-4">
+              {/* Header */}
+              <div className="flex items-start gap-2.5">
+                <MessageSquareWarning className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-destructive">SQL execution failed</p>
+                  <p className="text-xs text-destructive/80 mt-1 font-mono whitespace-pre-wrap break-words leading-relaxed">
+                    {execError}
+                  </p>
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="h-px bg-destructive/15" />
+
+              {/* Actions */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={autoFixSQL}
+                  disabled={autoFixing}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed font-medium"
+                >
+                  {autoFixing ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Wand2 className="w-3 h-3" />
+                  )}
+                  {autoFixing ? "Fixing..." : "Fix with AI"}
+                </button>
+                <p className="text-[11px] text-muted-foreground">
+                  AI will rewrite the query to correct this error automatically.
+                </p>
+              </div>
+
+              {currentPlan && !autoFixing && (
+                <p className="text-[11px] text-muted-foreground/70">
+                  Tip: You can also edit the SQL directly above or rephrase your prompt to regenerate.
                 </p>
               )}
             </div>
@@ -386,9 +483,19 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
           {/* Results */}
           {result && (
             <div className="flex flex-col gap-3">
-              <ResultsTable result={result} />
+        <ResultsTable result={result} />
 
-              {/* Post-Query Analytics Engine */}
+        {result.summary.row_count === 0 && (
+          <ResultRecoveryPanel
+            onRecover={async () => {
+              const recoveredStart = new Date(`${startDate}T00:00:00`);
+              recoveredStart.setFullYear(recoveredStart.getFullYear() - 1);
+              await executeSQL(sql, recoveredStart.toISOString().slice(0, 10), endDate);
+            }}
+          />
+        )}
+
+        {/* Post-Query Analytics Engine */}
               <PostQueryAnalytics result={result} />
 
               {/* Save button */}
@@ -530,6 +637,11 @@ export function ReportStudio({ initialReport }: ReportStudioProps) {
             onLoad={handleLoadSaved}
             pendingSave={pendingSave}
             onSaveDone={() => setPendingSave(null)}
+            onInterpretKpi={
+              onNavigate
+                ? (kpi) => onNavigate(`kpi:interpret:${kpi}`)
+                : undefined
+            }
           />
         </div>
       )}

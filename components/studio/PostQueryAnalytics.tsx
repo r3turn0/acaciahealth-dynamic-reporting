@@ -203,7 +203,7 @@ function KpiResult({ data, columns }: { data: Record<string, unknown>[]; columns
   );
 }
 
-// ── Message bubble ────────────────────────────────────────────────────────────
+// ── Message bubble ─────────────────────────────────────────────────────���──────
 
 interface Message {
   role: "user" | "assistant";
@@ -395,39 +395,43 @@ export function PostQueryAnalytics({ result }: PostQueryAnalyticsProps) {
 
   return (
     <div className="flex flex-col gap-0 border border-border rounded-lg overflow-hidden">
-      {/* Header toggle */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center justify-between px-4 py-3 bg-card hover:bg-muted/40 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <BrainCircuit className="w-4 h-4 text-primary" />
-          <span className="text-sm font-medium text-foreground">Ask about this data</span>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 border border-primary/25 text-primary font-medium">
-            Analytics Engine
-          </span>
-          {messages.length > 0 && (
-            <span className="text-[10px] text-muted-foreground">
-              {messages.filter((m) => m.role === "user").length} question{messages.filter((m) => m.role === "user").length !== 1 ? "s" : ""}
+      {/* Header controls */}
+      <div className="flex items-center bg-card hover:bg-muted/40 transition-colors">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex min-w-0 flex-1 items-center justify-between px-4 py-3 text-left"
+          aria-expanded={open}
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <BrainCircuit className="w-4 h-4 shrink-0 text-primary" />
+            <span className="text-sm font-medium text-foreground">Ask about this data</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 border border-primary/25 text-primary font-medium">
+              Analytics Engine
             </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {messages.length > 0 && open && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setMessages([]); }}
-              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              title="Clear conversation"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          )}
+            {messages.length > 0 && (
+              <span className="text-[10px] text-muted-foreground">
+                {messages.filter((m) => m.role === "user").length} question{messages.filter((m) => m.role === "user").length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </span>
           {open
-            ? <ChevronUp className="w-4 h-4 text-muted-foreground" />
-            : <ChevronDown className="w-4 h-4 text-muted-foreground" />
+            ? <ChevronUp className="w-4 h-4 shrink-0 text-muted-foreground" />
+            : <ChevronDown className="w-4 h-4 shrink-0 text-muted-foreground" />
           }
-        </div>
-      </button>
+        </button>
+        {messages.length > 0 && open && (
+          <button
+            type="button"
+            onClick={() => setMessages([])}
+            className="mr-3 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            title="Clear conversation"
+            aria-label="Clear conversation"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
 
       {/* Panel body */}
       {open && (

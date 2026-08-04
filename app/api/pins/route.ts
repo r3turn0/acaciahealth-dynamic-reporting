@@ -1,3 +1,5 @@
+export const runtime = "nodejs";
+
 /**
  * GET  /api/pins  — list all dashboard pins
  * POST /api/pins  — pin an item (report or KPI) to the dashboard

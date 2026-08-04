@@ -56,71 +56,109 @@
   --color-surface-raised: var(--surface-raised);
 }
 
-/* HCHB Dynamic Reporting Engine — Dark Navy Theme */
+/* Acacia Health — warm white, charcoal, and signature greens */
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
   /* Base */
-  --background: oklch(0.12 0.015 240);        /* deep navy #0d1117 */
-  --foreground: oklch(0.92 0.005 240);         /* near-white */
+  --background: oklch(0.985 0.004 105);
+  --foreground: oklch(0.32 0.006 120);
 
   /* Cards / panels */
-  --card: oklch(0.17 0.018 240);              /* slate navy */
-  --card-foreground: oklch(0.92 0.005 240);
-  --surface: oklch(0.17 0.018 240);
-  --surface-raised: oklch(0.22 0.018 240);    /* slightly lighter panel */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.32 0.006 120);
+  --surface: oklch(1 0 0);
+  --surface-raised: oklch(0.965 0.01 140);
 
   /* Popover */
-  --popover: oklch(0.17 0.018 240);
-  --popover-foreground: oklch(0.92 0.005 240);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.32 0.006 120);
 
-  /* Primary — teal accent */
-  --primary: oklch(0.65 0.14 195);            /* teal #0ea5e9-ish */
-  --primary-foreground: oklch(0.10 0.02 240);
+  /* Primary — Acacia deep green */
+  --primary: oklch(0.43 0.12 145);
+  --primary-foreground: oklch(1 0 0);
 
-  /* Teal alias */
-  --teal: oklch(0.65 0.14 195);
-  --teal-foreground: oklch(0.10 0.02 240);
+  /* Legacy aliases mapped to the Acacia palette */
+  --teal: oklch(0.72 0.13 150);
+  --teal-foreground: oklch(0.25 0.06 145);
+  --navy: oklch(0.32 0.006 120);
 
-  /* Navy alias */
-  --navy: oklch(0.12 0.015 240);
-
-  /* Secondary */
-  --secondary: oklch(0.22 0.018 240);
-  --secondary-foreground: oklch(0.88 0.005 240);
+  /* Secondary — Acacia mint */
+  --secondary: oklch(0.72 0.13 150);
+  --secondary-foreground: oklch(0.25 0.06 145);
 
   /* Muted */
-  --muted: oklch(0.20 0.015 240);
-  --muted-foreground: oklch(0.60 0.008 240);
+  --muted: oklch(0.955 0.012 140);
+  --muted-foreground: oklch(0.48 0.012 125);
 
-  /* Accent */
-  --accent: oklch(0.24 0.022 240);
-  --accent-foreground: oklch(0.90 0.005 240);
+  /* Accent — warm acacia bark brown */
+  --accent: oklch(0.9 0.035 65);
+  --accent-foreground: oklch(0.38 0.07 55);
 
   /* Destructive */
-  --destructive: oklch(0.62 0.22 25);
+  --destructive: oklch(0.55 0.19 28);
 
   /* Borders & inputs */
+  --border: oklch(0.88 0.018 140);
+  --input: oklch(0.88 0.018 140);
+  --ring: oklch(0.43 0.12 145);
+
+  /* Charts — Acacia greens with a warm bark-brown accent */
+  --chart-1: oklch(0.43 0.12 145);
+  --chart-2: oklch(0.72 0.13 150);
+  --chart-3: oklch(0.58 0.11 145);
+  --chart-4: oklch(0.82 0.08 150);
+  --chart-5: oklch(0.5 0.09 55);
+
+  --radius: 0.5rem;
+
+  /* Sidebar — light mint surface with high-contrast green text */
+  --sidebar: oklch(0.94 0.035 145);
+  --sidebar-foreground: oklch(0.28 0.055 145);
+  --sidebar-primary: oklch(0.43 0.12 145);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.86 0.065 145);
+  --sidebar-accent-foreground: oklch(0.25 0.065 145);
+  --sidebar-border: oklch(0.82 0.045 145);
+  --sidebar-ring: oklch(0.43 0.12 145);
+}
+
+/* Original HCHB dark navy/teal theme */
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.12 0.015 240);
+  --foreground: oklch(0.92 0.005 240);
+  --card: oklch(0.17 0.018 240);
+  --card-foreground: oklch(0.92 0.005 240);
+  --surface: oklch(0.17 0.018 240);
+  --surface-raised: oklch(0.22 0.018 240);
+  --popover: oklch(0.17 0.018 240);
+  --popover-foreground: oklch(0.92 0.005 240);
+  --primary: oklch(0.65 0.14 195);
+  --primary-foreground: oklch(0.1 0.02 240);
+  --teal: oklch(0.65 0.14 195);
+  --teal-foreground: oklch(0.1 0.02 240);
+  --navy: oklch(0.12 0.015 240);
+  --secondary: oklch(0.22 0.018 240);
+  --secondary-foreground: oklch(0.88 0.005 240);
+  --muted: oklch(0.2 0.015 240);
+  --muted-foreground: oklch(0.6 0.008 240);
+  --accent: oklch(0.24 0.022 240);
+  --accent-foreground: oklch(0.9 0.005 240);
+  --destructive: oklch(0.62 0.22 25);
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 10%);
   --ring: oklch(0.65 0.14 195);
-
-  /* Charts */
-  --chart-1: oklch(0.65 0.14 195);           /* teal */
-  --chart-2: oklch(0.70 0.12 210);           /* sky */
-  --chart-3: oklch(0.60 0.15 160);           /* green-teal */
-  --chart-4: oklch(0.75 0.10 230);           /* slate-blue */
-  --chart-5: oklch(0.55 0.18 25);            /* amber */
-
-  /* Radius */
-  --radius: 0.5rem;
-
-  /* Sidebar */
+  --chart-1: oklch(0.65 0.14 195);
+  --chart-2: oklch(0.7 0.12 210);
+  --chart-3: oklch(0.6 0.15 160);
+  --chart-4: oklch(0.75 0.1 230);
+  --chart-5: oklch(0.55 0.18 25);
   --sidebar: oklch(0.14 0.016 240);
   --sidebar-foreground: oklch(0.88 0.005 240);
   --sidebar-primary: oklch(0.65 0.14 195);
-  --sidebar-primary-foreground: oklch(0.10 0.02 240);
-  --sidebar-accent: oklch(0.20 0.018 240);
+  --sidebar-primary-foreground: oklch(0.1 0.02 240);
+  --sidebar-accent: oklch(0.2 0.018 240);
   --sidebar-accent-foreground: oklch(0.88 0.005 240);
   --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.65 0.14 195);

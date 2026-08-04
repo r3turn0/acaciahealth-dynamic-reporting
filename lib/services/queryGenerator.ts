@@ -1,7 +1,18 @@
 import schemaConfig from "../config/schemaConfig.json";
 import kpiConfig from "../config/kpiConfig.json";
 
-type KpiKey = keyof typeof kpiConfig;
+// All KPI definitions live under the `kpis` sub-object, not at the root level.
+const KPI_DEFS = kpiConfig.kpis as unknown as Record<string, {
+  label: string;
+  fact_table: string;
+  alias: string;
+  date_column: string;
+  aggregation: string;
+  grouping_options: string[];
+  [key: string]: unknown;
+}>;
+
+type KpiKey = keyof typeof KPI_DEFS;
 
 interface Filters {
   date_range: {
@@ -69,7 +80,7 @@ interface GroupDef {
 }
 
 function buildGroupDefs(kpiKey: KpiKey): Record<string, GroupDef> {
-  const kpi = kpiConfig[kpiKey];
+  const kpi = KPI_DEFS[kpiKey];
   const dateCol = `${kpi.alias}.${kpi.date_column}`;
   return {
     branch: {
@@ -130,8 +141,9 @@ const KEYWORD_TO_GROUP: Record<string, string> = {
 
 function detectGroupBys(prompt: string, kpiKey: KpiKey): string[] {
   const lower = prompt.toLowerCase();
-  const kpi = kpiConfig[kpiKey];
-  const allowed = new Set(kpi.grouping_options);
+  const kpi = KPI_DEFS[kpiKey];
+  if (!kpi) return ["branch"];
+  const allowed = new Set(kpi.grouping_options ?? []);
   const detected = new Set<string>();
 
   for (const [keyword, group] of Object.entries(KEYWORD_TO_GROUP)) {
@@ -158,7 +170,8 @@ type SchemaEntry = {
 const schema = schemaConfig as Record<string, SchemaEntry>;
 
 function buildJoins(kpiKey: KpiKey, requiredGroups: string[]): string[] {
-  const kpi = kpiConfig[kpiKey];
+  const kpi = KPI_DEFS[kpiKey];
+  if (!kpi) return [];
   const factTable = kpi.fact_table;
   const factEntry = schema[factTable];
   const joins: string[] = [];
@@ -201,7 +214,8 @@ function buildJoins(kpiKey: KpiKey, requiredGroups: string[]): string[] {
 
 export function generateSQL(prompt: string, filters: Filters): GeneratedQuery {
   const kpiKey = detectKpi(prompt);
-  const kpi = kpiConfig[kpiKey];
+  const kpi = KPI_DEFS[kpiKey];
+  if (!kpi) throw new Error(`Unknown KPI key: "${kpiKey}". Check kpiConfig.kpis.`);
   const groupKeys = filters.group_by?.length
     ? filters.group_by.filter((g) => (kpi.grouping_options as string[]).includes(g))
     : detectGroupBys(prompt, kpiKey);

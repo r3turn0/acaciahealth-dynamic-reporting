@@ -6,6 +6,9 @@ import { getCacheStats } from "@/lib/services/cache";
 
 export async function GET() {
   const dbConfigured = isDbConfigured();
+  // checkConnection is bounded by the driver's connection timeout and shared
+  // cooldown. Do not race it with a timer: that leaves an orphaned connection
+  // attempt which can emit delayed pool timeout errors after this response.
   const dbConnected = dbConfigured ? await checkConnection() : false;
 
   const cacheStats = getCacheStats();

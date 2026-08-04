@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -9,6 +9,7 @@ import {
   BarChart3,
   BookOpen,
   Brain,
+  Building2,
   Calendar,
   CheckCircle2,
   ChevronDown,
@@ -37,6 +38,7 @@ import type {
   Recommendation,
   KpiDefinition,
   KpiRelationship,
+  BranchEntry,
 } from "@/app/api/kpi/intelligence/route";
 
 // ── Utility sub-components ────────────────────────────────────────────────────
@@ -288,14 +290,21 @@ function RecommendationsPanel({ recs }: { recs: Recommendation[] }) {
 
 // ── Schema Intelligence panel ─────────────────────────────────────────────────
 
-function SchemaIntelligencePanel({ schema }: { schema: KpiIntelligenceResponse["schemaIntelligence"] }) {
+function SchemaIntelligencePanel({
+  schema,
+  branches,
+}: {
+  schema: KpiIntelligenceResponse["schemaIntelligence"];
+  branches: BranchEntry[];
+}) {
   const [open, setOpen] = useState(true);
-  const [activeSection, setActiveSection] = useState<"definitions" | "fields" | "relationships">("definitions");
+  const [activeSection, setActiveSection] = useState<"definitions" | "fields" | "relationships" | "branches">("definitions");
 
   const sections = [
-    { id: "definitions" as const, label: "KPI Definitions", icon: BookOpen },
-    { id: "fields" as const, label: "Field Mapping", icon: Database },
-    { id: "relationships" as const, label: "Relationships", icon: GitBranch },
+    { id: "definitions"   as const, label: "KPI Definitions", icon: BookOpen  },
+    { id: "fields"        as const, label: "Field Mapping",   icon: Database  },
+    { id: "relationships" as const, label: "Relationships",   icon: GitBranch },
+    { id: "branches"      as const, label: "Branch Codes",    icon: Building2 },
   ];
 
   return (
@@ -404,6 +413,104 @@ function SchemaIntelligencePanel({ schema }: { schema: KpiIntelligenceResponse["
               ))}
             </div>
           )}
+
+          {/* Branch Codes */}
+          {activeSection === "branches" && (
+            <div className="flex flex-col gap-3">
+              {/* Summary */}
+              <div className="flex gap-3 flex-wrap">
+                {(["HOME HEALTH", "HOSPICE"] as const).map((sl) => {
+                  const slBranches = branches.filter((b) => b.serviceLine === sl);
+                  const slColor = sl === "HOME HEALTH"
+                    ? "bg-chart-1/10 text-chart-1 border-chart-1/20"
+                    : "bg-chart-3/10 text-chart-3 border-chart-3/20";
+                  return (
+                    <div key={sl} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium ${slColor}`}>
+                      <Building2 className="w-3 h-3" />
+                      {sl} — {slBranches.length} branch{slBranches.length !== 1 ? "es" : ""}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Table grouped by service line */}
+              {(["HOME HEALTH", "HOSPICE"] as const).map((sl) => {
+                const slBranches = branches.filter((b) => b.serviceLine === sl);
+                if (!slBranches.length) return null;
+                const headerColor = sl === "HOME HEALTH"
+                  ? "bg-chart-1/8 text-chart-1 border-chart-1/20"
+                  : "bg-chart-3/8 text-chart-3 border-chart-3/20";
+                return (
+                  <div key={sl} className="rounded-lg border border-border overflow-hidden">
+                    <div className={`flex items-center gap-2 px-3 py-2 border-b border-border ${headerColor}`}>
+                      <Building2 className="w-3 h-3" />
+                      <span className="text-xs font-semibold">{sl}</span>
+                      <span className="ml-auto text-[10px] font-mono opacity-70">epi_slid = {slBranches[0].epi_slid}</span>
+                    </div>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-muted/20 border-b border-border">
+                          <th className="text-left px-3 py-2 font-semibold text-muted-foreground">Branch Code</th>
+                          <th className="text-left px-3 py-2 font-semibold text-muted-foreground">Branch Name</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {slBranches.map((b) => (
+                          <tr key={b.branchCode} className="hover:bg-accent/10 transition-colors">
+                            <td className="px-3 py-2 font-mono font-semibold text-primary/80">{b.branchCode}</td>
+                            <td className="px-3 py-2 text-foreground">{b.branchName}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
+
+              {/* DC Class Map */}
+              <div className="rounded-lg border border-border overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/20">
+                  <span className="text-xs font-semibold text-foreground">Discharge Class Map</span>
+                  <span className="ml-auto text-[10px] text-muted-foreground">epi_DcCode → dc_class</span>
+                </div>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-muted/20 border-b border-border">
+                      <th className="text-left px-3 py-2 font-semibold text-muted-foreground">DC Code</th>
+                      <th className="text-left px-3 py-2 font-semibold text-muted-foreground">Class</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {[
+                      { code: "DTH", cls: "Death" },
+                      { code: "EXP", cls: "Death" },
+                      { code: "REV", cls: "LiveDC-PatientInitiated" },
+                      { code: "TRH", cls: "LiveDC-PatientInitiated" },
+                      { code: "EXT", cls: "LiveDC-HospiceInitiated" },
+                      { code: "NLT", cls: "LiveDC-HospiceInitiated" },
+                      { code: "OOA", cls: "LiveDC-HospiceInitiated" },
+                      { code: "DFC", cls: "LiveDC-HospiceInitiated" },
+                      { code: "TXI", cls: "Other" },
+                    ].map(({ code, cls }) => {
+                      const clsColor = cls === "Death"
+                        ? "text-muted-foreground"
+                        : cls.startsWith("LiveDC-Patient")
+                        ? "text-destructive"
+                        : cls.startsWith("LiveDC-Hospice")
+                        ? "text-chart-5"
+                        : "text-muted-foreground/70";
+                      return (
+                        <tr key={code} className="hover:bg-accent/10 transition-colors">
+                          <td className="px-3 py-2 font-mono font-semibold text-primary/80">{code}</td>
+                          <td className={`px-3 py-2 font-medium ${clsColor}`}>{cls}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -501,9 +608,8 @@ function PowerBiExport({ schema }: { schema: KpiIntelligenceResponse["powerBiSch
   );
 }
 
-// ── Ask AI box ────────────────────────────────────────────────────────────────
+// ── Date range helpers ────────────────────────────────────────────────────────
 
-// ── Date range helpers for the Ask-a-Question prompt ──────────────────────────
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -525,6 +631,37 @@ const DATE_PRESETS: { label: string; range: () => { start: string; end: string }
   { label: "1y", range: () => ({ start: shiftDays(-365), end: isoDate(new Date()) }) },
 ];
 
+// ── Simple plain-text → JSX renderer (no markdown dep needed) ─────────────────
+
+function SimpleMarkdown({ text }: { text: string }) {
+  const lines = text.split("\n");
+  return (
+    <div className="flex flex-col gap-1.5 text-sm leading-relaxed text-foreground/85">
+      {lines.map((line, i) => {
+        if (line.startsWith("- ") || line.startsWith("• ")) {
+          return (
+            <div key={i} className="flex gap-2 items-start">
+              <span className="text-primary mt-1 shrink-0">•</span>
+              <span>{line.slice(2)}</span>
+            </div>
+          );
+        }
+        if (!line.trim()) return <div key={i} className="h-1" />;
+        return <p key={i}>{line}</p>;
+      })}
+    </div>
+  );
+}
+
+// ── Ask AI box ────────────────────────────────────────────────────────────────
+
+interface AskMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  streaming?: boolean;
+}
+
 function AskAiBox({
   context,
   activePrompt,
@@ -536,50 +673,94 @@ function AskAiBox({
 }) {
   const [input, setInput] = useState("");
   const [attachedFile, setAttachedFile] = useState<UploadedFile | null>(null);
-  const [response, setResponse] = useState<string | null>(null);
+  const [messages, setMessages] = useState<AskMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [startDate, setStartDate] = useState(defaultRange().start);
   const [endDate, setEndDate] = useState(defaultRange().end);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const SUGGESTIONS = [
+    "Which KPI needs the most attention right now?",
+    "Explain the LUPA exposure risk",
+    "What's driving the billing holds increase?",
+    "Summarise the top 3 actions for leadership",
+  ];
 
   async function ask(question: string) {
-    if (!question.trim()) return;
-    if (startDate && endDate && startDate > endDate) {
-      setResponse("The start date must be on or before the end date.");
-      return;
-    }
-    setLoading(true);
-    setResponse(null);
+    if (!question.trim() || loading) return;
+    if (startDate && endDate && startDate > endDate) return;
+
     const fullQuestion = attachedFile
       ? `${question}\n\n${attachedFile.content}`
       : question;
+
+    const userMsg: AskMessage = { id: Date.now().toString(), role: "user", content: fullQuestion };
+    const assistantId = `${Date.now()}-a`;
+    const placeholder: AskMessage = { id: assistantId, role: "assistant", content: "", streaming: true };
+    setMessages((prev) => [...prev, userMsg, placeholder]);
+    setInput("");
+    setLoading(true);
+
     try {
-      const res = await fetch("/api/generate-query", {
+      const res = await fetch("/api/kpi/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: fullQuestion,
+          question: fullQuestion,
           context,
+          kpi: activePrompt?.kpi ?? "",
           start_date: startDate,
           end_date: endDate,
         }),
       });
-      const json = await res.json();
-      const plan = json.plan;
-      if (plan) {
-        setResponse(
-          `**Strategy:** ${plan.strategy}\n\n**SQL:**\n\`\`\`sql\n${plan.sql}\n\`\`\`\n\n**Explanation:** ${plan.explanation}\n\n**Tables used:** ${(plan.tables_used ?? []).join(", ")}`
-        );
-      } else {
-        setResponse(json.error ?? "No response returned.");
+
+      if (!res.ok || !res.body) {
+        throw new Error("Stream failed");
       }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        accumulated += decoder.decode(value, { stream: true });
+        const current = accumulated;
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, content: current } : m))
+        );
+      }
+
+      setMessages((prev) =>
+        prev.map((m) => (m.id === assistantId ? { ...m, streaming: false } : m))
+      );
     } catch {
-      setResponse("Failed to process request. Please try again.");
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? { ...m, content: "Failed to get a response. Please try again.", streaming: false }
+            : m
+        )
+      );
     } finally {
       setLoading(false);
+      setTimeout(() => inputRef.current?.focus(), 50);
     }
   }
 
-  // Auto-populate when a prompt chip is clicked
+  async function copyMsg(content: string, id: string) {
+    await copyToClipboard(content);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  }
+
   const displayPrompt = activePrompt
     ? `${activePrompt.prompt} — ${activePrompt.kpi}`
     : null;
@@ -589,8 +770,19 @@ function AskAiBox({
       <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border bg-muted/20">
         <Sparkles className="w-4 h-4 text-primary" />
         <h3 className="text-sm font-semibold text-foreground">Ask a Question</h3>
+        {messages.length > 0 && (
+          <button
+            onClick={() => setMessages([])}
+            className="ml-auto text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Clear
+          </button>
+        )}
       </div>
+
       <div className="p-4 flex flex-col gap-3">
+        {/* Active prompt chip */}
         {activePrompt && (
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/8 border border-primary/20">
             <Lightbulb className="w-3.5 h-3.5 text-primary shrink-0" />
@@ -600,71 +792,127 @@ function AskAiBox({
             </button>
           </div>
         )}
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-end gap-3 px-3 py-2.5 rounded-lg bg-muted/30 border border-border">
-            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <Calendar className="w-3.5 h-3.5 text-primary" /> Date range
-            </span>
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">From</span>
-              <input
-                type="date"
-                value={startDate}
-                max={endDate || undefined}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary transition-colors"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">To</span>
-              <input
-                type="date"
-                value={endDate}
-                min={startDate || undefined}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary transition-colors"
-              />
-            </label>
-            <div className="flex items-center gap-1.5">
-              {DATE_PRESETS.map((p) => (
-                <button
-                  key={p.label}
-                  type="button"
-                  onClick={() => { const r = p.range(); setStartDate(r.start); setEndDate(r.end); }}
-                  className="text-[11px] px-2 py-1 rounded-md border border-border bg-background text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex gap-2">
+
+        {/* Date range */}
+        <div className="flex flex-wrap items-end gap-3 px-3 py-2.5 rounded-lg bg-muted/30 border border-border">
+          <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Calendar className="w-3.5 h-3.5 text-primary" /> Date range
+          </span>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">From</span>
             <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); ask(activePrompt ? `${activePrompt.prompt} for ${activePrompt.kpi}` : input); } }}
-              placeholder={activePrompt ? "Press Enter to run this prompt, or type a custom question..." : "E.g. Why did revenue per visit drop in June?"}
-              className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary transition-colors"
+              type="date"
+              value={startDate}
+              max={endDate || undefined}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary transition-colors"
             />
-            <button
-              onClick={() => ask(activePrompt ? `${activePrompt.prompt} for ${activePrompt.kpi}` : input)}
-              disabled={loading || (!input.trim() && !activePrompt)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            </button>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">To</span>
+            <input
+              type="date"
+              value={endDate}
+              min={startDate || undefined}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground focus:outline-none focus:border-primary transition-colors"
+            />
+          </label>
+          <div className="flex items-center gap-1.5">
+            {DATE_PRESETS.map((p) => (
+              <button
+                key={p.label}
+                type="button"
+                onClick={() => { const r = p.range(); setStartDate(r.start); setEndDate(r.end); }}
+                className="text-[11px] px-2 py-1 rounded-md border border-border bg-background text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
-          <FileUploadButton
-            file={attachedFile}
-            onFile={setAttachedFile}
-          />
         </div>
 
-        {response && (
-          <div className="mt-1 p-3 rounded-lg bg-muted/30 border border-border">
-            <pre className="text-xs font-mono text-foreground/80 whitespace-pre-wrap leading-relaxed">{response}</pre>
+        {/* Suggestion chips — shown when no messages or always accessible */}
+        {messages.length === 0 && (
+          <div className="flex flex-wrap gap-2">
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                onClick={() => ask(s)}
+                disabled={loading}
+                className="text-xs text-muted-foreground hover:text-primary border border-border hover:border-primary/40 rounded-full px-3 py-1 transition-colors bg-muted/30 hover:bg-primary/5 disabled:opacity-50"
+              >
+                {s}
+              </button>
+            ))}
           </div>
         )}
+
+        {/* Message thread */}
+        {messages.length > 0 && (
+          <div className="flex flex-col gap-3 max-h-80 overflow-y-auto pr-1">
+            {messages.map((m) => (
+              <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                {m.role === "user" ? (
+                  <div className="max-w-[85%] rounded-xl px-3.5 py-2.5 bg-primary text-primary-foreground text-sm leading-relaxed">
+                    {m.content}
+                  </div>
+                ) : (
+                  <div className="max-w-[95%] rounded-xl px-4 py-3 bg-muted border border-border flex flex-col gap-2">
+                    {m.streaming && !m.content ? (
+                      <span className="flex items-center gap-2 text-muted-foreground text-sm">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Thinking...
+                      </span>
+                    ) : (
+                      <>
+                        <SimpleMarkdown text={m.content} />
+                        {!m.streaming && (
+                          <button
+                            onClick={() => copyMsg(m.content, m.id)}
+                            className="self-end flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors mt-1"
+                          >
+                            <Copy className="w-3 h-3" />
+                            {copiedId === m.id ? "Copied!" : "Copy"}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+            <div ref={bottomRef} />
+          </div>
+        )}
+
+        {/* Input row */}
+        <div className="flex gap-2">
+          <input
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                e.preventDefault();
+                ask(activePrompt ? `${activePrompt.prompt} for ${activePrompt.kpi}` : input);
+              }
+            }}
+            placeholder={activePrompt ? "Press Enter to run this prompt, or type a custom question..." : "E.g. Why did the LUPA rate increase?"}
+            disabled={loading}
+            className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary transition-colors disabled:opacity-60"
+          />
+          <button
+            onClick={() => ask(activePrompt ? `${activePrompt.prompt} for ${activePrompt.kpi}` : input)}
+            disabled={loading || (!input.trim() && !activePrompt)}
+            className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            aria-label="Send"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          </button>
+        </div>
+
+        <FileUploadButton file={attachedFile} onFile={setAttachedFile} />
       </div>
     </div>
   );
@@ -678,7 +926,7 @@ export function KpiIntelligence() {
   const [error, setError] = useState<string | null>(null);
   const [activeCard, setActiveCard] = useState<KpiCard | null>(null);
   const [activePrompt, setActivePrompt] = useState<{ prompt: string; kpi: string } | null>(null);
-  const [filter, setFilter] = useState<"All" | "Financial" | "Clinical" | "Operational">("All");
+  const [filter, setFilter] = useState<string>("All");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -701,10 +949,14 @@ export function KpiIntelligence() {
     document.getElementById("kpi-ask-box")?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  const categories = ["All", "Financial", "Clinical", "Operational"] as const;
-  const filteredCards = data?.kpiCards.filter(
-    (c) => filter === "All" || c.category === filter
-  ) ?? [];
+  // Derive distinct domain values from the cards so filter tabs always match
+  const allDomains = data
+    ? Array.from(new Set(data.kpiCards.map((c) => c.domain))).sort()
+    : [];
+  const categories = ["All", ...allDomains] as string[];
+  const filteredCards = (data?.kpiCards ?? []).filter(
+    (c) => filter === "All" || c.domain === filter
+  );
 
   // ── Empty state ─────────────────────────────────────────────────────────────
   if (!data && !loading) {
@@ -814,7 +1066,10 @@ export function KpiIntelligence() {
       </div>
 
       {/* Schema Intelligence */}
-      <SchemaIntelligencePanel schema={data.schemaIntelligence} />
+      <SchemaIntelligencePanel
+        schema={data.schemaIntelligence}
+        branches={data.branchDirectory ?? []}
+      />
 
       {/* Power BI Export */}
       <PowerBiExport schema={data.powerBiSchema} />

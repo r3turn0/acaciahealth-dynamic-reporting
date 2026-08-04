@@ -1,0 +1,33 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "app/api/gateway/query/route.ts": { "maxDuration": 60 },
+    "app/api/run-sql/route.ts":       { "maxDuration": 45 },
+    "app/api/kpi/interpret/route.ts": { "maxDuration": 30 },
+    "app/api/kpi/ask/route.ts":       { "maxDuration": 25 },
+    "app/api/kpi/followup/route.ts":  { "maxDuration": 25 },
+    "app/api/bi/copilot/route.ts":    { "maxDuration": 20 },
+    "app/api/generate-query/route.ts":{ "maxDuration": 30 },
+    "app/api/orchestrate/route.ts":   { "maxDuration": 60 }
+  },
+  "headers": [
+    {
+      "source": "/api/schema/:path*",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, max-age=300, stale-while-revalidate=600" }
+      ]
+    },
+    {
+      "source": "/api/reports",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, max-age=60, stale-while-revalidate=120" }
+      ]
+    },
+    {
+      "source": "/api/health",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    }
+  ]
+}

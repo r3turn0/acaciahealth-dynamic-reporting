@@ -21,6 +21,8 @@ import schemaConfig from "../config/schemaConfig.json";
 import kpiConfig from "../config/kpiConfig.json";
 import semanticLayer from "../config/semanticLayer.json";
 import { getModel } from "../ai/gateway";
+import { vectorEmbeddingAgent } from "./VectorEmbeddingAgent";
+import { buildSemanticQuerySystemPrompt } from "../ai/insightAgentPrompt";
 
 // ── Intent taxonomy ───────────────────────────────────────────────────────────
 
@@ -42,14 +44,16 @@ export type IntentType = (typeof INTENT_TYPES)[number];
 const AggregationSchema = z.object({
   metric: z.string().describe("The measure / column name"),
   function: z.enum(["COUNT", "SUM", "AVG", "MIN", "MAX", "MEASURE"]).describe("Aggregation function"),
-  alias: z.string().optional().describe("Output alias"),
+  alias: z.string().describe("Output alias — empty string if none"),
 });
 
 const FilterSchema = z.object({
   table: z.string(),
   column: z.string(),
   operator: z.enum(["=", "!=", ">", "<", ">=", "<=", "IN", "BETWEEN", "LIKE"]),
-  value: z.unknown(),
+  // z.unknown() generates an OpenAI-incompatible schema (no 'type' key).
+  // Use an explicit union of primitive types so response_format validation passes.
+  value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
 });
 
 const OrderBySchema = z.object({
@@ -64,7 +68,10 @@ export const LogicalPlanSchema = z.object({
   groupBy: z.array(z.string()).describe("Group-by columns"),
   filters: z.array(FilterSchema).describe("Row-level filters"),
   orderBy: z.array(OrderBySchema).describe("Sort order"),
-  limit: z.number().int().default(100).describe("Result row limit"),
+  // Must NOT use .default() — OpenAI structured output requires every property key
+  // to appear in the 'required' array. Zod omits defaulted fields from 'required',
+  // which causes a 400 "Invalid schema for response_format" error.
+  limit: z.number().int().describe("Result row limit — use 100 when not specified"),
 });
 
 export type LogicalPlan = z.infer<typeof LogicalPlanSchema>;
@@ -76,10 +83,10 @@ const ClarificationSchema = z.object({
 
 const PresentationSchema = z.object({
   chartType: z.enum(["bar", "line", "pie", "none"]).describe("Recommended chart type"),
-  xAxis: z.string().optional(),
-  yAxis: z.string().optional(),
-  groupBy: z.array(z.string()).optional(),
-  limit: z.number().int().optional(),
+  xAxis: z.string().describe("X axis field — empty string if not applicable"),
+  yAxis: z.string().describe("Y axis field — empty string if not applicable"),
+  groupBy: z.array(z.string()).describe("Group-by fields — empty array if not applicable"),
+  limit: z.number().int().describe("Result limit — 0 if not applicable"),
 });
 
 export const SemanticResponseSchema = z.object({
@@ -87,7 +94,8 @@ export const SemanticResponseSchema = z.object({
 
   intent: z.object({
     type: z.enum(INTENT_TYPES),
-    operation: z.string().optional().describe("Sub-operation, e.g. RANK, FILTER, COMPARE"),
+    // Must be in `required` for OpenAI structured output — use empty string when not applicable
+    operation: z.string().describe("Sub-operation e.g. RANK, FILTER, COMPARE — empty string if none"),
   }),
 
   context: z.object({
@@ -114,7 +122,7 @@ export const SemanticResponseSchema = z.object({
       z.object({
         stage: z.string(),
         status: z.enum(["ok", "ambiguous", "skipped"]),
-        note: z.string().optional(),
+        note: z.string().describe("Stage note — empty string if none"),
       })
     )
     .describe("Trace of each pipeline stage for UI display"),
@@ -122,7 +130,7 @@ export const SemanticResponseSchema = z.object({
   metadata: z.object({
     source: z.literal("powerbi_json"),
     confidence: z.number().min(0).max(1),
-    warnings: z.array(z.string()).optional(),
+    warnings: z.array(z.string()).describe("Warnings — empty array if none"),
   }),
 });
 
@@ -146,66 +154,15 @@ function buildSystemPrompt(): string {
   const kpi    = JSON.stringify(kpiConfig, null, 2);
   const sem    = JSON.stringify(semanticLayer, null, 2);
 
-  return `You are a Semantic Query Engine operating on JSON dataset exports derived from Power BI for AcaciaHealth.
+  const base = buildSemanticQuerySystemPrompt(schema, kpi, sem);
 
-## CORE PRINCIPLE
-You DO NOT replace Power BI. You:
-- Interpret user intent through a 7-stage pipeline
-- Map queries to schema-defined fields only
-- Generate structured LogicalQuery plans (not SQL)
+  // Append the concrete JSON example so the model has a valid output reference
+  return base + `
 
-You MUST NOT:
-- Build dashboards
-- Create table relationships not defined in the schema
-- Redefine existing measures
-- Mutate data
+─────────────────────────────────────────────────
+EXAMPLE OUTPUT (TOP_N)
+─────────────────────────────────────────────────
 
-## 7-STAGE PIPELINE
-Execute these stages in order and report each in pipelineStages[]:
-
-1. interpret_query     — Understand the natural-language request. Resolve pronouns, implicit timeframes, abbreviations.
-2. resolve_context     — Map the request to specific tables, columns, and measures from the schema.
-3. classify_intent     — Assign one of: DATA_QUERY | AGGREGATION | SUMMARY | TREND | COMPARISON | TOP_N | RANKING | CLARIFICATION
-4. validate_against_schema — Verify every referenced field actually exists. If not, either correct it or flag for clarification.
-5. detect_ambiguity    — Check if the query can be answered unambiguously. If multiple interpretations exist, set intent.type = CLARIFICATION.
-6. generate_logical_plan — Build the LogicalPlan using only schema-validated fields. Set to null if CLARIFICATION needed.
-7. format_response     — Determine response type (TABLE / SUMMARY_TEXT / CHART / KPI) and presentation hints.
-
-## SCHEMA RULES
-- Use ONLY defined tables, columns, and measures from the schema below.
-- Prefer measures over raw column aggregations.
-- Respect exact naming as provided.
-- Always include a limit (default 100).
-- For TOP_N: include orderBy + limit.
-- Never invent fields.
-
-## QUERY RULES
-- Apply filters explicitly.
-- For TREND: include a time dimension in groupBy.
-- For COMPARISON: include the comparison dimension in groupBy.
-- For RANKING / TOP_N: always set orderBy direction and limit.
-
-## CLARIFICATION RULES
-- If the user references a field that maps to multiple columns, ask for clarification.
-- If the intent is genuinely ambiguous, return intent.type = CLARIFICATION with options.
-- A clarification response must still populate context (table at minimum), but logicalPlan = null.
-
-## AcaciaHealth Schema
-\`\`\`json
-${schema}
-\`\`\`
-
-## KPI Definitions
-\`\`\`json
-${kpi}
-\`\`\`
-
-## Semantic Layer (business term → physical field)
-\`\`\`json
-${sem}
-\`\`\`
-
-## EXAMPLE OUTPUT (TOP_N)
 {
   "resolvedQuery": "Top 5 nurses by patient count",
   "intent": { "type": "TOP_N", "operation": "RANK" },
@@ -213,7 +170,7 @@ ${sem}
   "logicalPlan": {
     "table": "patients",
     "select": ["nurse"],
-    "aggregations": [{ "metric": "patient_count", "function": "MEASURE" }],
+    "aggregations": [{ "metric": "patient_count", "function": "MEASURE", "alias": "patient_count" }],
     "groupBy": ["nurse"],
     "filters": [],
     "orderBy": [{ "field": "patient_count", "direction": "DESC" }],
@@ -223,18 +180,18 @@ ${sem}
   "response": {
     "type": "CHART",
     "data": [],
-    "presentation": { "chartType": "bar", "xAxis": "nurse", "yAxis": "patient_count", "limit": 5 }
+    "presentation": { "chartType": "bar", "xAxis": "nurse", "yAxis": "patient_count", "groupBy": [], "limit": 5 }
   },
   "pipelineStages": [
-    { "stage": "interpret_query", "status": "ok" },
-    { "stage": "resolve_context", "status": "ok" },
+    { "stage": "interpret_query", "status": "ok", "note": "" },
+    { "stage": "resolve_context", "status": "ok", "note": "" },
     { "stage": "classify_intent", "status": "ok", "note": "TOP_N detected (limit=5)" },
-    { "stage": "validate_against_schema", "status": "ok" },
-    { "stage": "detect_ambiguity", "status": "ok" },
-    { "stage": "generate_logical_plan", "status": "ok" },
+    { "stage": "validate_against_schema", "status": "ok", "note": "" },
+    { "stage": "detect_ambiguity", "status": "ok", "note": "" },
+    { "stage": "generate_logical_plan", "status": "ok", "note": "" },
     { "stage": "format_response", "status": "ok", "note": "CHART / bar recommended" }
   ],
-  "metadata": { "source": "powerbi_json", "confidence": 0.97 }
+  "metadata": { "source": "powerbi_json", "confidence": 0.97, "warnings": [] }
 }`;
 }
 
@@ -288,7 +245,7 @@ function fallbackPipeline(input: SemanticPipelineInput): SemanticResponse {
 
   return {
     resolvedQuery: input.query,
-    intent: { type: intentType, operation: isRank ? "RANK" : undefined },
+    intent: { type: intentType, operation: isRank ? "RANK" : ("NONE" as "RANK") },
     context: { table, filters: [], dimensions, metrics },
     logicalPlan: {
       table,
@@ -307,19 +264,20 @@ function fallbackPipeline(input: SemanticPipelineInput): SemanticResponse {
       data: [],
       presentation: {
         chartType: chartType as "bar" | "line" | "pie" | "none",
-        xAxis: dimensions[0],
-        yAxis: metrics[0],
+        xAxis: dimensions[0] ?? "",
+        yAxis: metrics[0] ?? "",
+        groupBy: dimensions,
         limit,
       },
     },
     pipelineStages: [
-      { stage: "interpret_query",        status: "ok" },
-      { stage: "resolve_context",        status: "ok",  note: `table=${table}` },
-      { stage: "classify_intent",        status: "ok",  note: intentType },
-      { stage: "validate_against_schema", status: "ok", note: "rule-based fallback" },
-      { stage: "detect_ambiguity",       status: "ok" },
-      { stage: "generate_logical_plan",  status: "ok" },
-      { stage: "format_response",        status: "ok",  note: `${presentationType}/${chartType}` },
+      { stage: "interpret_query",         status: "ok",  note: "" },
+      { stage: "resolve_context",         status: "ok",  note: `table=${table}` },
+      { stage: "classify_intent",         status: "ok",  note: intentType },
+      { stage: "validate_against_schema", status: "ok",  note: "rule-based fallback" },
+      { stage: "detect_ambiguity",        status: "ok",  note: "" },
+      { stage: "generate_logical_plan",   status: "ok",  note: "" },
+      { stage: "format_response",         status: "ok",  note: `${presentationType}/${chartType}` },
     ],
     metadata: { source: "powerbi_json", confidence: 0.6, warnings: ["AI not configured — rule-based fallback"] },
   };
@@ -338,6 +296,18 @@ export async function runSemanticPipeline(
   );
   if (!aiAvailable) return fallbackPipeline(input);
 
+  // Vector Intelligence — retrieve semantically relevant context before AI call
+  let vectorContextBlock = "";
+  try {
+    const vectorResults = await vectorEmbeddingAgent.search({ query, topK: 6 });
+    const ctx = vectorEmbeddingAgent.buildContext(vectorResults);
+    if (ctx.contextSummary && ctx.contextSummary !== "No prior context found.") {
+      vectorContextBlock = `\n\n## Vector Intelligence Context (semantic similarity)\n${ctx.contextSummary}`;
+    }
+  } catch {
+    // Non-fatal — proceed without vector context
+  }
+
   const userMessage = `
 Run the full 7-stage Semantic Query Engine pipeline on this request.
 
@@ -348,7 +318,7 @@ ${
   clarificationAnswers && Object.keys(clarificationAnswers).length
     ? `Prior clarification answers: ${JSON.stringify(clarificationAnswers)}`
     : ""
-}
+}${vectorContextBlock}
 
 Return a complete SemanticResponse JSON object following the schema exactly.
 `.trim();

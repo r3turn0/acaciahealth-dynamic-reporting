@@ -88,20 +88,29 @@ async function fetchKpi(kpiKey: string, prompt: string): Promise<Record<string, 
   const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
   const fmt = (d: Date) => d.toISOString().split("T")[0];
 
-  const res = await fetch("/api/report/run", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      report_name: `Dashboard KPI — ${kpiKey}`,
-      prompt,
-      filters: {
-        date_range: { start_date: fmt(start), end_date: fmt(end) },
-      },
-    }),
-  });
-  if (!res.ok) throw new Error("fetch failed");
-  const json = await res.json();
-  return (json.data ?? []) as Record<string, unknown>[];
+  // Abort after 20 seconds so a hung DB never leaves the card spinning forever.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+
+  try {
+    const res = await fetch("/api/report/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        report_name: `Dashboard KPI — ${kpiKey}`,
+        prompt,
+        filters: {
+          date_range: { start_date: fmt(start), end_date: fmt(end) },
+        },
+      }),
+    });
+    if (!res.ok) throw new Error("fetch failed");
+    const json = await res.json();
+    return (json.data ?? []) as Record<string, unknown>[];
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ── Single card ───────────────────────────────────────────────────────────────

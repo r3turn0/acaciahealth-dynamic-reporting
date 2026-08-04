@@ -63,7 +63,59 @@ export function getModel(tier: keyof typeof MODELS = "default") {
 /** True when at least one AI provider is configured. */
 export function isAiConfigured(): boolean {
   return !!(
+    process.env.OPENAI_API_KEY ||
     process.env.AI_GATEWAY_API_KEY ||
     process.env.AZURE_OPENAI_API_KEY
   );
+}
+
+// ── Direct OpenAI JSON completion ─────────────────────────────────────────────
+
+/**
+ * Call the OpenAI Chat Completions API directly using OPENAI_API_KEY.
+ * Returns the parsed JSON object from the model response.
+ *
+ * Prefers OPENAI_API_KEY; falls back to the AI SDK getModel() path so
+ * routes continue to work without modification when only AI_GATEWAY_API_KEY
+ * is set.
+ */
+export async function chatJSON<T = unknown>(
+  systemPrompt: string,
+  userPrompt: string,
+  model = "gpt-4o"
+): Promise<T> {
+  if (process.env.OPENAI_API_KEY) {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.05,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`OpenAI chat error ${res.status}: ${err}`);
+    }
+    const json = (await res.json()) as { choices: { message: { content: string } }[] };
+    return JSON.parse(json.choices[0].message.content) as T;
+  }
+
+  // Fallback to AI SDK (AI Gateway or Azure) — use plain text + JSON.parse
+  const { generateText } = await import("ai");
+  const result = await generateText({
+    model: getModel("capable"),
+    system: systemPrompt + "\n\nRespond with valid JSON only. No markdown, no explanation.",
+    prompt: userPrompt,
+    temperature: 0.05,
+  });
+  return JSON.parse(result.text) as T;
 }
