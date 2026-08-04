@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { ensureKpiReportsSeeded } from "@/lib/services/seedReportsClient";
 import {
   Pin,
   X,
@@ -84,19 +83,10 @@ export function DashboardHome({ onNavigate, onOpenReport }: DashboardHomeProps) 
     }
   }, []);
 
-  // On first mount: seed default reports + pins for all KPIs, then refresh.
-  // The seed endpoint is idempotent — subsequent mounts are no-ops.
+  // Load independent read-only resources concurrently; neither blocks the shell.
   useEffect(() => {
-    async function seedAndRefresh() {
-      try {
-        await ensureKpiReportsSeeded();
-      } catch {
-        // Non-critical — dashboard renders fine without seeded pins.
-      }
-      void refreshPins();
-      void loadRecent();
-    }
-    void seedAndRefresh();
+    void refreshPins();
+    void loadRecent();
   }, [loadRecent]);
 
   function openPin(pin: DashboardPin) {
@@ -422,7 +412,7 @@ function RecentReportsList({
   );
 }
 
-// ── Quick actions ─────────────────���───────────────────────────────────────────
+// ── Quick actions ─���───────────────���───────────────────────────────────────────
 // All IDs are canonical 7-item nav IDs — no legacy aliases.
 
 function QuickStart({ onNavigate }: { onNavigate: (id: string) => void }) {

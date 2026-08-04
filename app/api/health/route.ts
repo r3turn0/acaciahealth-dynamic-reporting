@@ -21,7 +21,7 @@ export async function GET() {
       database: {
         connected: dbConnected,
         configured: dbConfigured,
-        mode: dbConfigured ? "live_db" : "demo",
+        mode: dbConnected ? "live_db" : dbConfigured ? "unavailable" : "demo",
       },
       ai: {
         configured: !!(process.env.AI_GATEWAY_API_KEY || process.env.AZURE_OPENAI_API_KEY),

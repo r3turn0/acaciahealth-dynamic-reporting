@@ -21,7 +21,6 @@
  */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getToken } from "next-auth/jwt";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -49,7 +48,9 @@ export default async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Production page-route protection
+  // Keep NextAuth out of local/preview cold compilation; load it only when
+  // production Azure page protection is actually active.
+  const { getToken } = await import("next-auth/jwt");
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   if (!token) {
     const loginUrl = new URL("/login", req.url);

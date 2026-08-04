@@ -159,7 +159,7 @@ function buildConfig(): sql.config | string | null {
       options: { ...commonOptions() },
       pool: poolSettings(),
       requestTimeout: 30_000,
-      connectionTimeout: 15_000,
+      connectionTimeout: CONNECT_TIMEOUT_MS,
     };
   }
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { useHealth } from "@/lib/hooks/useHealth";
 import {
   Heart,
   LayoutDashboard,
@@ -146,21 +147,16 @@ const PRIMARY_NAV: NavItem[] = [
 // ── Status rows ───────────────────────────────────────────────────────────────
 
 function AiStatusRow() {
-  const [status, setStatus] = useState<"checking" | "live" | "demo">("checking");
-  useEffect(() => {
-    fetch("/api/health")
-      .then((r) => r.json())
-      .then((d) => setStatus(d?.services?.ai?.configured ? "live" : "demo"))
-      .catch(() => setStatus("demo"));
-  }, []);
+  const { data, isLoading } = useHealth();
+  const live = data?.services.ai.configured === true;
   return (
     <div className="flex items-center gap-2">
       <Sparkles className="w-3 h-3 text-primary shrink-0" />
       <span className="text-[11px] text-muted-foreground">
         AI:{" "}
-        {status === "checking" ? (
+        {isLoading ? (
           <span className="font-medium">...</span>
-        ) : status === "live" ? (
+        ) : live ? (
           <span className="text-primary font-medium">Gateway</span>
         ) : (
           <span className="text-chart-5 font-medium">Demo</span>
@@ -171,21 +167,16 @@ function AiStatusRow() {
 }
 
 function DbStatusRow() {
-  const [mode, setMode] = useState<"checking" | "live_db" | "demo">("checking");
-  useEffect(() => {
-    fetch("/api/health")
-      .then((r) => r.json())
-      .then((d) => setMode(d?.services?.database?.mode ?? "demo"))
-      .catch(() => setMode("demo"));
-  }, []);
+  const { data, isLoading } = useHealth();
+  const live = data?.services.database.connected === true;
   return (
     <div className="flex items-center gap-2">
       <Zap className="w-3 h-3 text-chart-5 shrink-0" />
       <span className="text-[11px] text-muted-foreground">
         DB:{" "}
-        {mode === "checking" ? (
+        {isLoading ? (
           <span className="font-medium">...</span>
-        ) : mode === "live_db" ? (
+        ) : live ? (
           <span className="text-chart-3 font-medium">Live</span>
         ) : (
           <span className="text-chart-5 font-medium">Demo</span>

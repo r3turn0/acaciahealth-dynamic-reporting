@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { ensureKpiReportsSeeded } from "@/lib/services/seedReportsClient";
+
 import {
   Bookmark,
   Play,
@@ -446,8 +446,6 @@ export function SavedReports({
 
   const fetchReports = useCallback(async () => {
     try {
-      // Idempotent seed: populates SQL library reports if not yet present.
-      await ensureKpiReportsSeeded().catch(() => {});
       const res = await fetch("/api/reports");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
@@ -574,7 +572,7 @@ export function SavedReports({
     }
   }
 
-  // ── Zero-row SQL rewrite + re-run ──────────────────────────────────────────
+  // ── Zero-row SQL rewrite + re-run ───────────���──────────────────────────────
   async function handleRewriteAndRun(r: SavedReport) {
     if (!r.sql) return;
     setRewritingId(r.id);

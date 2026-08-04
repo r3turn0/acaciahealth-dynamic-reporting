@@ -1,62 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { RefreshCw, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
-
-interface HealthData {
-  status: string;
-  timestamp: string;
-  version: string;
-  services: {
-    database: { connected: boolean; configured: boolean; mode: string };
-    ai: { configured: boolean; model: string };
-    cache: { active_entries: number };
-  };
-  environment: string;
-}
+import { useHealth } from "@/lib/hooks/useHealth";
 
 export function HealthStatus() {
-  const [health, setHealth] = useState<HealthData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  async function fetchHealth() {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/health", {
-        cache: "no-store",
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!res.ok) throw new Error(`Health request failed (${res.status})`);
-      const data = (await res.json()) as HealthData;
-      setHealth(data);
-    } catch {
-      setHealth(null);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    fetchHealth();
-    const interval = setInterval(fetchHealth, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  const { data: health, isLoading, isValidating, mutate } = useHealth();
 
   return (
     <div className="bg-card border border-border rounded-lg p-5">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-foreground">System Health</h2>
         <button
-          onClick={fetchHealth}
-          disabled={loading}
+          type="button"
+          onClick={() => void mutate()}
+          disabled={isValidating}
           className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${isValidating ? "animate-spin" : ""}`} />
           Refresh
         </button>
       </div>
 
-      {loading && !health ? (
+      {isLoading && !health ? (
         <p className="text-xs text-muted-foreground">Checking system health...</p>
       ) : !health ? (
         <div role="alert" className="flex items-center justify-between gap-3">
@@ -64,21 +29,13 @@ export function HealthStatus() {
             <XCircle className="h-3.5 w-3.5 shrink-0" />
             <span>Health service did not respond.</span>
           </div>
-          <button
-            type="button"
-            onClick={fetchHealth}
-            className="text-xs font-medium text-primary hover:underline"
-          >
+          <button type="button" onClick={() => void mutate()} className="text-xs font-medium text-primary hover:underline">
             Try again
           </button>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          <StatusRow
-            label="API Service"
-            ok={health.status === "ok"}
-            value={health.status}
-          />
+          <StatusRow label="API Service" ok={health.status === "ok"} value={health.status} />
           <StatusRow
             label="Database"
             ok={health.services.database.connected}
@@ -93,11 +50,7 @@ export function HealthStatus() {
             warning={!health.services.ai?.configured}
             warningText="Add AI_GATEWAY_API_KEY to enable AI features"
           />
-          <StatusRow
-            label="Cache"
-            ok
-            value={`${health.services.cache.active_entries} active entries`}
-          />
+          <StatusRow label="Cache" ok value={`${health.services.cache.active_entries} active entries`} />
           <div className="pt-2 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
             <span>v{health.version} · {health.environment}</span>
             <span>{new Date(health.timestamp).toLocaleTimeString()}</span>

@@ -27,16 +27,31 @@ import { parameterizeDates } from "@/lib/services/dateParams";
 // Keeps the API route from hanging indefinitely when the DB is unreachable.
 const EXECUTION_TIMEOUT_MS = 12_000;
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error(`[QueryGateway] ${label} timed out after ${ms}ms`)),
-        ms
-      )
-    ),
-  ]);
+async function withAbortTimeout<T>(
+operation: (signal: AbortSignal) => Promise<T>,
+parentSignal: AbortSignal | undefined,
+ms: number,
+label: string,
+): Promise<T> {
+const controller = new AbortController();
+const abortFromParent = () => controller.abort(parentSignal?.reason);
+if (parentSignal?.aborted) abortFromParent();
+else parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+const timer = setTimeout(
+() => controller.abort(new Error(`[QueryGateway] ${label} timed out after ${ms}ms`)),
+ms,
+);
+try {
+return await operation(controller.signal);
+} catch (error) {
+if (controller.signal.aborted && controller.signal.reason instanceof Error) {
+throw controller.signal.reason;
+}
+throw error;
+} finally {
+clearTimeout(timer);
+parentSignal?.removeEventListener("abort", abortFromParent);
+}
 }
 import { buildCacheKey, getCache, setCache } from "@/lib/services/cache";
 import { buildSemanticQuerySystemPrompt } from "@/lib/ai/insightAgentPrompt";
@@ -788,11 +803,12 @@ async function runExecutionEngine(
   // ── First execution attempt ────────────────────────────────────────────────
 
   try {
-    const queryResult = await withTimeout(
-      executeMultiQuery(sql, { StartDate: startDate, EndDate: endDate }, signal),
-      EXECUTION_TIMEOUT_MS,
-      "executeMultiQuery"
-    );
+const queryResult = await withAbortTimeout(
+(timeoutSignal) => executeMultiQuery(sql, { StartDate: startDate, EndDate: endDate }, timeoutSignal),
+signal,
+EXECUTION_TIMEOUT_MS,
+"executeMultiQuery"
+);
     const rows = queryResult.rows;
 
     const MAX_ROWS = 100_000;
@@ -888,11 +904,12 @@ async function runExecutionEngine(
           // Execute the corrected SQL
           const retryT0 = Date.now();
           try {
-            const retryQueryResult = await withTimeout(
-              executeMultiQuery(retryResult.correctedSql, { StartDate: startDate, EndDate: endDate }, signal),
-              EXECUTION_TIMEOUT_MS,
-              "executeMultiQuery(retry)"
-            );
+const retryQueryResult = await withAbortTimeout(
+(timeoutSignal) => executeMultiQuery(retryResult.correctedSql, { StartDate: startDate, EndDate: endDate }, timeoutSignal),
+signal,
+EXECUTION_TIMEOUT_MS,
+"executeMultiQuery(retry)"
+);
             const retryRows = retryQueryResult.rows;
 
             const MAX_ROWS = 100_000;
