@@ -3,6 +3,7 @@ import { getCacheStats } from "@/lib/services/cache";
 import { getPerformanceSamples, getPerformanceSummary } from "@/lib/services/performanceTelemetry";
 import { getRecentQueryHistory } from "@/lib/services/queryHistoryStore";
 import { summarizeIntelligenceBenchmark } from "@/lib/services/intelligenceBenchmark";
+import { getKpiEvidenceTelemetrySummary } from "@/lib/services/kpiEvidenceTelemetry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +36,7 @@ export async function GET() {
     cache: getCacheStats(),
     recentSamples: getPerformanceSamples(20),
     intelligence,
+    kpiEvidence: getKpiEvidenceTelemetrySummary(),
     infrastructure: {
       azureSqlCpu: { status: "not_connected", value: null },
       queryStore: { status: "not_connected", enabled: null },

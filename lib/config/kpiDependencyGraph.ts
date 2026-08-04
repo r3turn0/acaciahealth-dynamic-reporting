@@ -35,6 +35,22 @@ const DEPENDENCIES: Record<string, Pick<KpiDependencyNode, "required" | "optiona
   recertifications: { required: [], optional: ["current_census"], reportKpis: ["recertifications"] },
   hospice_census_equivalent: { required: ["patient_days"], optional: ["average_daily_census"], reportKpis: ["hospice_census_equivalent"] },
   lupa_rate: { required: [], optional: ["calculated_lupa_exposure", "revenue_per_patient_day"], reportKpis: ["lupa_rate"] },
+  avg_days_referral_to_admission: { required: [], optional: ["admissions", "referrals_received"], reportKpis: ["avg_days_referral_to_admission"] },
+  admissions_within_2_days: { required: ["admissions"], optional: ["avg_days_referral_to_admission"], reportKpis: ["avg_days_referral_to_admission", "admissions"] },
+  referral_conversion_rate: { required: ["admissions", "referrals_received"], optional: ["avg_days_referral_to_admission"], reportKpis: ["referrals_ntuc", "admissions"] },
+  referrals_received: { required: [], optional: ["admissions", "avg_days_referral_to_admission"], reportKpis: ["referrals_ntuc"] },
+  ntuc: { required: [], optional: ["referrals_received", "admissions"], reportKpis: ["referrals_ntuc"] },
+  hospice_census_equivalent_by_branch: { required: ["patient_days"], optional: ["hospice_census_equivalent"], reportKpis: ["hospice_census_equivalent"] },
+  enterprise_total_hce: { required: ["patient_days"], optional: ["hospice_census_equivalent_by_branch", "hh_palliative_combined_hce"], reportKpis: ["hospice_census_equivalent"] },
+  implied_average_daily_census: { required: ["patient_days"], optional: ["average_daily_census"], reportKpis: ["patient_days", "current_census_by_service_line_branch"] },
+  admissions_by_care_type: { required: ["admissions"], optional: [], reportKpis: ["admissions"] },
+  average_daily_census_by_service_line_branch: { required: ["patient_days"], optional: ["current_census_by_service_line_branch"], reportKpis: ["current_census_by_service_line_branch", "patient_days"] },
+  daily_census: { required: ["current_census"], optional: ["patient_days"], reportKpis: ["current_census_by_service_line_branch"] },
+  daily_census_trend: { required: ["daily_census"], optional: ["admissions", "discharges"], reportKpis: ["current_census_by_service_line_branch"] },
+  qa_compliance: { required: [], optional: ["visit_notes_activity"], reportKpis: ["qa_compliance"] },
+  bp1_compliance_within_48hrs: { required: ["admissions"], optional: ["qa_compliance"], reportKpis: ["bp1_compliance_within_48hrs"] },
+  billing_holds: { required: [], optional: ["unbilled_revenue", "ar_aging"], reportKpis: ["billing_holds"] },
+  unbilled_revenue: { required: [], optional: ["billing_holds", "revenue"], reportKpis: ["ar_aging"] },
 };
 
 function normalize(value: string): string {

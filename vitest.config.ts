@@ -6,6 +6,7 @@ export default defineConfig({
     // Mirror the single path alias in tsconfig.json: @/* → project root
     alias: {
       "@": path.resolve(__dirname, "."),
+      "server-only": path.resolve(__dirname, "tests/mocks/server-only.ts"),
     },
   },
   test: {

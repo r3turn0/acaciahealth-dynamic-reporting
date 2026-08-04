@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import kpiConfig from "@/lib/config/kpiConfig.json";
-import { collectKpiEvidence } from "@/lib/services/kpiEvidenceService";
+import { collectComparativeKpiEvidence } from "@/lib/services/kpiEvidenceService";
 import { analyzeKpiEvidence, type KpiEvidenceAnalysis } from "@/lib/services/kpiEvidenceAnalyzer";
+import { recordKpiEvidenceSample } from "@/lib/services/kpiEvidenceTelemetry";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -595,8 +596,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid evidence request", details: parsed.error.flatten().fieldErrors }, { status: 400 });
   }
   const { kpiKey, startDate, endDate } = parsed.data;
-  const bundle = await collectKpiEvidence(kpiKey, startDate, endDate);
-  if (!bundle) return NextResponse.json({ error: "Unknown KPI key" }, { status: 404 });
-  const analysis: KpiEvidenceAnalysis = await analyzeKpiEvidence(bundle, startDate, endDate);
+  const started = Date.now();
+  const comparative = await collectComparativeKpiEvidence(kpiKey, startDate, endDate);
+  if (!comparative) return NextResponse.json({ error: "Unknown KPI key" }, { status: 404 });
+  const analysis: KpiEvidenceAnalysis = await analyzeKpiEvidence(comparative.current, startDate, endDate, comparative);
+  const allEvidence = [...comparative.current.evidence, ...comparative.prior.evidence];
+  const failureCategories = allEvidence.reduce<Record<string, number>>((counts, report) => {
+    if (report.failureCategory) counts[report.failureCategory] = (counts[report.failureCategory] ?? 0) + 1;
+    return counts;
+  }, {});
+  recordKpiEvidenceSample({
+    kpiKey,
+    durationMs: Date.now() - started,
+    coverage: comparative.current.coverage,
+    reportSuccessRate: comparative.current.reportSuccessRate,
+    confidence: analysis.confidence.score,
+    mode: analysis.mode,
+    liveReports: allEvidence.filter((report) => report.status === "success" && report.source === "live").length,
+    cachedReports: allEvidence.filter((report) => report.status === "success" && report.source === "cache").length,
+    failedReports: allEvidence.filter((report) => report.status === "failed").length,
+    failureCategories,
+    comparisonAvailable: analysis.dataSufficiency.sufficient,
+  });
   return NextResponse.json({ analysis });
 }

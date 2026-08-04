@@ -61,6 +61,19 @@ interface PerformancePayload {
     blockingRate: number | null;
   };
   cache: { size: number; maxEntries: number; estimatedBytes: number };
+  kpiEvidence: {
+    sampleCount: number;
+    latencyP50Ms: number | null;
+    latencyP95Ms: number | null;
+    averageCoverage: number | null;
+    averageReportSuccessRate: number | null;
+    averageConfidence: number | null;
+    fallbackRate: number | null;
+    comparisonRate: number | null;
+    sourceMix: { live: number; cached: number; failed: number };
+    failureCategories: Record<string, number>;
+    coverageGaps: Array<{ kpiKey: string; attempts: number; averageCoverage: number; fallbackRate: number }>;
+  };
   infrastructure: Record<string, { status: string; value?: number | null; enabled?: boolean | null }>;
 }
 
@@ -303,6 +316,27 @@ export function ObservabilityDashboard() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* ── KPI evidence observability ────────────────────────────────────── */}
+      <section className="rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground">KPI Evidence</h3>
+            <p className="mt-1 text-[11px] text-muted-foreground">Aggregate, PHI-safe evidence quality over the rolling telemetry window.</p>
+          </div>
+          <span className="rounded-full border border-border bg-muted px-2 py-1 text-[10px] text-muted-foreground">{performanceData?.kpiEvidence.sampleCount ?? 0} analyses</span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+          {[
+            ["P95 latency", performanceData?.kpiEvidence.latencyP95Ms == null ? "No data" : `${performanceData.kpiEvidence.latencyP95Ms} ms`],
+            ["Coverage", performanceData?.kpiEvidence.averageCoverage == null ? "No data" : `${Math.round(performanceData.kpiEvidence.averageCoverage * 100)}%`],
+            ["Report success", performanceData?.kpiEvidence.averageReportSuccessRate == null ? "No data" : `${Math.round(performanceData.kpiEvidence.averageReportSuccessRate * 100)}%`],
+            ["Confidence", performanceData?.kpiEvidence.averageConfidence == null ? "No data" : `${Math.round(performanceData.kpiEvidence.averageConfidence)}%`],
+            ["Fallback rate", performanceData?.kpiEvidence.fallbackRate == null ? "No data" : `${Math.round(performanceData.kpiEvidence.fallbackRate * 100)}%`],
+          ].map(([label, value]) => <div key={label} className="rounded-lg border border-border bg-background p-3"><p className="text-[10px] text-muted-foreground">{label}</p><p className="mt-1 text-base font-semibold tabular-nums text-foreground">{value}</p></div>)}
+        </div>
+        {performanceData?.kpiEvidence.coverageGaps.length ? <div className="mt-3 flex flex-col gap-2 rounded-lg border border-chart-5/25 bg-chart-5/5 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-chart-5">Coverage gaps</p>{performanceData.kpiEvidence.coverageGaps.map((gap) => <div key={gap.kpiKey} className="flex items-center justify-between gap-3 text-[11px]"><span className="font-mono text-foreground">{gap.kpiKey}</span><span className="text-muted-foreground">{Math.round(gap.averageCoverage * 100)}% coverage · {Math.round(gap.fallbackRate * 100)}% fallback · {gap.attempts} runs</span></div>)}</div> : null}
       </section>
 
       {/* ── Stats row ──────────────────────────────────────────────────────── */}

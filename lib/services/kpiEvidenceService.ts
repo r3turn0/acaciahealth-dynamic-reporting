@@ -3,14 +3,18 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { queryMultiple, isConfigured, type QueryResultSet } from "@/lib/db/readOnlyClient";
 import { validateReadOnlySql } from "@/lib/services/queryGuard";
-import { getLatestSnapshot, listReports, type SavedReport } from "@/lib/services/reportService";
+import { getLatestSnapshot, listReports, type DatasetSnapshot, type SavedReport } from "@/lib/services/reportService";
 import { resolveKpiDependencyGraph, type ResolvedKpiGraph } from "@/lib/config/kpiDependencyGraph";
 
 const MAX_REPORTS = 5;
+const MAX_CONCURRENCY = 2;
 const MAX_ROWS_PER_SET = 12;
 const MAX_FIELDS = 12;
 const TIMEOUT_MS = 15_000;
 const IDENTIFIER_PATTERN = /(^|_)(patient|episode|client|person|member)?_?(id|mrn|ssn|name|address|phone|email|dob)(_|$)/i;
+
+export type EvidenceFailureCategory = "unsafe-sql" | "timeout" | "execution" | "empty-result";
+export type EvidenceWindow = "current" | "prior";
 
 export interface EvidenceReportSelection {
   report: SavedReport;
@@ -38,7 +42,9 @@ export interface KpiReportEvidence {
   matchReasons: string[];
   executionMs: number;
   dateRange: { startDate: string; endDate: string };
+  window: EvidenceWindow;
   resultSets: CompactResultSet[];
+  failureCategory?: EvidenceFailureCategory;
   error?: string;
 }
 
@@ -52,6 +58,35 @@ export interface KpiEvidenceBundle {
   mode: "live" | "cached" | "partial" | "fallback";
   generatedAt: string;
 }
+
+export interface KpiComparativeEvidence {
+  current: KpiEvidenceBundle;
+  prior: KpiEvidenceBundle;
+  windows: {
+    current: { startDate: string; endDate: string };
+    prior: { startDate: string; endDate: string };
+  };
+}
+
+interface EvidenceDependencies {
+  listReports: typeof listReports;
+  getLatestSnapshot: typeof getLatestSnapshot;
+  queryMultiple: typeof queryMultiple;
+  isConfigured: typeof isConfigured;
+  now: () => number;
+  timeoutMs: number;
+  maxConcurrency: number;
+}
+
+const productionDependencies: EvidenceDependencies = {
+  listReports,
+  getLatestSnapshot,
+  queryMultiple,
+  isConfigured,
+  now: Date.now,
+  timeoutMs: TIMEOUT_MS,
+  maxConcurrency: MAX_CONCURRENCY,
+};
 
 function tokens(value: string): Set<string> {
   return new Set(value.toLowerCase().replace(/[^a-z0-9]+/g, " ").split(" ").filter((token) => token.length > 2));
@@ -75,12 +110,16 @@ export function rankSupportingReports(graph: ResolvedKpiGraph, reports: SavedRep
       if (report.kpi === node.key) { score += 80; reasons.push("exact dependency KPI"); }
       if (report.created_by === "system") { score += 20; reasons.push("system-owned canonical report"); }
       if (report.tags.includes("canonical")) { score += 15; reasons.push("canonical tag"); }
-      const aliasSimilarity = Math.max(...node.aliases.map((alias) => overlap(alias, `${report.name} ${report.description} ${report.tags.join(" ")}`)));
+      const searchable = `${report.name} ${report.description} ${report.prompt} ${report.tags.join(" ")}`;
+      const aliasSimilarity = Math.max(...node.aliases.map((alias) => overlap(alias, searchable)));
       if (aliasSimilarity > 0) { score += aliasSimilarity * 25; reasons.push(`alias similarity ${(aliasSimilarity * 100).toFixed(0)}%`); }
+      const formulaSimilarity = overlap(node.formula, searchable);
+      if (formulaSimilarity > 0) { score += formulaSimilarity * 10; reasons.push("formula component match"); }
+      if (report.last_run_date) { score += 3; reasons.push("previously executed"); }
       if (score >= 25) ranked.push({ report, nodeKey: node.key, score, reasons });
     }
   }
-  return ranked.sort((a, b) => b.score - a.score || b.report.version - a.report.version);
+  return ranked.sort((a, b) => b.score - a.score || b.report.version - a.report.version || a.report.id.localeCompare(b.report.id));
 }
 
 export function selectTopGovernedReports(ranked: EvidenceReportSelection[], maxReports = MAX_REPORTS): EvidenceReportSelection[] {
@@ -125,49 +164,104 @@ export function compactResultSet(resultSet: QueryResultSet, citationId: string):
   return { citationId, columns: safeColumns, rowCount: resultSet.rowCount, sampleRows, numericSummary, completeness: totalCells ? populated / totalCells : 0 };
 }
 
-function snapshotMatches(snapshot: Awaited<ReturnType<typeof getLatestSnapshot>>, report: SavedReport, startDate: string, endDate: string): boolean {
+function snapshotMatches(snapshot: DatasetSnapshot | null, report: SavedReport, startDate: string, endDate: string): boolean {
   if (!snapshot || (snapshot.expires_at && Date.parse(snapshot.expires_at) <= Date.now())) return false;
   const definition = snapshot.query_definition;
   return definition.reportVersion === report.version && definition.startDate === startDate && definition.endDate === endDate;
 }
 
-async function executeSelection(selection: EvidenceReportSelection, startDate: string, endDate: string): Promise<KpiReportEvidence> {
-  const started = Date.now();
-  const base = { reportId: selection.report.id, reportName: selection.report.name, reportVersion: selection.report.version, nodeKey: selection.nodeKey, matchReasons: selection.reasons, dateRange: { startDate, endDate } };
+function classifyFailure(error: unknown): EvidenceFailureCategory {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/read.?only|unsafe|rejected sql|\b(delete|update|insert|drop|alter|truncate|exec)\b/i.test(message)) return "unsafe-sql";
+  if (/abort|timeout|timed out/i.test(message)) return "timeout";
+  return "execution";
+}
+
+async function executeSelection(selection: EvidenceReportSelection, startDate: string, endDate: string, window: EvidenceWindow, deps: EvidenceDependencies): Promise<KpiReportEvidence> {
+  const started = deps.now();
+  const base = { reportId: selection.report.id, reportName: selection.report.name, reportVersion: selection.report.version, nodeKey: selection.nodeKey, matchReasons: selection.reasons, dateRange: { startDate, endDate }, window };
   try {
     const guarded = validateReadOnlySql(selection.report.sql);
-    if (!guarded.valid) throw new Error(guarded.errors.join("; "));
-    const snapshot = await getLatestSnapshot(selection.report.id);
+    if (!guarded.valid) throw new Error(`Unsafe SQL: ${guarded.errors.join("; ")}`);
+    const snapshot = await deps.getLatestSnapshot(selection.report.id);
     if (snapshotMatches(snapshot, selection.report, startDate, endDate)) {
       const set = { columns: snapshot!.columns, rows: snapshot!.rows, rowCount: snapshot!.row_count };
-      return { ...base, source: "cache", status: "success", executionMs: Date.now() - started, resultSets: [compactResultSet(set, `${selection.report.id}:1`)] };
+      if (set.rowCount === 0) throw new Error("Empty result set");
+      return { ...base, source: "cache", status: "success", executionMs: deps.now() - started, resultSets: [compactResultSet(set, `${window}:${selection.report.id}:1`)] };
     }
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(new Error("Report evidence query timed out")), TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(new Error("Report evidence query timed out")), deps.timeoutMs);
     try {
-      const result = await queryMultiple(selection.report.sql, { StartDate: startDate, EndDate: endDate }, controller.signal);
-      return { ...base, source: "live", status: "success", executionMs: Date.now() - started, resultSets: result.resultSets.map((set, index) => compactResultSet(set, `${selection.report.id}:${index + 1}`)) };
+      const result = await deps.queryMultiple(selection.report.sql, { StartDate: startDate, EndDate: endDate }, controller.signal);
+      const populated = result.resultSets.filter((set) => set.rowCount > 0);
+      if (populated.length === 0) throw new Error("Empty result set");
+      return { ...base, source: "live", status: "success", executionMs: deps.now() - started, resultSets: populated.map((set, index) => compactResultSet(set, `${window}:${selection.report.id}:${index + 1}`)) };
     } finally { clearTimeout(timeout); }
   } catch (error) {
-    return { ...base, source: "live", status: "failed", executionMs: Date.now() - started, resultSets: [], error: error instanceof Error ? error.message : String(error) };
+    const message = error instanceof Error ? error.message : String(error);
+    return { ...base, source: "live", status: "failed", executionMs: deps.now() - started, resultSets: [], failureCategory: /empty result/i.test(message) ? "empty-result" : classifyFailure(error), error: message.slice(0, 240) };
   }
 }
 
-export async function collectKpiEvidence(kpiKey: string, startDate: string, endDate: string): Promise<KpiEvidenceBundle | null> {
-  const graph = resolveKpiDependencyGraph(kpiKey);
-  if (!graph) return null;
-  const reports = await listReports();
-  const selected = selectTopGovernedReports(rankSupportingReports(graph, reports));
-  const covered = new Set(selected.map((item) => item.nodeKey));
-  const uncoveredNodes = graph.nodes.filter((node) => !covered.has(node.key)).map((node) => node.key);
-  if (!isConfigured() || selected.length === 0) return { graph, evidence: [], uncoveredNodes, failedNodes: [], coverage: 0, reportSuccessRate: 0, mode: "fallback", generatedAt: new Date().toISOString() };
-  const evidence = await Promise.all(selected.map((item) => executeSelection(item, startDate, endDate)));
+async function mapBounded<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await mapper(items[index]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, concurrency), items.length) }, () => worker()));
+  return results;
+}
+
+function buildBundle(graph: ResolvedKpiGraph, selected: EvidenceReportSelection[], evidence: KpiReportEvidence[], now: number): KpiEvidenceBundle {
+  const selectedNodes = new Set(selected.map((item) => item.nodeKey));
+  const uncoveredNodes = graph.nodes.filter((node) => !selectedNodes.has(node.key)).map((node) => node.key);
   const successful = evidence.filter((item) => item.status === "success");
-  const failedNodes = evidence.filter((item) => item.status === "failed").map((item) => item.nodeKey);
+  const failedNodes = [...new Set(evidence.filter((item) => item.status === "failed").map((item) => item.nodeKey))];
   const required = new Set([graph.root.key, ...graph.requiredKeys]);
   const successfulNodes = new Set(successful.map((item) => item.nodeKey));
   const coverage = required.size ? [...required].filter((key) => successfulNodes.has(key)).length / required.size : 0;
   const sources = new Set(successful.map((item) => item.source));
   const mode = successful.length === 0 ? "fallback" : failedNodes.length || uncoveredNodes.some((node) => required.has(node)) ? "partial" : sources.size === 1 && sources.has("cache") ? "cached" : "live";
-  return { graph, evidence, uncoveredNodes, failedNodes, coverage, reportSuccessRate: successful.length / evidence.length, mode, generatedAt: new Date().toISOString() };
+  return { graph, evidence, uncoveredNodes, failedNodes, coverage, reportSuccessRate: evidence.length ? successful.length / evidence.length : 0, mode, generatedAt: new Date(now).toISOString() };
+}
+
+function priorPeriod(startDate: string, endDate: string): { startDate: string; endDate: string } {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+  const priorEnd = new Date(start.getTime() - 86_400_000);
+  const priorStart = new Date(priorEnd.getTime() - (days - 1) * 86_400_000);
+  return { startDate: priorStart.toISOString().slice(0, 10), endDate: priorEnd.toISOString().slice(0, 10) };
+}
+
+async function collectWindow(graph: ResolvedKpiGraph, selected: EvidenceReportSelection[], range: { startDate: string; endDate: string }, window: EvidenceWindow, deps: EvidenceDependencies): Promise<KpiEvidenceBundle> {
+  if (!deps.isConfigured() || selected.length === 0) return buildBundle(graph, selected, [], deps.now());
+  const evidence = await mapBounded(selected, deps.maxConcurrency, (selection) => executeSelection(selection, range.startDate, range.endDate, window, deps));
+  return buildBundle(graph, selected, evidence, deps.now());
+}
+
+export async function collectKpiEvidence(kpiKey: string, startDate: string, endDate: string, overrides: Partial<EvidenceDependencies> = {}): Promise<KpiEvidenceBundle | null> {
+  const graph = resolveKpiDependencyGraph(kpiKey);
+  if (!graph) return null;
+  const deps = { ...productionDependencies, ...overrides };
+  const selected = selectTopGovernedReports(rankSupportingReports(graph, await deps.listReports()));
+  return collectWindow(graph, selected, { startDate, endDate }, "current", deps);
+}
+
+export async function collectComparativeKpiEvidence(kpiKey: string, startDate: string, endDate: string, overrides: Partial<EvidenceDependencies> = {}): Promise<KpiComparativeEvidence | null> {
+  const graph = resolveKpiDependencyGraph(kpiKey);
+  if (!graph) return null;
+  const deps = { ...productionDependencies, ...overrides };
+  const selected = selectTopGovernedReports(rankSupportingReports(graph, await deps.listReports()));
+  const currentRange = { startDate, endDate };
+  const priorRange = priorPeriod(startDate, endDate);
+  const [current, prior] = await Promise.all([
+    collectWindow(graph, selected, currentRange, "current", deps),
+    collectWindow(graph, selected, priorRange, "prior", deps),
+  ]);
+  return { current, prior, windows: { current: currentRange, prior: priorRange } };
 }
