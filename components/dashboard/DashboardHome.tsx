@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useMemo } from "react";
+import useSWR from "swr";
 import {
   Pin,
   X,
@@ -25,7 +26,6 @@ import { KpiCards } from "./KpiCards";
 import { HealthStatus } from "./HealthStatus";
 import {
   useDashboardPins,
-  refreshPins,
   unpinItem,
   type DashboardPin,
 } from "@/lib/hooks/useDashboardPins";
@@ -68,26 +68,20 @@ function formatRelative(iso: string | null): string {
 
 export function DashboardHome({ onNavigate, onOpenReport }: DashboardHomeProps) {
   const pins = useDashboardPins();
-  const [recent, setRecent] = useState<RecentReport[]>([]);
-  const [loadingRecent, setLoadingRecent] = useState(true);
-
-  const loadRecent = useCallback(async () => {
-    try {
-      const res = await fetch("/api/reports");
-      const json = await res.json();
-      setRecent(Array.isArray(json.reports) ? json.reports.slice(0, 5) : []);
-    } catch {
-      // Silent — dashboard still renders without recent list.
-    } finally {
-      setLoadingRecent(false);
-    }
-  }, []);
-
-  // Load independent read-only resources concurrently; neither blocks the shell.
-  useEffect(() => {
-    void refreshPins();
-    void loadRecent();
-  }, [loadRecent]);
+  const { data: recent = [], isLoading: loadingRecent } = useSWR<RecentReport[]>(
+    "/api/reports?dashboard=recent",
+    async () => {
+      const response = await fetch("/api/reports");
+      if (!response.ok) throw new Error(`Reports request failed (${response.status})`);
+      const json = await response.json();
+      return Array.isArray(json.reports) ? json.reports.slice(0, 5) : [];
+    },
+    {
+      dedupingInterval: 60_000,
+      revalidateOnFocus: false,
+      shouldRetryOnError: false,
+    },
+  );
 
   function openPin(pin: DashboardPin) {
     // Both report and KPI pins go directly to KPI Intelligence — Interpreter tab.

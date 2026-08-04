@@ -901,11 +901,12 @@ EXECUTION_TIMEOUT_MS,
         });
 
         if (retryResult.succeeded && retryResult.correctedSql) {
-          // Execute the corrected SQL
+          // Preserve narrowing across the asynchronous timeout callback.
+          const correctedSql = retryResult.correctedSql;
           const retryT0 = Date.now();
           try {
 const retryQueryResult = await withAbortTimeout(
-(timeoutSignal) => executeMultiQuery(retryResult.correctedSql, { StartDate: startDate, EndDate: endDate }, timeoutSignal),
+(timeoutSignal) => executeMultiQuery(correctedSql, { StartDate: startDate, EndDate: endDate }, timeoutSignal),
 signal,
 EXECUTION_TIMEOUT_MS,
 "executeMultiQuery(retry)"
@@ -917,7 +918,7 @@ EXECUTION_TIMEOUT_MS,
             const retryMs = Date.now() - retryT0;
 
             // Learn from this corrected success
-            await learnFromSuccess(userRequest, retryResult.correctedSql).catch(() => {});
+            await learnFromSuccess(userRequest, correctedSql).catch(() => {});
 
             return {
               execution: {
@@ -932,7 +933,7 @@ EXECUTION_TIMEOUT_MS,
                 truncated,
                 auditLogId: auditId,
               },
-              executedSql: retryResult.correctedSql,
+              executedSql: correctedSql,
               historyId,
               retryInfo: {
                 attempted: true,
@@ -951,7 +952,7 @@ EXECUTION_TIMEOUT_MS,
             const retryErrMsg = retryExecErr instanceof Error ? retryExecErr.message : String(retryExecErr);
             return {
               execution: null,
-              executedSql: retryResult.correctedSql,
+              executedSql: correctedSql,
               historyId,
               retryInfo: {
                 attempted: true,
