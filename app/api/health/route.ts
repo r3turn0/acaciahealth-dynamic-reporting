@@ -4,16 +4,12 @@ import { NextResponse } from "next/server";
 import { checkConnection, isDbConfigured } from "@/lib/services/db";
 import { getCacheStats } from "@/lib/services/cache";
 
-const HEALTH_DB_TIMEOUT_MS = 2_000;
-
 export async function GET() {
   const dbConfigured = isDbConfigured();
-  const dbConnected = dbConfigured
-    ? await Promise.race([
-        checkConnection(),
-        new Promise<false>((resolve) => setTimeout(() => resolve(false), HEALTH_DB_TIMEOUT_MS)),
-      ])
-    : false;
+  // checkConnection is bounded by the driver's connection timeout and shared
+  // cooldown. Do not race it with a timer: that leaves an orphaned connection
+  // attempt which can emit delayed pool timeout errors after this response.
+  const dbConnected = dbConfigured ? await checkConnection() : false;
 
   const cacheStats = getCacheStats();
 
