@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Code2, Play, Loader2, ShieldCheck, ShieldX, Copy, Check, Lock, Unlock, PenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { copyToClipboard } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { fetchWithTimeout } from "@/lib/client/fetchWithTimeout";
 
 interface ValidationResult {
   valid: boolean;
@@ -40,32 +41,50 @@ export function SQLEditor({
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [validating, setValidating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const validationRequestRef = useRef<{ controller: AbortController; id: number } | null>(null);
+  const validationRequestIdRef = useRef(0);
 
-  // Validate on SQL change (debounced)
+  // Validate on SQL change (debounced). Every new edit cancels the stale request.
   useEffect(() => {
+    validationRequestRef.current?.controller.abort();
     if (!sql.trim()) {
+      validationRequestRef.current = null;
       setValidation(null);
+      setValidating(false);
       return;
     }
+
+    const controller = new AbortController();
+    const requestId = ++validationRequestIdRef.current;
+    validationRequestRef.current = { controller, id: requestId };
     setValidating(true);
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch("/api/generate-query/validate", {
+        const res = await fetchWithTimeout("/api/generate-query/validate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sql }),
+          signal: controller.signal,
+          timeoutMs: 8_000,
         });
-        if (res.ok) {
+        if (res.ok && validationRequestRef.current?.id === requestId) {
           const data = await res.json();
           setValidation(data);
         }
       } catch {
-        // Silent fail for inline validation
+        // Inline validation is advisory; execution still returns actionable errors.
       } finally {
-        setValidating(false);
+        if (validationRequestRef.current?.id === requestId) {
+          validationRequestRef.current = null;
+          setValidating(false);
+        }
       }
     }, 600);
-    return () => clearTimeout(timer);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [sql]);
 
   async function copySQL() {

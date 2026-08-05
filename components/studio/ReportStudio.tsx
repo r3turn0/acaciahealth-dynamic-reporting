@@ -89,6 +89,14 @@ export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportSt
   const [saveModalDone, setSaveModalDone] = useState(false);
   const saveNameRef = useRef<HTMLInputElement>(null);
 
+  useEffect(
+    () => () => {
+      executionRequestRef.current?.controller.abort();
+      autoFixRequestRef.current?.controller.abort();
+    },
+    []
+  );
+
   // Respond to parent navigation while this component is already mounted
   useEffect(() => {
     if (initialTab) setTab(initialTab);
@@ -156,13 +164,18 @@ export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportSt
   async function executeSQL(overrideSql?: string, sd?: string, ed?: string) {
     const runSql = (overrideSql ?? sql).trim();
     if (!runSql) return;
+
+    executionRequestRef.current?.controller.abort();
+    const controller = new AbortController();
+    const requestId = ++executionRequestIdRef.current;
+    executionRequestRef.current = { controller, id: requestId };
     setExecuting(true);
     setExecError(null);
     setResult(null);
     setDateLinkNote(false);
 
     try {
-      const res = await fetch("/api/run-sql", {
+      const res = await fetchWithTimeout("/api/run-sql", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -175,8 +188,11 @@ export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportSt
           // Pass the original prompt so the correction loop has context
           original_prompt: currentPlan?.explanation ?? "",
         }),
+        signal: controller.signal,
+        timeoutMs: 25_000,
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
+      if (executionRequestRef.current?.id !== requestId) return;
       if (!res.ok) {
         setExecError(json.error ?? "Execution failed");
         return;
@@ -229,17 +245,31 @@ export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportSt
       };
       setResult(normalized);
     } catch (e) {
-      setExecError(e instanceof Error ? e.message : "Network error");
+      if (executionRequestRef.current?.id !== requestId || controller.signal.aborted) return;
+      setExecError(
+        requestErrorMessage(
+          e,
+          "Query execution took too long. Narrow the date range or simplify the SQL."
+        )
+      );
     } finally {
-      setExecuting(false);
+      if (executionRequestRef.current?.id === requestId) {
+        executionRequestRef.current = null;
+        setExecuting(false);
+      }
     }
   }
 
   async function autoFixSQL() {
     if (!sql.trim() || !execError) return;
+
+    autoFixRequestRef.current?.controller.abort();
+    const controller = new AbortController();
+    const requestId = ++autoFixRequestIdRef.current;
+    autoFixRequestRef.current = { controller, id: requestId };
     setAutoFixing(true);
     try {
-      const res = await fetch("/api/generate-query", {
+      const res = await fetchWithTimeout("/api/generate-query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -255,8 +285,11 @@ Return only the corrected SQL.`,
           start_date: startDate,
           end_date: endDate,
         }),
+        signal: controller.signal,
+        timeoutMs: 30_000,
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
+      if (autoFixRequestRef.current?.id !== requestId) return;
       if (res.ok && json.sql) {
         setSql(json.sql);
         setSqlDirty(false);
@@ -264,11 +297,19 @@ Return only the corrected SQL.`,
         setCurrentPlan((prev) =>
           prev ? { ...prev, sql: json.sql, correction_applied: true } : prev
         );
+      } else {
+        setExecError(json.error ?? "AI could not repair this query. Edit the SQL or retry.");
       }
-    } catch {
-      // Silent — user can still fix manually
+    } catch (error) {
+      if (autoFixRequestRef.current?.id !== requestId || controller.signal.aborted) return;
+      setExecError(
+        requestErrorMessage(error, "AI repair took too long. Edit the SQL or retry.")
+      );
     } finally {
-      setAutoFixing(false);
+      if (autoFixRequestRef.current?.id === requestId) {
+        autoFixRequestRef.current = null;
+        setAutoFixing(false);
+      }
     }
   }
 
