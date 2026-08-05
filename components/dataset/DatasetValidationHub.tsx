@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, AlertTriangle, XCircle, Loader2, ShieldCheck, RefreshCw, Activity } from "lucide-react";
 import type { DatasetValidation } from "@/lib/validation/datasetValidation";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ export function DatasetValidationHub({ datasetId, tables, relationshipCount }: {
   const [error, setError] = useState<string | null>(null);
   const [lastValidatedAt, setLastValidatedAt] = useState<number | null>(null);
   const intentRef = useRef(0);
+  const tableSignature = useMemo(() => JSON.stringify(tables.map((table) => ({ name: table.name, columns: table.columns.map((column) => [column.name, column.type, column.nullable, column.isPk]) }))), [tables]);
   async function run() {
     const intent = ++intentRef.current;
     setLoading(true);
@@ -31,7 +32,7 @@ export function DatasetValidationHub({ datasetId, tables, relationshipCount }: {
       if (intent === intentRef.current) setLoading(false);
     }
   }
-  useEffect(() => { void run(); }, [datasetId, relationshipCount, tables]);
+  useEffect(() => { void run(); }, [datasetId, relationshipCount, tableSignature]); // eslint-disable-line react-hooks/exhaustive-deps
   const categoryScores = result ? [...new Set(result.checks.map((check) => check.category))].map((category) => { const checks = result.checks.filter((check) => check.category === category); return { category, score: Math.round(checks.reduce((sum, check) => sum + check.score, 0) / checks.length) }; }) : [];
   return <div className="flex flex-col gap-5">
     <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center"><div><h3 className="text-base font-semibold text-foreground">Dataset Validation Hub</h3><p className="mt-1 text-xs text-muted-foreground">Validate schema, mappings, relationships, KPI readiness, and data quality before publishing.</p>{lastValidatedAt && <p className="mt-2 text-[10px] text-muted-foreground">Fresh as of {new Date(lastValidatedAt).toLocaleTimeString()} · changes automatically replace stale validation runs</p>}</div><div className="flex items-center gap-2">{loading && <button type="button" onClick={() => cancelScope(`dataset-validation:${datasetId}`)} className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground">Cancel</button>}<button type="button" onClick={() => void run()} disabled={loading} className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50">{loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}{result ? "Run again" : "Run validation"}</button></div></div>
@@ -45,11 +46,11 @@ export function DatasetValidationHub({ datasetId, tables, relationshipCount }: {
 
 export function DatasetLineagePanel({ tables, relationshipCount }: { tables: Array<{ name: string; schema?: string }>; relationshipCount: number }) {
   const nodes = [
-    { label: `${tables.length} source tables`, detail: tables.map((table) => table.name).slice(0, 3).join(", ") },
-    { label: `${relationshipCount} relationships`, detail: "Accepted join paths" },
-    { label: "Validation profile", detail: "Schema and business rules" },
-    { label: "KPI detection", detail: "ADC, Census, Admissions" },
-    { label: "Reports & alerts", detail: "Impact monitoring" },
+    { id: "sources", label: `${tables.length} source tables`, detail: tables.map((table) => table.name).slice(0, 3).join(", ") },
+    { id: "relationships", label: `${relationshipCount} relationships`, detail: "Accepted join paths" },
+    { id: "validation", label: "Validation profile", detail: "Schema and business rules" },
+    { id: "kpi-detection", label: "KPI detection", detail: "ADC, Census, Admissions" },
+    { id: "reports-alerts", label: "Reports & alerts", detail: "Impact monitoring" },
   ];
-  return <div className="flex flex-col gap-5"><div><h3 className="text-base font-semibold">Dataset Lineage</h3><p className="mt-1 text-xs text-muted-foreground">Trace source tables through validation, KPI detection, reports, and downstream alerts.</p></div><div className="flex flex-col items-stretch gap-2 overflow-x-auto md:flex-row md:items-center">{nodes.map((node, index) => <div key={node.label} className="flex min-w-0 flex-1 items-center gap-2"><div className="min-h-24 min-w-40 flex-1 rounded-xl border border-border bg-card p-3"><span className="text-xs font-semibold text-foreground">{node.label}</span><p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">{node.detail || "Awaiting source selection"}</p></div>{index < nodes.length - 1 && <span className="hidden text-primary md:block">→</span>}</div>)}</div><div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-xs text-muted-foreground"><strong className="text-foreground">Impact-aware lineage:</strong> schema changes can now be traced into validation failures, missing KPI inputs, dependent metrics, and affected reports.</div></div>;
+  return <div className="flex flex-col gap-5"><div><h3 className="text-base font-semibold">Dataset Lineage</h3><p className="mt-1 text-xs text-muted-foreground">Trace source tables through validation, KPI detection, reports, and downstream alerts.</p></div><div className="flex flex-col items-stretch gap-2 overflow-x-auto md:flex-row md:items-center">{nodes.map((node, index) => <div key={node.id} className="flex min-w-0 flex-1 items-center gap-2"><div className="min-h-24 min-w-40 flex-1 rounded-xl border border-border bg-card p-3"><span className="text-xs font-semibold text-foreground">{node.label}</span><p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">{node.detail || "Awaiting source selection"}</p></div>{index < nodes.length - 1 && <span className="hidden text-primary md:block">→</span>}</div>)}</div><div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-xs text-muted-foreground"><strong className="text-foreground">Impact-aware lineage:</strong> schema changes can now be traced into validation failures, missing KPI inputs, dependent metrics, and affected reports.</div></div>;
 }

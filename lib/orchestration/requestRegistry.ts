@@ -23,6 +23,7 @@ export interface RequestSnapshot {
   endedAt?: number;
   durationMs?: number;
   savedCall?: boolean;
+  cancellationReason?: string;
 }
 
 export class StaleRequestError extends Error {
@@ -50,21 +51,22 @@ export function requestKey(context: RequestContext): string {
   return [context.scope, context.operation, context.resource ?? "", stable(context.params)].join("::");
 }
 
-function requestGroup(context: RequestContext): string {
+export function getRequestGroup(context: RequestContext): string {
   return context.refreshGroup ?? [context.scope, context.operation, context.resource ?? ""].join("::");
 }
 
 function identityKey(context: RequestContext): string {
-  return context.policy === "dedupe" ? requestKey(context) : requestGroup(context);
+  return context.policy === "dedupe" ? requestKey(context) : getRequestGroup(context);
 }
 
 function emit() { version += 1; listeners.forEach((listener) => listener()); }
 function record(snapshot: RequestSnapshot) { snapshots.unshift(snapshot); if (snapshots.length > 250) snapshots.length = 250; emit(); }
 
-function finish(id: string, status: RequestStatus) {
+function finish(id: string, status: RequestStatus, cancellationReason?: string) {
   const snapshot = snapshots.find((item) => item.id === id);
   if (!snapshot || snapshot.endedAt) return;
   snapshot.status = status;
+  if (cancellationReason) snapshot.cancellationReason = cancellationReason;
   snapshot.endedAt = Date.now();
   snapshot.durationMs = snapshot.endedAt - snapshot.startedAt;
   emit();
@@ -82,12 +84,12 @@ export async function orchestrate<T>(context: RequestContext, task: (signal: Abo
   }
   if (prior && policy === "latest") {
     prior.controller.abort(new RequestCancelledError("Superseded by newer intent"));
-    finish(prior.id, "stale");
+    finish(prior.id, "stale", "Superseded by newer intent");
   }
 
   const controller = new AbortController();
   const id = `req_${Date.now()}_${++sequence}`;
-  const snapshot: RequestSnapshot = { id, key, scope: context.scope, operation: context.operation, resource: context.resource, refreshGroup: context.refreshGroup, requestGroup: requestGroup(context), status: "pending", startedAt: Date.now() };
+  const snapshot: RequestSnapshot = { id, key, scope: context.scope, operation: context.operation, resource: context.resource, refreshGroup: context.refreshGroup, requestGroup: getRequestGroup(context), status: "pending", startedAt: Date.now() };
   record(snapshot);
   let timer: ReturnType<typeof setTimeout> | undefined;
   if (context.timeoutMs) timer = setTimeout(() => controller.abort(new RequestCancelledError("Request timed out")), context.timeoutMs);
@@ -101,7 +103,7 @@ export async function orchestrate<T>(context: RequestContext, task: (signal: Abo
     .catch((error: unknown) => {
       const existing = snapshots.find((item) => item.id === id);
       const aborted = controller.signal.aborted || (error instanceof Error && error.name === "AbortError");
-      if (existing?.status !== "stale") finish(id, aborted ? "cancelled" : "error");
+      if (existing?.status !== "stale") finish(id, aborted ? "cancelled" : "error", aborted ? String(controller.signal.reason instanceof Error ? controller.signal.reason.message : controller.signal.reason ?? "Request cancelled") : undefined);
       throw error;
     })
     .finally(() => {

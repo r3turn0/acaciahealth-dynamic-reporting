@@ -76,6 +76,7 @@ const SYNONYMS: Record<string, string[]> = {
 
 let snapshot: IndexSnapshot | null = null;
 let snapshotExpiresAt = 0;
+let pendingBuild: Promise<IndexSnapshot> | null = null;
 const queryCache = new Map<string, { expiresAt: number; results: IndexedCatalogSearchResult[] }>();
 
 function nowMs() {
@@ -158,16 +159,23 @@ function createSnapshot(assets: CatalogAsset[]): IndexSnapshot {
 export function invalidateSearchIndex() {
   snapshot = null;
   snapshotExpiresAt = 0;
+  pendingBuild = null;
   queryCache.clear();
 }
 
 async function getSnapshot(buildAssets: () => Promise<CatalogAsset[]>): Promise<{ value: IndexSnapshot; cacheHit: boolean; buildMs: number }> {
   const startedAt = nowMs();
   if (snapshot && Date.now() < snapshotExpiresAt) return { value: snapshot, cacheHit: true, buildMs: nowMs() - startedAt };
-  snapshot = createSnapshot(await buildAssets());
-  snapshotExpiresAt = Date.now() + CACHE_TTL_MS;
-  queryCache.clear();
-  return { value: snapshot, cacheHit: false, buildMs: nowMs() - startedAt };
+  const joinedExistingBuild = pendingBuild !== null;
+  pendingBuild ??= buildAssets().then(createSnapshot);
+  try {
+    snapshot = await pendingBuild;
+    snapshotExpiresAt = Date.now() + CACHE_TTL_MS;
+    queryCache.clear();
+    return { value: snapshot, cacheHit: joinedExistingBuild, buildMs: nowMs() - startedAt };
+  } finally {
+    pendingBuild = null;
+  }
 }
 
 function excerptFor(value: string, term: string) {

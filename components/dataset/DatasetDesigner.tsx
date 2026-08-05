@@ -1019,6 +1019,7 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
   ]);
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [datasets, setDatasets] = useState<SemanticDataset[]>([]);
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
   const [scope, setScope] = useState<ScopeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [inferring, setInferring] = useState(false);
@@ -1088,7 +1089,11 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
           relationships: Relationship[];
           scope: ScopeData;
         };
-        setDatasets(json.datasets ?? []);
+        const nextDatasets = json.datasets ?? [];
+        setDatasets(nextDatasets);
+        setSelectedDatasetId((current) => current && nextDatasets.some((dataset) => dataset.datasetId === current)
+          ? current
+          : nextDatasets.find((dataset) => dataset.status === "Draft")?.datasetId ?? nextDatasets[0]?.datasetId ?? null);
         setRelationships(json.relationships ?? []);
         setScope(json.scope ?? null);
       }
@@ -1270,10 +1275,19 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
       const json = await res.json() as { success: boolean; dataset: SemanticDataset };
       if (json.success) {
         setDatasets((prev) => [...prev, json.dataset]);
+        setSelectedDatasetId(json.dataset.datasetId);
         showToast(`Dataset "${json.dataset.datasetName}" created`);
       }
     } catch (err) { showToast(`Failed to create dataset${err instanceof Error ? `: ${err.message}` : ""}`, false); }
   }
+
+  const selectedDataset = datasets.find((dataset) => dataset.datasetId === selectedDatasetId) ?? null;
+  const validationTables = selectedDataset?.tables.length
+    ? selectedDataset.tables.map((tableName) => discoveryTables.find((table) => table.name === tableName) ?? { name: tableName, schema: "unknown", recordCount: 0, columnCount: 0, primaryKeys: [], foreignKeys: [], businessDescription: "Referenced by the selected semantic dataset.", columns: [] })
+    : canvasTables;
+  const validationRelationshipCount = selectedDataset
+    ? selectedDataset.relationships.filter((relationshipId) => relationships.some((relationship) => relationship.id === relationshipId && relationship.status === "Accepted")).length
+    : relationships.filter((relationship) => relationship.status === "Accepted").length;
 
   const TABS: { id: DesignerTab; label: string; icon: React.ElementType; count?: number }[] = [
     { id: "discovery",    label: "Table Discovery", icon: Database,    count: SOURCE_TABLES.length },
@@ -1358,11 +1372,10 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
               />
             )}
             {tab === "validation" && (
-              <DatasetValidationHub
-                datasetId={datasets.find((dataset) => dataset.status === "Draft")?.datasetId ?? datasets[0]?.datasetId ?? "dataset-draft"}
-                tables={canvasTables}
-                relationshipCount={relationships.filter((relationship) => relationship.status === "Accepted").length}
-              />
+              <div className="flex flex-col gap-4">
+                {datasets.length > 0 && <label className="flex flex-col gap-1.5 text-xs text-muted-foreground"><span>Semantic dataset to validate</span><select value={selectedDatasetId ?? ""} onChange={(event) => setSelectedDatasetId(event.target.value)} className="max-w-md rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary">{datasets.map((dataset) => <option key={dataset.datasetId} value={dataset.datasetId}>{dataset.datasetName} · {dataset.status}</option>)}</select></label>}
+                {selectedDataset && selectedDataset.tables.length === 0 && canvasTables.length === 0 ? <div role="status" className="rounded-xl border border-chart-5/30 bg-chart-5/10 p-5"><h3 className="text-sm font-semibold text-foreground">This semantic dataset has no selected source tables</h3><p className="mt-2 text-xs leading-relaxed text-muted-foreground">Return to Build, add governed source tables to the canvas, then update or recreate the semantic dataset before validation. Publication remains blocked until source traceability is complete.</p><button type="button" onClick={() => setTab("canvas")} className="mt-4 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">Go to Build</button></div> : <DatasetValidationHub datasetId={selectedDataset?.datasetId ?? "dataset-draft"} tables={validationTables} relationshipCount={validationRelationshipCount} />}
+              </div>
             )}
             {tab === "lineage" && (
               <DatasetLineagePanel

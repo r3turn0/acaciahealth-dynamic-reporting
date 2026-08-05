@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getRequestSummary, orchestrate } from "@/lib/orchestration/requestRegistry";
+import { cancelRequestGroup, getRequestSnapshots, getRequestSummary, orchestrate } from "@/lib/orchestration/requestRegistry";
 
 const wait = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
   const timer = setTimeout(resolve, ms);
@@ -32,5 +32,23 @@ describe("request registry", () => {
       orchestrate({ scope: "widget-right", operation: "load" }, async () => "right"),
     ]);
     expect([left, right]).toEqual(["left", "right"]);
+  });
+
+  it("isolates latest intent and cancellation by refresh group", async () => {
+    const left = orchestrate({ scope: "dashboard", operation: "load", refreshGroup: "widget:left" }, async (signal) => { await wait(25, signal); return "left"; });
+    const right = orchestrate({ scope: "dashboard", operation: "load", refreshGroup: "widget:right" }, async (signal) => { await wait(25, signal); return "right"; });
+    cancelRequestGroup("widget:left");
+    await expect(left).rejects.toMatchObject({ name: "AbortError" });
+    await expect(right).resolves.toBe("right");
+    const cancelled = getRequestSnapshots().find((item) => item.requestGroup === "widget:left" && item.status === "cancelled");
+    expect(cancelled?.cancellationReason).toContain("widget:left");
+  });
+
+  it("exposes P50, P95, and P99 telemetry", () => {
+    const summary = getRequestSummary();
+    expect(summary).toHaveProperty("p50Ms");
+    expect(summary).toHaveProperty("p95Ms");
+    expect(summary).toHaveProperty("p99Ms");
+    expect(summary.cancellationRate).toBeGreaterThanOrEqual(0);
   });
 });
