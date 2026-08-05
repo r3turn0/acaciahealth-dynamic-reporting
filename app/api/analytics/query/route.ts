@@ -8,51 +8,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateText } from "ai";
 import { getModel, isAiConfigured } from "@/lib/ai/gateway";
+import {
+  isAnalyticsResponse,
+  type AnalyticsDataset,
+  type AnalyticsRequest,
+  type AnalyticsResponse,
+} from "@/lib/contracts/analytics";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-export interface AnalyticsDataset {
-  columns: string[];
-  rows: (string | number | null)[][];
-}
-
-export interface AnalyticsRequest {
-  dataset: AnalyticsDataset;
-  question: string;
-  history?: { role: "user" | "assistant"; content: string }[];
-}
-
-export interface AnalyticsResponse {
-  intent: {
-    type: "FILTER" | "GROUP_BY" | "SUMMARY" | "TOP_N" | "SORT" | "CLARIFICATION";
-    operation?: string;
-  };
-  transformation?: {
-    steps: string[];
-  };
-  response: {
-    type: "TABLE" | "SUMMARY_TEXT" | "CHART" | "KPI" | "CLARIFICATION";
-    data?: Record<string, unknown>[];
-    columns?: string[];
-    text?: string;
-    presentation?: {
-      chartType: "bar" | "line" | "pie" | "none";
-      xAxis?: string;
-      yAxis?: string;
-      groupBy?: string[];
-      limit?: number;
-    };
-  };
-  clarification?: {
-    question: string;
-    options: string[];
-  };
-  metadata: {
-    source: "in_memory_dataset";
-    confidence: number;
-    fallback?: boolean;
-  };
-}
+export type { AnalyticsDataset, AnalyticsRequest, AnalyticsResponse } from "@/lib/contracts/analytics";
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
@@ -222,26 +185,41 @@ export async function POST(req: NextRequest) {
       },
     ];
 
-    const { text } = await generateText({
-      model: getModel("default"),
-      system: SYSTEM_PROMPT,
-      messages,
-      maxOutputTokens: 1024,
-      temperature: 0.1,
-    });
+    let text: string;
+    try {
+      const result = await generateText({
+        model: getModel("default"),
+        system: SYSTEM_PROMPT,
+        messages,
+        maxOutputTokens: 1024,
+        temperature: 0.1,
+      });
+      text = result.text;
+    } catch {
+      // Analytics remains available when the AI provider is unavailable,
+      // misconfigured, or rate limited.
+      return NextResponse.json(runFallback(cappedDataset, question));
+    }
 
     // Strip any accidental markdown fences
     const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-    let parsed: AnalyticsResponse;
+    let parsed: unknown;
     try {
       parsed = JSON.parse(clean);
     } catch {
-      // If JSON parse fails, return as summary text
+      // Preserve useful model prose when the model returns non-JSON content.
       return NextResponse.json({
         intent: { type: "SUMMARY" },
         response: { type: "SUMMARY_TEXT", text: text.slice(0, 1000) },
         metadata: { source: "in_memory_dataset", confidence: 0.4 },
-      } satisfies Partial<AnalyticsResponse>);
+      } satisfies AnalyticsResponse);
+    }
+
+    // Valid JSON is not necessarily a valid analytics response. AI providers can
+    // return error envelopes or incomplete objects with HTTP 200, so fall back to
+    // the deterministic engine instead of forwarding an unsafe shape to the UI.
+    if (!isAnalyticsResponse(parsed)) {
+      return NextResponse.json(runFallback(cappedDataset, question));
     }
 
     return NextResponse.json(parsed);

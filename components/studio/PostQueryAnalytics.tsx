@@ -21,7 +21,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
   Cell,
   LineChart,
   Line,
@@ -31,7 +30,12 @@ import {
 } from "recharts";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import type { ReportResult } from "./ResultsTable";
-import type { AnalyticsResponse, AnalyticsDataset } from "@/app/api/analytics/query/route";
+import {
+  getAnalyticsError,
+  isAnalyticsResponse,
+  type AnalyticsDataset,
+  type AnalyticsResponse,
+} from "@/lib/contracts/analytics";
 
 // ── Suggestion chips ──────────────────────────────────────────────────────────
 
@@ -203,7 +207,7 @@ function KpiResult({ data, columns }: { data: Record<string, unknown>[]; columns
   );
 }
 
-// ── Message bubble ─────────────────────────────────────────────────────���──────
+// ── Message bubble ─────────────────────────────────────────────────────�����──────
 
 interface Message {
   role: "user" | "assistant";
@@ -358,17 +362,24 @@ export function PostQueryAnalytics({ result }: PostQueryAnalyticsProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dataset, question: q, history }),
       });
-      const json: AnalyticsResponse = await res.json();
+      const payload: unknown = await res.json().catch(() => null);
       if (!res.ok) {
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: "", error: (json as unknown as { error?: string }).error ?? "Request failed" },
+          { role: "assistant", content: "", error: getAnalyticsError(payload) },
+        ]);
+        return;
+      }
+      if (!isAnalyticsResponse(payload)) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "", error: "The analytics service returned an invalid response. Please try again." },
         ]);
         return;
       }
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: json.response.text ?? json.response.type, analytics: json },
+        { role: "assistant", content: payload.response.text ?? payload.response.type, analytics: payload },
       ]);
     } catch (err) {
       setMessages((prev) => [
