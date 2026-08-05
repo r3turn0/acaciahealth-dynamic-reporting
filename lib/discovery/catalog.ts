@@ -1,4 +1,5 @@
 import { listDatasets } from "@/lib/bi/datasetService";
+import { listSemanticDatasets } from "@/lib/datasets/virtualDatasetRegistry";
 import { intelligenceStore } from "@/lib/intelligence/store";
 import { buildStaticCatalog } from "@/lib/services/metadataRegistry";
 import { listReports } from "@/lib/services/reportService";
@@ -132,7 +133,7 @@ function physicalAssets(): CatalogAsset[] {
 }
 
 export async function buildCatalog(): Promise<CatalogAsset[]> {
-  const [reports, datasets] = await Promise.all([listReports(), Promise.resolve(listDatasets())]);
+  const [reports, datasets, governedDatasets] = await Promise.all([listReports(), Promise.resolve(listDatasets()), Promise.resolve(listSemanticDatasets())]);
   const reportAssets = reports.map<CatalogAsset>((report) => ({
     id: `report-${report.id}`,
     type: "report",
@@ -173,6 +174,26 @@ export async function buildCatalog(): Promise<CatalogAsset[]> {
     exportable: true,
     virtualNotice: VIRTUAL_NOTICE,
   }));
+  const governedDatasetAssets = governedDatasets.map<CatalogAsset>((dataset) => ({
+    id: `semantic-dataset-${dataset.datasetId}`,
+    type: "dataset",
+    kind: "virtual",
+    name: dataset.datasetName,
+    description: dataset.description,
+    tags: [...dataset.dimensions, ...dataset.measures, ...dataset.glossaryMappings],
+    location: "Dataset Studio / Governed Semantic Datasets",
+    related: [...dataset.tables, ...dataset.relationships],
+    owner: dataset.owner,
+    governanceState: dataset.status === "Published" ? "certified" : dataset.status === "Deprecated" ? "deprecated" : "draft",
+    certified: dataset.status === "Published",
+    version: dataset.version,
+    createdAt: dataset.createdDate,
+    updatedAt: dataset.updatedDate,
+    source: dataset.sourceTraceability.join("; "),
+    lineage: [...dataset.tables, ...dataset.relationships],
+    exportable: true,
+    virtualNotice: VIRTUAL_NOTICE,
+  }));
   const kpiAssets = intelligenceStore.snapshot().kpis.map<CatalogAsset>((kpi) => ({
     id: `kpi-${kpi.id}`,
     type: "kpi",
@@ -195,7 +216,7 @@ export async function buildCatalog(): Promise<CatalogAsset[]> {
   }));
 
   const byId = new Map<string, CatalogAsset>();
-  for (const asset of [...physicalAssets(), ...datasetAssets, ...kpiAssets, ...reportAssets, ...supplementalAssets]) byId.set(asset.id, asset);
+  for (const asset of [...physicalAssets(), ...datasetAssets, ...governedDatasetAssets, ...kpiAssets, ...reportAssets, ...supplementalAssets]) byId.set(asset.id, asset);
   return [...byId.values()];
 }
 

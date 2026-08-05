@@ -47,7 +47,7 @@ import { DatasetLineagePanel, DatasetValidationHub } from "./DatasetValidationHu
 
 type RelType    = "OneToOne" | "OneToMany" | "ManyToOne" | "ManyToMany";
 type RelStatus  = "Suggested" | "Accepted" | "Rejected";
-type DSStatus   = "Draft" | "Published" | "Deprecated";
+type DSStatus   = "Draft" | "Pending Approval" | "Published" | "Deprecated";
 type DesignerTab = "discovery" | "canvas" | "relationships" | "datasets" | "validation" | "lineage";
 
 interface ColumnDef {
@@ -102,6 +102,11 @@ interface SemanticDataset {
   publishedDate?: string;
   createdBy:     string;
   health?:       number;
+  publicationTargets?: string[];
+  sourceTraceability?: string[];
+  virtual?: boolean;
+  authoritative?: boolean;
+  history?: Array<{ version: string; savedAt: string; reason: string }>;
 }
 
 interface InferenceResult {
@@ -289,8 +294,9 @@ function StatusBadge({ status }: { status: RelStatus | DSStatus }) {
   const map: Record<string, string> = {
     Accepted:    "bg-chart-3/15 text-chart-3 border-chart-3/30",
     Published:   "bg-chart-3/15 text-chart-3 border-chart-3/30",
-    Suggested:   "bg-chart-5/15 text-chart-5 border-chart-5/30",
-    Draft:       "bg-muted text-muted-foreground border-border",
+  Suggested:   "bg-chart-5/15 text-chart-5 border-chart-5/30",
+  "Pending Approval": "bg-chart-5/15 text-chart-5 border-chart-5/30",
+  Draft:       "bg-muted text-muted-foreground border-border",
     Rejected:    "bg-destructive/15 text-destructive border-destructive/30",
     Deprecated:  "bg-muted text-muted-foreground border-border",
   };
@@ -804,6 +810,7 @@ function DatasetsPanel({
   relationships,
   loading,
   onPublish,
+  onRequestApproval,
   onCreate,
   onRefresh,
 }: {
@@ -811,6 +818,7 @@ function DatasetsPanel({
   relationships: Relationship[];
   loading:       boolean;
   onPublish:     (id: string) => void;
+  onRequestApproval: (id: string) => void;
   onCreate:      (d: Partial<SemanticDataset>) => void;
   onRefresh:     () => void;
 }) {
@@ -943,17 +951,20 @@ function DatasetsPanel({
                 <span className="text-[9px] bg-muted/30 border border-border text-muted-foreground rounded px-1.5 py-0.5">{ds.relationships.length} relationships</span>
                 <span className="text-[9px] bg-muted/30 border border-border text-muted-foreground rounded px-1.5 py-0.5">{ds.dimensions.length} dimensions</span>
                 <span className="text-[9px] bg-muted/30 border border-border text-muted-foreground rounded px-1.5 py-0.5">{ds.measures.length} measures</span>
+                <span className="text-[9px] bg-primary/10 border border-primary/20 text-primary rounded px-1.5 py-0.5">Virtual · read-only</span>
               </div>
+              {Boolean(ds.publicationTargets?.length) && <p className="text-[10px] leading-relaxed text-muted-foreground">Available in {ds.publicationTargets!.join(", ")}</p>}
+              {Boolean(ds.sourceTraceability?.length) && <p className="text-[10px] leading-relaxed text-muted-foreground">Source: {ds.sourceTraceability!.join(" · ")}</p>}
 
               {/* Footer actions */}
-              {ds.status === "Draft" && (
+              {(ds.status === "Draft" || ds.status === "Pending Approval") && (
                 <div className="pt-2 border-t border-border/50 mt-auto">
                   <button
-                    onClick={() => onPublish(ds.datasetId)}
+                    onClick={() => ds.status === "Draft" ? onRequestApproval(ds.datasetId) : onPublish(ds.datasetId)}
                     className="w-full flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg bg-chart-3/15 text-chart-3 border border-chart-3/30 hover:bg-chart-3/25 transition-colors font-medium"
                   >
                     <ShieldCheck className="w-3 h-3" />
-                    Publish Dataset
+                    {ds.status === "Draft" ? "Request Approval" : "Certify & Publish"}
                   </button>
                 </div>
               )}
@@ -1218,6 +1229,20 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
         showToast(`${id} rejected`);
       }
     } catch (err) { showToast(`Failed to update relationship${err instanceof Error ? `: ${err.message}` : ""}`, false); }
+  }
+
+  async function handleRequestApproval(datasetId: string) {
+    try {
+      const res = await fetch("/api/designer/datasets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "request_approval", datasetId }),
+      });
+      const json = await res.json() as { success?: boolean; dataset?: SemanticDataset; error?: string };
+      if (!res.ok || !json.success || !json.dataset) throw new Error(json.error ?? `HTTP ${res.status}`);
+      setDatasets((prev) => prev.map((dataset) => dataset.datasetId === datasetId ? json.dataset! : dataset));
+      showToast(`${json.dataset.datasetName} submitted for approval`);
+    } catch (err) { showToast(`Approval request blocked${err instanceof Error ? `: ${err.message}` : ""}`, false); }
   }
 
   async function handlePublish(datasetId: string) {

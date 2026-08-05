@@ -29,5 +29,10 @@ export function listDatasetValidations() {
 
 export function canPublishDataset(datasetId: string) {
   const record = getDatasetValidation(datasetId);
-  return Boolean(record && record.validation.status !== "Failed" && record.validation.score >= 70);
+  return Boolean(
+    record
+      && record.validation.status !== "Failed"
+      && record.validation.score >= 70
+      && Date.parse(record.validation.expiresAt) > Date.now()
+  );
 }
