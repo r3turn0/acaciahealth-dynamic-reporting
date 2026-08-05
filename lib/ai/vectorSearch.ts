@@ -1,30 +1,14 @@
 /**
  * lib/ai/vectorSearch.ts
  *
- * Vector similarity search.
+ * Cache-only semantic similarity search.
  *
- * PRIMARY PATH — pgvector (Postgres):
- *   When DATABASE_URL is set, embeddings are stored in and queried from the
- *   `vectors` and `reports` tables using the pgvector `<=>` cosine distance
- *   operator with an HNSW index for sub-millisecond ANN search.
- *
- * FALLBACK PATH — in-process cosine similarity:
- *   When DATABASE_URL is absent, the corpus is built in-process from
- *   metadata.json + the passed savedReports / fixLog arrays and ranked
- *   by hybrid cosine + recency + keyword + type-weight scoring.
- *   This keeps the system fully functional in local dev without Postgres.
- *
- * Corpus document types seeded into the vectors table:
- *   schema       — table-level description ("Table: X, columns: …")
- *   column       — column-level ("Column: X.Y (type)")
- *   relationship — FK relationships ("Relationship: A joins B")
- *   report       — saved user reports (also in the reports table)
- *   fix          — AI repair history entries
- *   history      — past successful queries
+ * The corpus is rebuilt from governed static schema metadata plus bounded,
+ * process-local report and repair artifacts. No vector database is queried or
+ * mutated, even when database environment variables are configured.
  */
 
-import { embedText, embedTexts, pgVectorLiteral } from "./embeddings";
-import { getPgVectorPool, isPgVectorConfigured } from "@/lib/db/pgvectorClient";
+import { embedText, embedTexts } from "./embeddings";
 import { readFileSync } from "fs";
 import { join } from "path";
 
@@ -66,61 +50,7 @@ interface FixLogInput {
   timestamp: string;
 }
 
-// ── pgvector search ───────────────────────────────────────────────────────────
-
-async function searchPgVector(opts: VectorSearchOptions): Promise<VectorSearchResult[]> {
-  const { query, topK = 8, types } = opts;
-  const pool = getPgVectorPool();
-
-  const queryEmbedding = await embedText(query);
-  if (queryEmbedding.length === 0) return [];
-
-  const embLiteral = pgVectorLiteral(queryEmbedding);
-  const typeFilter = types && types.length > 0 ? `AND type = ANY($2)` : "";
-  const params: unknown[] = [embLiteral];
-  if (types && types.length > 0) params.push(types);
-
-  // Query both tables: generic vectors + reports
-  // Reports get a 1.2x score boost (highest-signal corpus type)
-  const rows = await pool.query<{
-    content: string;
-    type: string;
-    similarity: number;
-    metadata: Record<string, unknown> | null;
-  }>(
-    `
-    SELECT content, type,
-           1 - (embedding <=> $1::vector) AS similarity,
-           metadata
-    FROM vectors
-    WHERE embedding IS NOT NULL
-    ${typeFilter}
-
-    UNION ALL
-
-    SELECT
-      'Report: "' || name || '" — query: "' || query || '" — sql: ' || LEFT(sql, 200) AS content,
-      'report' AS type,
-      (1 - (embedding <=> $1::vector)) * 1.2 AS similarity,
-      jsonb_build_object('reportId', id::text, 'reportName', name, 'userQuery', query) AS metadata
-    FROM reports
-    WHERE embedding IS NOT NULL
-
-    ORDER BY similarity DESC
-    LIMIT $${params.length + 1}
-    `,
-    [...params, topK]
-  );
-
-  return rows.rows.map((r) => ({
-    type: r.type as CorpusDocType,
-    content: r.content,
-    score: Number(r.similarity),
-    metadata: r.metadata ?? {},
-  }));
-}
-
-// ── In-process fallback (no Postgres) ────────────────────────────────────────
+// ── In-process semantic search ───────────────────────────────────────────────
 
 interface FallbackCorpusDoc {
   type: CorpusDocType;
@@ -249,14 +179,8 @@ async function searchInProcess(opts: VectorSearchOptions): Promise<VectorSearchR
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/**
- * Retrieve the top-K most relevant corpus documents for a query.
- * Uses pgvector when DATABASE_URL is configured, falls back to in-process otherwise.
- */
+/** Retrieve the top-K results from the bounded process-local corpus. */
 export async function vectorSearch(opts: VectorSearchOptions): Promise<VectorSearchResult[]> {
-  if (isPgVectorConfigured()) {
-    return searchPgVector(opts);
-  }
   return searchInProcess(opts);
 }
 
@@ -270,43 +194,7 @@ export function formatVectorContext(results: VectorSearchResult[]): string {
     .join("\n");
 }
 
-/**
- * Seed the pgvector `vectors` table with schema corpus from metadata.json.
- * Call once after running setupVectors to populate the DB.
- * Safe to re-run — uses INSERT ... ON CONFLICT DO NOTHING.
- */
-export async function seedSchemaCorpus(): Promise<{ inserted: number }> {
-  if (!isPgVectorConfigured()) {
-    return { inserted: 0 };
-  }
-
-  const items = buildFallbackCorpus([], []);
-  const schemaItems = items.filter((i) => ["schema", "column", "relationship"].includes(i.doc.type));
-
-  if (schemaItems.length === 0) return { inserted: 0 };
-
-  const texts = schemaItems.map((i) => i.text);
-  const embeddings = await embedTexts(texts);
-
-  const pool = getPgVectorPool();
-  let inserted = 0;
-
-  for (let i = 0; i < schemaItems.length; i++) {
-    if (!embeddings[i] || embeddings[i].length === 0) continue;
-    const item = schemaItems[i];
-    const result = await pool.query(
-      `INSERT INTO vectors (content, type, embedding, metadata)
-       VALUES ($1, $2, $3::vector, $4)
-       ON CONFLICT DO NOTHING`,
-      [
-        item.doc.content,
-        item.doc.type,
-        pgVectorLiteral(embeddings[i]),
-        JSON.stringify(item.doc.metadata),
-      ]
-    );
-    inserted += result.rowCount ?? 0;
-  }
-
-  return { inserted };
+/** Rebuild is implicit because the virtual corpus is rehydrated for each search. */
+export async function seedSchemaCorpus(): Promise<{ inserted: number; scope: "process" }> {
+  return { inserted: 0, scope: "process" };
 }

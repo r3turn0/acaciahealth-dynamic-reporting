@@ -1,17 +1,11 @@
 /**
- * kpiService — Define, compute, and persist KPI definitions.
+ * kpiService — Define and compute virtual KPI definitions.
  *
- * Separation contract
- * -------------------
- *   ONLY uses AppDataClient (PostgreSQL / in-memory).
- *   NEVER imports ReadOnlyDataClient or touches the analytics data source.
- *
- * Computation runs on a dataset passed in from the caller (already fetched
- * by datasetService).  Results are persisted to the app DB.
+ * Definitions and computed results are bounded, process-local cache artifacts.
+ * This service never reads from or writes to a database.
  */
 
 import { createHash } from "crypto";
-import * as AppDB from "@/lib/db/appClient";
 import type { DataRow } from "./datasetService";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -45,9 +39,6 @@ export interface KpiResult {
   dataset_snapshot_id: string | null;
   meta: Record<string, unknown>;
 }
-
-const KPI_TABLE = "kpi_definitions";
-const KPI_RESULT_TABLE = "kpi_results";
 
 // In-memory fallback stores (used when Postgres is not configured)
 const kpiStore = new Map<string, KpiDefinition>();
@@ -112,10 +103,6 @@ function seedDefaults() {
 
 export async function listKpis(): Promise<KpiDefinition[]> {
   seedDefaults();
-  try {
-    const rows = await AppDB.list<KpiDefinition>(KPI_TABLE, { orderBy: "created_date" });
-    if (rows.length > 0) return rows;
-  } catch { /* fall through to in-memory */ }
   return Array.from(kpiStore.values()).sort(
     (a, b) => b.created_date.localeCompare(a.created_date)
   );
@@ -123,10 +110,6 @@ export async function listKpis(): Promise<KpiDefinition[]> {
 
 export async function getKpi(id: string): Promise<KpiDefinition | null> {
   seedDefaults();
-  try {
-    const row = await AppDB.findById<KpiDefinition>(KPI_TABLE, id);
-    if (row) return row;
-  } catch { /* fall through */ }
   return kpiStore.get(id) ?? null;
 }
 
@@ -165,12 +148,7 @@ export async function defineKpi(input: DefineKpiInput): Promise<KpiDefinition> {
     updated_date: now,
   };
 
-  try {
-    await AppDB.insert(KPI_TABLE, kpi);
-  } catch {
-    kpiStore.set(id, kpi);
-  }
-  kpiStore.set(id, kpi); // always update in-memory mirror
+  kpiStore.set(id, kpi);
   return kpi;
 }
 
@@ -180,10 +158,6 @@ export async function updateKpi(
 ): Promise<KpiDefinition | null> {
   const now = new Date().toISOString();
   const withTs = { ...patch, updated_date: now };
-  try {
-    const row = await AppDB.update<KpiDefinition>(KPI_TABLE, id, withTs as Partial<KpiDefinition>);
-    if (row) { kpiStore.set(id, row); return row; }
-  } catch { /* fall through */ }
   const existing = kpiStore.get(id);
   if (!existing) return null;
   const merged = { ...existing, ...withTs } as KpiDefinition;
@@ -192,7 +166,6 @@ export async function updateKpi(
 }
 
 export async function deleteKpi(id: string): Promise<boolean> {
-  try { await AppDB.remove(KPI_TABLE, id); } catch { /* ignore */ }
   return kpiStore.delete(id);
 }
 
@@ -256,27 +229,11 @@ export async function storeKpiResult(
     meta,
   };
 
-  try {
-    await AppDB.insert(KPI_RESULT_TABLE, result);
-  } catch { /* fall through */ }
   kpiResultStore.set(id, result);
   return result;
 }
 
 export async function getKpiResults(kpiId?: string): Promise<KpiResult[]> {
-  try {
-    if (kpiId) {
-      const rows = await AppDB.list<KpiResult>(KPI_RESULT_TABLE, {
-        where: { column: "kpi_id", value: kpiId },
-        orderBy: "computed_at",
-      });
-      if (rows.length > 0) return rows;
-    } else {
-      const rows = await AppDB.list<KpiResult>(KPI_RESULT_TABLE, { orderBy: "computed_at" });
-      if (rows.length > 0) return rows;
-    }
-  } catch { /* fall through */ }
-
   const all = Array.from(kpiResultStore.values());
   const filtered = kpiId ? all.filter((r) => r.kpi_id === kpiId) : all;
   return filtered.sort((a, b) => b.computed_at.localeCompare(a.computed_at));

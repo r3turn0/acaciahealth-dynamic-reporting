@@ -19,9 +19,6 @@
  */
 
 import { vectorSearch, type VectorSearchResult, type VectorSearchOptions, type CorpusDocType } from "@/lib/ai/vectorSearch";
-import { embedTexts }        from "@/lib/ai/embeddings";
-import { getPgVectorPool, isPgVectorConfigured } from "@/lib/db/pgvectorClient";
-import { pgVectorLiteral }   from "@/lib/ai/embeddings";
 import { eventBus }          from "@/lib/orchestrator/EventBus";
 import { agentRegistry }     from "@/lib/orchestrator/AgentOfAgents";
 import type { Agent }        from "@/lib/orchestrator/AgentOfAgents";
@@ -131,37 +128,15 @@ export class VectorEmbeddingAgent implements Agent<VectorSearchInput, ContextPay
 
     if (texts.length === 0) return { inserted: 0, skipped: 0, corpusName: "metadata" };
 
-    // If pgvector not configured, corpus lives in-process — still emit event
-    if (!isPgVectorConfigured()) {
-      eventBus.emit("EMBEDDINGS_INDEXED", {
-        corpus: "metadata", docCount: texts.length,
-        timestamp: new Date().toISOString(),
-      });
-      return { inserted: 0, skipped: texts.length, corpusName: "metadata" };
-    }
-
-    const embeddings = await embedTexts(texts);
-    const pool = getPgVectorPool();
-    let inserted = 0;
-    let skipped  = 0;
-
-    for (let i = 0; i < texts.length; i++) {
-      if (!embeddings[i]?.length) { skipped++; continue; }
-      const result = await pool.query(
-        `INSERT INTO vectors (content, type, embedding, metadata)
-         VALUES ($1, $2, $3::vector, $4)
-         ON CONFLICT DO NOTHING`,
-        [texts[i], types[i], pgVectorLiteral(embeddings[i]), JSON.stringify(metas[i])]
-      );
-      inserted += result.rowCount ?? 0;
-    }
-
     eventBus.emit("EMBEDDINGS_INDEXED", {
-      corpus: "metadata", docCount: inserted,
+      corpus: "metadata",
+      docCount: texts.length,
+      scope: "process",
+      authoritative: false,
       timestamp: new Date().toISOString(),
     });
 
-    return { inserted, skipped, corpusName: "metadata" };
+    return { inserted: 0, skipped: texts.length, corpusName: "metadata" };
   }
 
   /**

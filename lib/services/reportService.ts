@@ -1,20 +1,11 @@
 /**
- * reportService — Full CRUD for saved reports, dataset snapshots, pins,
- * execution history, and versioning.
+ * reportService — Bounded, process-local report metadata cache.
  *
- * Separation contract
- * -------------------
- *   ONLY uses AppDataClient (PostgreSQL / in-memory).
- *   NEVER imports ReadOnlyDataClient or queries the analytics data source.
- *
- * This is the authoritative layer for all application state persistence.
- * The existing lib/agents/reportRegistry.ts and lib/agents/pinsRegistry.ts are
- * delegated to from here for backwards-compatibility, while new callers should
- * use this service directly.
+ * Reports, snapshots, versions, and execution history are virtual and
+ * non-authoritative. This service never reads from or writes to a database.
  */
 
 import { createHash } from "crypto";
-import * as AppDB from "@/lib/db/appClient";
 import { CANONICAL_REPORTS } from "@/lib/config/canonicalReports";
 import type { DataRow } from "./datasetService";
 
@@ -73,10 +64,6 @@ export interface ExecutionRecord {
   demo_mode: boolean;
   snapshot_id: string | null;
 }
-
-const REPORT_TABLE = "saved_reports";
-const SNAPSHOT_TABLE = "dataset_snapshots";
-const EXEC_TABLE = "report_executions";
 
 // ── In-memory mirrors (fallback when Postgres is not connected) ───────────────
 
@@ -2722,10 +2709,6 @@ OPTION (MAXRECURSION 32767)`,
 
 export async function listReports(): Promise<SavedReport[]> {
   seedDemos();
-  try {
-    const rows = await AppDB.list<SavedReport>(REPORT_TABLE, { orderBy: "created_date" });
-    if (rows.length > 0) return rows;
-  } catch { /* fall through */ }
   return Array.from(reportStore.values()).sort(
     (a, b) => b.created_date.localeCompare(a.created_date)
   );
@@ -2733,10 +2716,6 @@ export async function listReports(): Promise<SavedReport[]> {
 
 export async function getReport(id: string): Promise<SavedReport | null> {
   seedDemos();
-  try {
-    const row = await AppDB.findById<SavedReport>(REPORT_TABLE, id);
-    if (row) return row;
-  } catch { /* fall through */ }
   return reportStore.get(id) ?? null;
 }
 
@@ -2862,9 +2841,6 @@ export async function createReport(input: CreateReportInput): Promise<SavedRepor
     version_history: [firstVersion],
   };
 
-  try {
-    await AppDB.insert(REPORT_TABLE, report as unknown as AppDB.AppRecord);
-  } catch { /* fall through */ }
   reportStore.set(id, report);
 
   // Mirror into the legacy reportRegistry for backwards compat with existing routes
@@ -2940,15 +2916,11 @@ export async function updateReport(
     version_history,
   };
 
-  try {
-    await AppDB.update(REPORT_TABLE, id, updated as unknown as AppDB.AppRecord);
-  } catch { /* fall through */ }
   reportStore.set(id, updated);
   return updated;
 }
 
 export async function deleteReport(id: string): Promise<boolean> {
-  try { await AppDB.remove(REPORT_TABLE, id); } catch { /* ignore */ }
   return reportStore.delete(id);
 }
 
@@ -2982,22 +2954,11 @@ export async function saveDatasetSnapshot(
     expires_at: expiresAt,
   };
 
-  try {
-    await AppDB.insert(SNAPSHOT_TABLE, snapshot as unknown as AppDB.AppRecord);
-  } catch { /* fall through */ }
   snapshotStore.set(id, snapshot);
   return snapshot;
 }
 
 export async function getLatestSnapshot(reportId: string): Promise<DatasetSnapshot | null> {
-  try {
-    const rows = await AppDB.list<DatasetSnapshot>(SNAPSHOT_TABLE, {
-      where: { column: "report_id", value: reportId },
-      orderBy: "created_at",
-      limit: 1,
-    });
-    if (rows[0]) return rows[0];
-  } catch { /* fall through */ }
   const all = Array.from(snapshotStore.values())
     .filter((s) => s.report_id === reportId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -3035,9 +2996,6 @@ export async function recordExecution(
     snapshot_id: opts.snapshotId ?? null,
   };
 
-  try {
-    await AppDB.insert(EXEC_TABLE, record as unknown as AppDB.AppRecord);
-  } catch { /* fall through */ }
   execStore.set(id, record);
 
   // Update report metadata
@@ -3050,26 +3008,10 @@ export async function recordExecution(
       last_row_count: opts.rowCount,
     };
     reportStore.set(reportId, updated);
-    try {
-      await AppDB.update(REPORT_TABLE, reportId, {
-        run_count: updated.run_count,
-        last_run_date: now,
-        last_row_count: opts.rowCount,
-      } as AppDB.AppRecord);
-    } catch { /* non-critical */ }
   }
 }
 
 export async function getExecutionHistory(reportId?: string): Promise<ExecutionRecord[]> {
-  try {
-    const rows = reportId
-      ? await AppDB.list<ExecutionRecord>(EXEC_TABLE, {
-          where: { column: "report_id", value: reportId },
-          orderBy: "ran_at",
-        })
-      : await AppDB.list<ExecutionRecord>(EXEC_TABLE, { orderBy: "ran_at" });
-    if (rows.length > 0) return rows;
-  } catch { /* fall through */ }
   const all = Array.from(execStore.values());
   const filtered = reportId ? all.filter((r) => r.report_id === reportId) : all;
   return filtered.sort((a, b) => b.ran_at.localeCompare(a.ran_at)).slice(0, 50);
