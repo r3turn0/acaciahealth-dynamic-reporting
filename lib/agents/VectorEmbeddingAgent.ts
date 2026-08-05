@@ -131,8 +131,6 @@ export class VectorEmbeddingAgent implements Agent<VectorSearchInput, ContextPay
     eventBus.emit("EMBEDDINGS_INDEXED", {
       corpus: "metadata",
       docCount: texts.length,
-      scope: "process",
-      authoritative: false,
       timestamp: new Date().toISOString(),
     });
 

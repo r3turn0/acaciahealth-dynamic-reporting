@@ -9,11 +9,9 @@
  * Layer 9  — Query Failure Memory     (QSIG references replace full SQL retry chains)
  * Layer 10 — Compact Execution Format (intent AST → minimal string)
  *
- * Storage: in-process Map with optional Postgres persistence via AppDataClient.
- * All stores are server-side only.
+ * Storage: bounded, in-process virtual cache only.
+ * All stores are server-side only and non-authoritative.
  */
-
-import * as appClient from "@/lib/db/appClient";
 import { estimateTokens } from "./PromptCompactor";
 import type { PromptAst } from "./PromptCompactor";
 
