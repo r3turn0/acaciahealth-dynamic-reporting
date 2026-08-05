@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { FileUploadButton } from "@/components/ui/FileUpload";
 import type { UploadedFile } from "@/components/ui/FileUpload";
+import { fetchWithTimeout, requestErrorMessage } from "@/lib/client/fetchWithTimeout";
 
 export interface QueryPlan {
   sql: string;
@@ -67,6 +68,10 @@ export function AskAI({
   const [error, setError] = useState<string | null>(null);
   const [lastPlan, setLastPlan] = useState<QueryPlan | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const requestRef = useRef<{ controller: AbortController; id: number } | null>(null);
+  const requestIdRef = useRef(0);
+
+  useEffect(() => () => requestRef.current?.controller.abort(), []);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -78,22 +83,27 @@ export function AskAI({
 
   async function generate() {
     if (!prompt.trim()) return;
+
+    requestRef.current?.controller.abort();
+    const controller = new AbortController();
+    const requestId = ++requestIdRef.current;
+    requestRef.current = { controller, id: requestId };
     setLoading(true);
     setError(null);
     setLastPlan(null);
 
-    // Append attached file content to the prompt context
-    const fullPrompt = attachedFile
-      ? `${prompt}\n\n${attachedFile.content}`
-      : prompt;
+    const fullPrompt = attachedFile ? `${prompt}\n\n${attachedFile.content}` : prompt;
 
     try {
-      const res = await fetch("/api/generate-query", {
+      const res = await fetchWithTimeout("/api/generate-query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: fullPrompt, start_date: startDate, end_date: endDate }),
+        signal: controller.signal,
+        timeoutMs: 30_000,
       });
       const json = await res.json();
+      if (requestRef.current?.id !== requestId) return;
       if (!res.ok) {
         setError(json.error ?? "Failed to generate query");
         return;
@@ -101,13 +111,23 @@ export function AskAI({
       setLastPlan(json);
       onPlanReady(json, startDate, endDate);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Network error");
+      if (requestRef.current?.id !== requestId || controller.signal.aborted) return;
+      setError(
+        requestErrorMessage(
+          e,
+          "Query generation took too long. Try a more specific request."
+        )
+      );
     } finally {
-      setLoading(false);
+      if (requestRef.current?.id === requestId) {
+        requestRef.current = null;
+        setLoading(false);
+      }
     }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       generate();

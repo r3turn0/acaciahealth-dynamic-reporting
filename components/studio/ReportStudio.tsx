@@ -13,6 +13,7 @@ import { VisualQueryBuilder } from "./VisualQueryBuilder";
 import { ResultRecoveryPanel } from "./ResultRecoveryPanel";
 import type { QueryPlan } from "./AskAI";
 import type { ReportResult } from "./ResultsTable";
+import { fetchWithTimeout, requestErrorMessage } from "@/lib/client/fetchWithTimeout";
 
 type StudioTab = "ask" | "semantic" | "builder" | "saved";
 
@@ -65,6 +66,10 @@ export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportSt
   const [result, setResult] = useState<ReportResult | null>(null);
   const [execError, setExecError] = useState<string | null>(null);
   const [autoFixing, setAutoFixing] = useState(false);
+  const executionRequestRef = useRef<{ controller: AbortController; id: number } | null>(null);
+  const executionRequestIdRef = useRef(0);
+  const autoFixRequestRef = useRef<{ controller: AbortController; id: number } | null>(null);
+  const autoFixRequestIdRef = useRef(0);
   // Set when the server rewrote hardcoded date literals to @StartDate/@EndDate
   const [dateLinkNote, setDateLinkNote] = useState(false);
 

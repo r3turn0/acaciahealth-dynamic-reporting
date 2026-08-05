@@ -13,7 +13,11 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { runQueryGateway } from "@/lib/gateway/QueryGateway";
+import {
+  isAbortError,
+  QueryGatewayTimeoutError,
+  runQueryGateway,
+} from "@/lib/gateway/QueryGateway";
 import { parameterizeDates } from "@/lib/services/dateParams";
 import { BackendUnreachableError } from "@/lib/services/db";
 import { RunSqlBodySchema } from "@/lib/validation/apiSchemas";
@@ -42,6 +46,7 @@ export async function POST(req: NextRequest) {
       startDate: start_date,
       endDate: end_date,
       reportName: report_name,
+      signal: req.signal,
     });
 
     if (!result.validation.valid) {
@@ -52,7 +57,17 @@ export async function POST(req: NextRequest) {
     }
 
     const execution = result.execution;
-    const rows = execution?.rows ?? [];
+    if (!execution) {
+      return NextResponse.json(
+        {
+          error: "The query could not be executed. Review the SQL and try again.",
+          code: "EXECUTION_FAILED",
+          gateway: { requestId: result.requestId, pipeline: result.pipeline },
+        },
+        { status: 422 }
+      );
+    }
+    const rows = execution.rows;
 
     return NextResponse.json({
       rows,
@@ -80,12 +95,27 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("[Gateway→run-sql] error:", err);
+    if (err instanceof QueryGatewayTimeoutError) {
+      return NextResponse.json(
+        { error: "Query execution timed out. Narrow the date range or simplify the query.", code: err.code },
+        { status: 504 }
+      );
+    }
+    if (isAbortError(err)) {
+      return NextResponse.json(
+        { error: "Query execution was cancelled.", code: "REQUEST_CANCELLED" },
+        { status: 408 }
+      );
+    }
     if (err instanceof BackendUnreachableError) {
       return NextResponse.json(
-        { error: err.message, code: err.code, hint: "Start the VM backend service and retry." },
+        { error: "The reporting database is temporarily unreachable. Try again shortly.", code: err.code },
         { status: 503 }
       );
     }
-    return NextResponse.json({ error: "Query execution failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Query execution failed. Please review the SQL and retry.", code: "EXECUTION_FAILED" },
+      { status: 500 }
+    );
   }
 }

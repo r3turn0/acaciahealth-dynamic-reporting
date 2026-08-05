@@ -22,37 +22,6 @@ import { chatJSON, isAiConfigured } from "@/lib/ai/gateway";
 import { validateQuery } from "@/lib/services/queryGuard";
 import { queryMultiple, isConfigured as isDbConfigured, BackendUnreachableError, type QueryResultSet } from "@/lib/db/readOnlyClient";
 import { parameterizeDates } from "@/lib/services/dateParams";
-
-// Hard ceiling for a single SQL execution attempt inside the gateway.
-// Keeps the API route from hanging indefinitely when the DB is unreachable.
-const EXECUTION_TIMEOUT_MS = 12_000;
-
-async function withAbortTimeout<T>(
-operation: (signal: AbortSignal) => Promise<T>,
-parentSignal: AbortSignal | undefined,
-ms: number,
-label: string,
-): Promise<T> {
-const controller = new AbortController();
-const abortFromParent = () => controller.abort(parentSignal?.reason);
-if (parentSignal?.aborted) abortFromParent();
-else parentSignal?.addEventListener("abort", abortFromParent, { once: true });
-const timer = setTimeout(
-() => controller.abort(new Error(`[QueryGateway] ${label} timed out after ${ms}ms`)),
-ms,
-);
-try {
-return await operation(controller.signal);
-} catch (error) {
-if (controller.signal.aborted && controller.signal.reason instanceof Error) {
-throw controller.signal.reason;
-}
-throw error;
-} finally {
-clearTimeout(timer);
-parentSignal?.removeEventListener("abort", abortFromParent);
-}
-}
 import { buildCacheKey, getCache, setCache } from "@/lib/services/cache";
 import { buildSemanticQuerySystemPrompt } from "@/lib/ai/insightAgentPrompt";
 import {
@@ -65,6 +34,72 @@ import {
 } from "@/lib/services/queryHistoryStore";
 import { retryWithSchemaIntelligence } from "@/lib/agents/SchemaAwareRetryAgent";
 import { resolveQueryIntelligence, type IntelligenceMatch } from "@/lib/services/queryIntelligence";
+
+const EXECUTION_TIMEOUT_MS = 12_000;
+const RETRIEVAL_TIMEOUT_MS = 5_000;
+const AI_GENERATION_TIMEOUT_MS = 20_000;
+
+export class QueryGatewayTimeoutError extends Error {
+  readonly code = "GATEWAY_TIMEOUT";
+
+  constructor(readonly operation: string, readonly timeoutMs: number) {
+    super(`${operation} timed out after ${timeoutMs}ms`);
+    this.name = "QueryGatewayTimeoutError";
+  }
+}
+
+export function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
+function abortReason(signal: AbortSignal): Error {
+  if (signal.reason instanceof Error) return signal.reason;
+  return new DOMException("The request was cancelled.", "AbortError");
+}
+
+/** Race an operation against both its deadline and the parent request signal. */
+export async function withAbortTimeout<T>(
+  operation: (signal: AbortSignal) => Promise<T>,
+  parentSignal: AbortSignal | undefined,
+  ms: number,
+  label: string
+): Promise<T> {
+  if (parentSignal?.aborted) throw abortReason(parentSignal);
+
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let abortFromParent: (() => void) | undefined;
+
+  const operationPromise = Promise.resolve().then(() => operation(controller.signal));
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new QueryGatewayTimeoutError(label, ms);
+      controller.abort(error);
+      reject(error);
+    }, ms);
+  });
+  const parentAbortPromise = new Promise<never>((_, reject) => {
+    if (!parentSignal) return;
+    abortFromParent = () => {
+      const error = abortReason(parentSignal);
+      controller.abort(error);
+      reject(error);
+    };
+    parentSignal.addEventListener("abort", abortFromParent, { once: true });
+  });
+
+  try {
+    return await Promise.race([operationPromise, timeoutPromise, parentAbortPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (parentSignal && abortFromParent) {
+      parentSignal.removeEventListener("abort", abortFromParent);
+    }
+  }
+}
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -522,7 +557,8 @@ async function runSQLGeneratorAgent(
   endDate: string,
   branchCode: string | undefined,
   rawSql: string | undefined,
-  source: QuerySource
+  source: QuerySource,
+  signal?: AbortSignal
 ): Promise<{ sql: string; explanation: string; confidence: number; stageResult: StageResult }> {
   const t0 = Date.now();
 
@@ -559,10 +595,27 @@ async function runSQLGeneratorAgent(
       // Phase 3: resolve user query against the Knowledge Graph before calling LLM
       const { inferQueryContext } = await import("@/lib/agents/schemaAgent");
       const { getLearnedMappings } = await import("@/lib/services/queryHistoryStore");
-      const [kgResult, learnedMappings] = await Promise.all([
-        inferQueryContext(query).catch(() => null),
-        getLearnedMappings(50).catch(() => [] as Array<{ user_term: string; actual_object: string; confidence: number; success_count: number; failure_count: number; last_used: string; id: string }>),
-      ]);
+      const [kgResult, learnedMappings] = await withAbortTimeout(
+        () =>
+          Promise.all([
+            inferQueryContext(query).catch(() => null),
+            getLearnedMappings(50).catch(
+              () =>
+                [] as Array<{
+                  user_term: string;
+                  actual_object: string;
+                  confidence: number;
+                  success_count: number;
+                  failure_count: number;
+                  last_used: string;
+                  id: string;
+                }>
+            ),
+          ]),
+        signal,
+        RETRIEVAL_TIMEOUT_MS,
+        "AI metadata retrieval"
+      );
 
       // Build KG context for the prompt
       const kgContext = kgResult ? {
@@ -619,22 +672,29 @@ async function runSQLGeneratorAgent(
         `Return JSON: { "sql": "...", "explanation": "...", "confidence": 0.0-1.0 }`,
       ].filter(Boolean).join("\n");
 
-      const { output: gen } = await generateText({
-        model: getModel("default"),
-        system: systemPrompt,
-        prompt: userPrompt,
-        output: Output.object({
-          name: "sql_report_query",
-          description: "A validated T-SQL report query and generation metadata.",
-          schema: z.object({
-            sql: z.string().min(1),
-            explanation: z.string().min(1),
-            confidence: z.number().min(0).max(1),
+      const { output: gen } = await withAbortTimeout(
+        (abortSignal) =>
+          generateText({
+            model: getModel("default"),
+            system: systemPrompt,
+            prompt: userPrompt,
+            output: Output.object({
+              name: "sql_report_query",
+              description: "A validated T-SQL report query and generation metadata.",
+              schema: z.object({
+                sql: z.string().min(1),
+                explanation: z.string().min(1),
+                confidence: z.number().min(0).max(1),
+              }),
+            }),
+            maxOutputTokens: 1024,
+            temperature: 0.05,
+            abortSignal,
           }),
-        }),
-        maxOutputTokens: 1024,
-        temperature: 0.05,
-      });
+        signal,
+        AI_GENERATION_TIMEOUT_MS,
+        "AI query generation"
+      );
 
       return {
         sql: gen.sql,
@@ -643,6 +703,7 @@ async function runSQLGeneratorAgent(
         stageResult: makeStage("SQLGeneratorAgent", "ok", Date.now() - t0, "AI-generated SQL from approved metadata"),
       };
     } catch (err) {
+      if (signal?.aborted) throw abortReason(signal);
       console.error("[QueryGateway] SQLGeneratorAgent AI failed:", err);
     }
   }
@@ -858,10 +919,19 @@ EXECUTION_TIMEOUT_MS,
   } catch (firstErr) {
     const firstErrMsg = firstErr instanceof Error ? firstErr.message : String(firstErr);
 
-    // If the DB is outright unreachable (network/socket error or timeout),
-    // skip the schema retry entirely — it will also fail — and fall through
-    // to the demo data path immediately.
-    if (firstErr instanceof BackendUnreachableError || /timed out after \d+ms/.test(firstErrMsg)) {
+    // Cancellation and gateway deadlines must settle the request immediately.
+    if (isAbortError(firstErr) || firstErr instanceof QueryGatewayTimeoutError) {
+      throw firstErr;
+    }
+
+    // SQL Editor requests must surface an unreachable database instead of
+    // presenting demo rows as a successful execution.
+    if (firstErr instanceof BackendUnreachableError && !userRequest) {
+      throw firstErr;
+    }
+
+    // Other governed surfaces retain their explicit demo fallback.
+    if (firstErr instanceof BackendUnreachableError) {
       const { formatReport } = await import("@/lib/services/formatter");
       const report = formatReport(
         "Gateway Demo",
@@ -959,6 +1029,9 @@ EXECUTION_TIMEOUT_MS,
               ),
             };
           } catch (retryExecErr) {
+            if (isAbortError(retryExecErr) || retryExecErr instanceof QueryGatewayTimeoutError) {
+              throw retryExecErr;
+            }
             // Retry SQL also failed — fall through to final error
             const retryErrMsg = retryExecErr instanceof Error ? retryExecErr.message : String(retryExecErr);
             return {
@@ -1136,6 +1209,8 @@ export async function runQueryGateway(req: GatewayRequest): Promise<GatewayResul
   const requestId = req.requestId ?? `gw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const pipeline: StageResult[] = [];
 
+  if (req.signal?.aborted) throw abortReason(req.signal);
+
   // Cache check (skip for SQL editor direct submissions)
   if (req.source !== "sql_editor") {
     const cacheKey = buildCacheKey(`gateway:${req.query}:${req.source}`, {
@@ -1163,14 +1238,22 @@ export async function runQueryGateway(req: GatewayRequest): Promise<GatewayResul
     rationale: [req.source === "sql_editor" ? "SQL editor submissions bypass retrieval" : "Retrieval unavailable"],
   };
   if (req.source !== "sql_editor") {
-    intelligence = await resolveQueryIntelligence(req.query).catch((error) => ({
-      source: "generated" as const,
-      candidate: null,
-      sql: null,
-      similarity: 0,
-      reusable: false,
-      rationale: [`Retrieval failed safely: ${error instanceof Error ? error.message : String(error)}`],
-    }));
+    intelligence = await withAbortTimeout(
+      () => resolveQueryIntelligence(req.query),
+      req.signal,
+      RETRIEVAL_TIMEOUT_MS,
+      "report retrieval"
+    ).catch((error) => {
+      if (req.signal?.aborted) throw abortReason(req.signal);
+      return {
+        source: "generated" as const,
+        candidate: null,
+        sql: null,
+        similarity: 0,
+        reusable: false,
+        rationale: [`Retrieval failed safely: ${error instanceof Error ? error.message : String(error)}`],
+      };
+    });
   }
 
   const legacyPattern = intelligence.reusable ? null : await runApprovedPatternAgent(req.query, intent);
@@ -1199,7 +1282,7 @@ export async function runQueryGateway(req: GatewayRequest): Promise<GatewayResul
   const { sql: rawGeneratedSql, explanation, confidence: sqlConfidence, stageResult: s4 } =
     await runSQLGeneratorAgent(
       req.query, intent, semantic, approvedPattern,
-      req.startDate, req.endDate, req.branchCode, req.rawSql, req.source
+      req.startDate, req.endDate, req.branchCode, req.rawSql, req.source, req.signal
     );
   pipeline.push(s4);
 

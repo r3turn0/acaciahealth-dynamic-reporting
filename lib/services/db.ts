@@ -325,6 +325,8 @@ async function runMultiQuery(
 ): Promise<MultiQueryResult> {
   if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
   const pool = await getPool();
+  if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+
   const request = pool.request();
   request.multiple = true;
   for (const p of params) bindParam(request, p);
@@ -332,6 +334,7 @@ async function runMultiQuery(
   signal?.addEventListener("abort", cancel, { once: true });
   let result;
   try {
+    if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
     result = await request.query(sqlText);
   } finally {
     signal?.removeEventListener("abort", cancel);

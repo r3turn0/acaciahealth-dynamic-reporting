@@ -11,7 +11,11 @@
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
-import { runQueryGateway } from "@/lib/gateway/QueryGateway";
+import {
+  isAbortError,
+  QueryGatewayTimeoutError,
+  runQueryGateway,
+} from "@/lib/gateway/QueryGateway";
 import type { QueryPlan } from "@/lib/agents/queryPlanner";
 import { GenerateQueryBodySchema } from "@/lib/validation/apiSchemas";
 
@@ -37,6 +41,7 @@ export async function POST(req: NextRequest) {
       branchCode: branch_code,
       role: role ?? "analyst",
       planOnly: true, // Generate + validate plan — do not execute yet
+      signal: req.signal,
     });
 
     if (!result.validation.valid) {
@@ -75,7 +80,22 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("[Gateway→generate-query] error:", err);
-    return NextResponse.json({ error: "Query generation failed" }, { status: 500 });
+    if (err instanceof QueryGatewayTimeoutError) {
+      return NextResponse.json(
+        { error: "Query generation timed out. Try a more specific request.", code: err.code },
+        { status: 504 }
+      );
+    }
+    if (isAbortError(err)) {
+      return NextResponse.json(
+        { error: "Query generation was cancelled.", code: "REQUEST_CANCELLED" },
+        { status: 408 }
+      );
+    }
+    return NextResponse.json(
+      { error: "Query generation failed. Please retry.", code: "GENERATION_FAILED" },
+      { status: 500 }
+    );
   }
 }
 
