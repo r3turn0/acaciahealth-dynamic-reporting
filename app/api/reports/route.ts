@@ -10,11 +10,13 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { listReports, createReport } from "@/lib/services/reportService";
+import { auditReports } from "@/lib/services/reportAuditService";
 
 export async function GET() {
   try {
     const reports = await listReports();
-    return NextResponse.json({ reports, count: reports.length });
+    const auditGroups = auditReports(reports);
+    return NextResponse.json({ reports, count: reports.length, auditGroups, auditScope: "process-cache" });
   } catch (err) {
     console.error("[v0] GET /api/reports error:", err);
     return NextResponse.json({ error: "Failed to list reports" }, { status: 500 });

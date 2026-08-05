@@ -37,6 +37,7 @@ import {
   unpinByRef,
 } from "@/lib/hooks/useDashboardPins";
 import { downloadDataset, type DownloadFormat } from "@/lib/utils/download";
+import { pushEvent } from "@/lib/services/observabilityStore";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,15 @@ interface VersionEntry {
   saved_by: string;
   note: string;
   sql_snapshot: string;
+}
+
+interface ReportAuditGroup {
+  id: string;
+  kind: "exact" | "near";
+  canonicalReportId: string;
+  canonicalReportName: string;
+  members: Array<{ reportId: string; reportName: string; similarity: number; reason: string }>;
+  recommendation: string;
 }
 
 interface SavedReportsProps {
@@ -142,6 +152,12 @@ function DownloadMenu({
             >
               <FileText className="w-3 h-3 text-muted-foreground" /> JSON
             </button>
+            <button
+              onClick={() => { onDownloadReport("xlsx"); setOpen(false); }}
+              className="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-accent/50 flex items-center gap-2"
+            >
+              <FileText className="w-3 h-3 text-muted-foreground" /> XLSX
+            </button>
             {currentRows && currentRows.length > 0 && (
               <>
                 <hr className="border-border my-1" />
@@ -155,10 +171,16 @@ function DownloadMenu({
                   <Download className="w-3 h-3 text-muted-foreground" /> Results as CSV
                 </button>
                 <button
-                  onClick={() => { downloadDataset(currentRows, reportName, "json"); setOpen(false); }}
+                  onClick={() => { void downloadDataset(currentRows, reportName, "json"); setOpen(false); }}
                   className="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-accent/50 flex items-center gap-2"
                 >
                   <Download className="w-3 h-3 text-muted-foreground" /> Results as JSON
+                </button>
+                <button
+                  onClick={() => { void downloadDataset(currentRows, reportName, "xlsx"); setOpen(false); }}
+                  className="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-accent/50 flex items-center gap-2"
+                >
+                  <Download className="w-3 h-3 text-muted-foreground" /> Results as XLSX
                 </button>
               </>
             )}
@@ -414,6 +436,7 @@ export function SavedReports({
   onInterpretKpi,
 }: SavedReportsProps) {
   const [reports, setReports] = useState<SavedReport[]>([]);
+  const [auditGroups, setAuditGroups] = useState<ReportAuditGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -448,8 +471,15 @@ export function SavedReports({
     try {
       const res = await fetch("/api/reports");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
+      const json = await res.json() as { reports?: SavedReport[]; auditGroups?: ReportAuditGroup[] };
       setReports(json.reports ?? []);
+      setAuditGroups(json.auditGroups ?? []);
+      pushEvent({
+        type: "report_audit",
+        level: json.auditGroups?.length ? "warn" : "info",
+        message: `Report audit completed — ${json.auditGroups?.length ?? 0} consolidation group(s)`,
+        meta: { groupCount: json.auditGroups?.length ?? 0, reportCount: json.reports?.length ?? 0, scope: "process-cache", authoritative: false },
+      });
     } catch { /* silent — fallback to empty list */ } finally {
       setLoading(false);
     }
@@ -463,6 +493,7 @@ export function SavedReports({
 
   const allKpis = useMemo(() => Array.from(new Set(reports.map((r) => r.kpi).filter(Boolean))).sort(), [reports]);
   const allTags = useMemo(() => Array.from(new Set(reports.flatMap((r) => r.tags))).sort(), [reports]);
+  const auditByReport = useMemo(() => new Map(auditGroups.flatMap((group) => group.members.map((member) => [member.reportId, group] as const))), [auditGroups]);
 
   const filtered = useMemo(() => {
     let list = [...reports];
@@ -679,6 +710,18 @@ export function SavedReports({
           </div>
         </div>
 
+        {auditGroups.length > 0 && (
+          <div className="flex items-start gap-3 rounded-lg border border-chart-5/30 bg-chart-5/10 p-3">
+            <AlertCircle className="mt-0.5 w-4 h-4 shrink-0 text-chart-5" />
+            <div className="flex flex-col gap-1">
+              <p className="text-xs font-medium text-foreground">Consolidation review recommended</p>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                {auditGroups.length} duplicate group{auditGroups.length === 1 ? "" : "s"} found in the virtual report cache. All variants and versions are preserved; canonical reports are recommendations only.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Save form */}
         {showSaveForm && (pendingSave || manualMode) && (
           <div className="bg-muted/50 border border-border rounded-lg p-4 flex flex-col gap-3">
@@ -821,6 +864,8 @@ export function SavedReports({
           <div className="flex flex-col gap-2">
             {filtered.map((r) => {
               const pinned = isItemPinned("report", r.id);
+              const auditGroup = auditByReport.get(r.id);
+              const isCanonical = auditGroup?.canonicalReportId === r.id;
               return (
                 <div
                   key={r.id}
@@ -837,9 +882,17 @@ export function SavedReports({
                         )}
                         {r.status && r.status !== "published" && (
                           <span className={`text-[10px] px-1.5 py-0.5 rounded border capitalize ${
-                            r.status === "draft" ? "bg-yellow-500/10 text-yellow-600 border-yellow-500/20" : "bg-muted text-muted-foreground border-border"
+                            r.status === "draft" ? "bg-chart-5/10 text-chart-5 border-chart-5/20" : "bg-muted text-muted-foreground border-border"
                           }`}>
                             {r.status}
+                          </span>
+                        )}
+                        {auditGroup && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded border bg-chart-5/10 text-chart-5 border-chart-5/25"
+                            title={auditGroup.recommendation}
+                          >
+                            {isCanonical ? "Canonical" : `${auditGroup.kind === "exact" ? "Exact" : "Near"} duplicate`}
                           </span>
                         )}
                       </div>

@@ -1347,12 +1347,13 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
               />
             )}
             {tab === "datasets" && (
-              <DatasetsPanel
-                datasets={datasets}
-                relationships={relationships}
-                loading={loading}
-                onPublish={handlePublish}
-                onCreate={handleCreateDataset}
+  <DatasetsPanel
+  datasets={datasets}
+  relationships={relationships}
+  loading={loading}
+  onPublish={handlePublish}
+  onRequestApproval={handleRequestApproval}
+  onCreate={handleCreateDataset}
                 onRefresh={loadData}
               />
             )}

@@ -29,7 +29,11 @@ export type ObsEventType =
   | "query_execution"
   | "export"
   | "relationship_graph"
-  | "search_index";
+  | "search_index"
+  | "prompt_health"
+  | "report_audit"
+  | "dataset_validation"
+  | "write_blocked";
 
 export type ObsLevel = "info" | "warn" | "error" | "debug";
 
@@ -77,7 +81,7 @@ export interface QueryExecutionLog {
 }
 
 export interface ExportLog {
-  format:        "csv" | "json";
+  format:        "csv" | "json" | "xlsx";
   rowCount:      number;
   columnCount:   number;
   fileSizeBytes: number;

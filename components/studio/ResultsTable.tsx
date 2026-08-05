@@ -26,6 +26,7 @@ import {
   Cell,
 } from "recharts";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
+import { downloadDataset, type DownloadFormat } from "@/lib/utils/download";
 
 export interface ReportResult {
   report_name: string;
@@ -189,78 +190,15 @@ export function ResultsTable({ result }: ResultsTableProps) {
 
   // ── Export helpers ────────────────────────────────────────────────────────
 
-  /**
-   * RFC 4180-compliant CSV cell escape.
-   * - Wraps every value in double-quotes.
-   * - Escapes embedded double-quotes as "".
-   * - Replaces embedded newlines with a single space so each data row stays on
-   *   exactly one CSV line. This is what was causing Excel to explode multi-line
-   *   narrative fields (cevn_Assessment, cevn_VisitNarrative) across hundreds of
-   *   rows.
-   */
-  function csvCell(value: unknown): string {
-    const str = String(value ?? "")
-      .replace(/\r\n/g, " ")   // CRLF → space
-      .replace(/\r/g, " ")     // CR   → space
-      .replace(/\n/g, " ")     // LF   → space
-      .replace(/"/g, '""');    // escape embedded quotes
-    return `"${str}"`;
-  }
-
-  function exportCsv() {
-    const cols = result.summary.columns;
-    const header = cols.map(csvCell).join(",");
-    const rows = sorted
-      .map((r) => cols.map((c) => csvCell(r[c])).join(","))
-      .join("\r\n");
-    const blob = new Blob(["\uFEFF" + header + "\r\n" + rows], {
-      type: "text/csv;charset=utf-8;",
+  function exportResult(format: DownloadFormat) {
+    void downloadDataset(sorted, result.report_name, format, {
+      assetType: "report-result",
+      governance: "read-only",
+      certification: result.demo_mode ? "demo" : "governed-source",
+      kpiFormulas: result.kpi ? { [result.kpi]: result.sql_used } : undefined,
+      virtual: true,
+      authoritative: false,
     });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${result.report_name.replace(/\s+/g, "_")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  /**
-   * Excel (XLSX) export via SheetJS.
-   * Long text fields (Assessment, VisitNarrative, etc.) get wrap-text formatting
-   * so each row stays as one row and the content is readable inside the cell.
-   */
-  async function exportXlsx() {
-    const XLSX = await import("xlsx");
-    const cols = result.summary.columns;
-
-    // Build plain array-of-arrays so SheetJS preserves newlines inside cells
-    const aoaData: unknown[][] = [
-      cols, // header row
-      ...sorted.map((r) => cols.map((c) => r[c] ?? "")),
-    ];
-
-    const ws = XLSX.utils.aoa_to_sheet(aoaData);
-
-    // Apply wrap-text to every cell so multi-line narratives don't break layout
-    const range = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
-    for (let R = range.s.r; R <= range.e.r; R++) {
-      for (let C = range.s.c; C <= range.e.c; C++) {
-        const addr = XLSX.utils.encode_cell({ r: R, c: C });
-        if (!ws[addr]) continue;
-        ws[addr].s = { alignment: { wrapText: true, vertical: "top" } };
-      }
-    }
-
-    // Set column widths: narrow for IDs, wider for narrative fields
-    ws["!cols"] = cols.map((c) => {
-      const isNarrative = /narrative|assessment|note|comment/i.test(c);
-      const isName = /name|firstname|lastname/i.test(c);
-      return { wch: isNarrative ? 60 : isName ? 20 : 14 };
-    });
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Report");
-    XLSX.writeFile(wb, `${result.report_name.replace(/\s+/g, "_")}.xlsx`);
   }
 
   return (
@@ -381,16 +319,24 @@ export function ResultsTable({ result }: ResultsTableProps) {
               </select>
             )}
             <button
-              onClick={exportCsv}
-              title="Export as CSV (newlines in narrative fields are collapsed to spaces)"
+              onClick={() => exportResult("csv")}
+              title="Export rows as CSV"
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded border border-border hover:border-primary/40"
             >
               <Download className="w-3.5 h-3.5" />
               CSV
             </button>
             <button
-              onClick={exportXlsx}
-              title="Export as Excel — narrative fields render as wrapped cells"
+              onClick={() => exportResult("json")}
+              title="Export rows and governed metadata as JSON"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded border border-border hover:border-primary/40"
+            >
+              <Download className="w-3.5 h-3.5" />
+              JSON
+            </button>
+            <button
+              onClick={() => exportResult("xlsx")}
+              title="Export data and metadata sheets as XLSX"
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded border border-border hover:border-primary/40"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import useSWR from "swr";
 import {
   Sparkles,
   Loader2,
@@ -17,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { FileUploadButton } from "@/components/ui/FileUpload";
 import type { UploadedFile } from "@/components/ui/FileUpload";
 import { fetchWithTimeout, requestErrorMessage } from "@/lib/client/fetchWithTimeout";
+import { pushEvent } from "@/lib/services/observabilityStore";
 
 export interface QueryPlan {
   sql: string;
@@ -38,14 +40,23 @@ export interface QueryPlan {
   correction_attempts?: number;
 }
 
-const EXAMPLE_PROMPTS = [
-  "Show me patient visits by month for 2026",
-  "Weekly admissions grouped by branch for the last 30 days",
-  "Revenue by service line this quarter",
-  "Active patient census broken down by care type",
-  "Compare discharges by branch last 4 weeks",
-  "Average visits per patient by discipline this month",
-];
+interface PromptHealthItem {
+  id: string;
+  prompt: string;
+  status: "valid" | "degraded" | "broken";
+  lastValidatedAt: string;
+  diagnostics: string[];
+}
+
+interface PromptHealthResponse {
+  prompts: PromptHealthItem[];
+  summary: { valid: number; degraded: number; broken: number };
+}
+
+const fetcher = (url: string) => fetch(url).then((response) => {
+  if (!response.ok) throw new Error("Prompt health unavailable");
+  return response.json() as Promise<PromptHealthResponse>;
+});
 
 interface AskAIProps {
   onPlanReady: (plan: QueryPlan, startDate: string, endDate: string) => void;
@@ -70,6 +81,17 @@ export function AskAI({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const requestRef = useRef<{ controller: AbortController; id: number } | null>(null);
   const requestIdRef = useRef(0);
+  const { data: promptHealth, error: promptHealthError, isLoading: promptHealthLoading, mutate: refreshPromptHealth } = useSWR("/api/prompt-health", fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 15 * 60_000,
+    onSuccess: (data) => pushEvent({
+      type: "prompt_health",
+      level: data.summary.broken > 0 ? "warn" : "info",
+      message: `Prompt registry validated — ${data.summary.valid} valid, ${data.summary.degraded} degraded, ${data.summary.broken} broken`,
+      meta: { ...data.summary, scope: "process-cache", authoritative: false },
+    }),
+  });
+  const verifiedPrompts = promptHealth?.prompts.filter((item) => item.status === "valid") ?? [];
 
   useEffect(() => () => requestRef.current?.controller.abort(), []);
 
@@ -209,20 +231,49 @@ export function AskAI({
         </div>
       </div>
 
-      {/* Example prompts */}
-      <div>
-        <p className="text-[11px] text-muted-foreground mb-2 font-medium">Example prompts</p>
-        <div className="flex flex-wrap gap-1.5">
-          {EXAMPLE_PROMPTS.map((p) => (
-            <button
-              key={p}
-              onClick={() => setPrompt(p)}
-              className="text-[11px] px-2.5 py-1 rounded-full bg-muted border border-border text-muted-foreground hover:text-foreground hover:border-primary/60 transition-colors"
-            >
-              {p}
-            </button>
-          ))}
+      {/* Verified example prompts */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <p className="text-[11px] text-muted-foreground font-medium">Verified example prompts</p>
+            {promptHealth && (
+              <span className="text-[10px] text-muted-foreground">
+                {promptHealth.summary.valid} valid · {promptHealth.summary.degraded} degraded · {promptHealth.summary.broken} broken
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => refreshPromptHealth()}
+            disabled={promptHealthLoading}
+            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+            title="Revalidate prompt registry"
+          >
+            <RefreshCw className={`w-3 h-3 ${promptHealthLoading ? "animate-spin" : ""}`} />
+            Validate
+          </button>
         </div>
+        {promptHealthError ? (
+          <p className="text-[11px] text-destructive">Prompt health is unavailable. No examples are marked verified.</p>
+        ) : promptHealthLoading ? (
+          <p className="text-[11px] text-muted-foreground">Validating examples through the read-only query planner...</p>
+        ) : verifiedPrompts.length === 0 ? (
+          <p className="text-[11px] text-chart-5">No prompts currently pass verification. You can still enter a custom request.</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {verifiedPrompts.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setPrompt(item.prompt)}
+                title={`Validated ${new Date(item.lastValidatedAt).toLocaleString()}`}
+                className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-muted border border-chart-3/30 text-muted-foreground hover:text-foreground hover:border-primary/60 transition-colors"
+              >
+                <ShieldCheck className="w-3 h-3 text-chart-3" />
+                {item.prompt}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Error */}

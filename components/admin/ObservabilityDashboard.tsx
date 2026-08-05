@@ -50,6 +50,12 @@ import { getRequestSnapshots, getRequestSummary, getRequestVersion, subscribeReq
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
+interface PromptHealthPayload {
+  summary: { valid: number; degraded: number; broken: number };
+  scope: string;
+  authoritative: boolean;
+}
+
 interface PerformancePayload {
   performance: {
     sampleCount: number;
@@ -77,10 +83,10 @@ interface PerformancePayload {
   infrastructure: Record<string, { status: string; value?: number | null; enabled?: boolean | null }>;
 }
 
-const fetcher = async (url: string): Promise<PerformancePayload> => {
+const fetcher = async <T,>(url: string): Promise<T> => {
   const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error("Performance telemetry unavailable");
-  return response.json();
+  if (!response.ok) throw new Error("Telemetry unavailable");
+  return response.json() as Promise<T>;
 };
 
 function formatTs(ts: number): string {
@@ -123,6 +129,10 @@ function EventTypeIcon({ type }: { type: ObsEventType }) {
     export:             Download,
     relationship_graph: Share2,
     search_index:       Activity,
+    prompt_health:      CheckCircle2,
+    report_audit:       FileText,
+    dataset_validation: Database,
+    write_blocked:      XCircle,
   };
   const Icon = map[type] ?? Activity;
   return <Icon className="w-3 h-3 text-muted-foreground shrink-0" />;
@@ -167,15 +177,24 @@ const TYPE_OPTIONS: { value: ObsEventType | "all"; label: string }[] = [
   { value: "dataset_publish",   label: "Publish" },
   { value: "relationship_graph",label: "Graph" },
   { value: "search_index",      label: "Index" },
+  { value: "prompt_health",     label: "Prompts" },
+  { value: "report_audit",      label: "Report audit" },
+  { value: "dataset_validation",label: "Validation" },
+  { value: "write_blocked",     label: "Write barrier" },
 ];
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function ObservabilityDashboard() {
-  const { data: performanceData, error: performanceError } = useSWR(
+  const { data: performanceData, error: performanceError } = useSWR<PerformancePayload>(
     "/api/admin/performance",
     fetcher,
     { refreshInterval: 10_000, revalidateOnFocus: false }
+  );
+  const { data: promptHealth } = useSWR<PromptHealthPayload>(
+    "/api/prompt-health",
+    fetcher,
+    { dedupingInterval: 15 * 60_000, revalidateOnFocus: false }
   );
 
   // Live subscription to the store
@@ -216,6 +235,7 @@ export function ObservabilityDashboard() {
     .filter((m): m is ExportLog => !!m);
   const csvCount  = exportEvents.filter((e) => e.format === "csv").length;
   const jsonCount = exportEvents.filter((e) => e.format === "json").length;
+  const xlsxCount = exportEvents.filter((e) => e.format === "xlsx").length;
   const avgRows   = exportEvents.length
     ? Math.round(exportEvents.reduce((s, e) => s + e.rowCount, 0) / exportEvents.length)
     : 0;
@@ -248,12 +268,15 @@ export function ObservabilityDashboard() {
             <span>{health.totalEvents.toLocaleString()} total events</span>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
           <HealthChip label="Dataset Registry"    healthy={health.datasetRegistryHealthy}  icon={Database}  />
           <HealthChip label="Search Index"        healthy={health.searchIndexHealthy}       icon={Activity}  />
           <HealthChip label="Relationship Graph"  healthy={health.relationshipGraphHealthy} icon={Share2}    />
           <HealthChip label="Reporting Engine"    healthy={health.reportingEngineHealthy}   icon={FileText}  />
+          <HealthChip label="Strict Read-Only Boundary" healthy icon={CheckCircle2} />
+          <HealthChip label={`Prompt Registry${promptHealth ? ` (${promptHealth.summary.valid} valid)` : ""}`} healthy={!!promptHealth && promptHealth.summary.broken === 0} icon={Search} />
         </div>
+        <p className="mt-2 text-[10px] text-muted-foreground">Health, audit, and publication telemetry is session/process-cache scoped and non-authoritative.</p>
       </section>
 
       {/* ── Performance objectives ─────────────────────────────────────────── */}
@@ -387,6 +410,7 @@ export function ObservabilityDashboard() {
           <div className="flex items-center gap-4 text-[11px] text-muted-foreground bg-muted/30 border border-border rounded-lg px-4 py-2.5">
             <span><span className="text-foreground font-medium">{csvCount}</span> CSV</span>
             <span><span className="text-foreground font-medium">{jsonCount}</span> JSON</span>
+            <span><span className="text-foreground font-medium">{xlsxCount}</span> XLSX</span>
             <span>Avg <span className="text-foreground font-medium">{avgRows.toLocaleString()}</span> rows/export</span>
           </div>
         </section>

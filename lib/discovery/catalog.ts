@@ -186,7 +186,7 @@ export async function buildCatalog(): Promise<CatalogAsset[]> {
     owner: dataset.owner,
     governanceState: dataset.status === "Published" ? "certified" : dataset.status === "Deprecated" ? "deprecated" : "draft",
     certified: dataset.status === "Published",
-    version: dataset.version,
+    version: dataset.history.length,
     createdAt: dataset.createdDate,
     updatedAt: dataset.updatedDate,
     source: dataset.sourceTraceability.join("; "),
