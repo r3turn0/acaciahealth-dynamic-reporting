@@ -89,9 +89,16 @@ export function computeAggregation(
   config: Pick<KpiReport, "metrics" | "dimensions" | "filters">
 ): AggregationResult {
   const filtered = applyFilters(rows, config.filters ?? []);
-  const metrics = config.metrics.length
+  const configuredMetrics = config.metrics.length
     ? config.metrics
     : ([{ agg: "count", field: null }] as Metric[]);
+  // A report can contain duplicate metric definitions (for example, when two
+  // existing metrics are both changed to Count). Since aggregation rows are
+  // keyed by metricKey, duplicates represent the same series and must only be
+  // computed and rendered once.
+  const metrics = Array.from(
+    new Map(configuredMetrics.map((metric) => [metricKey(metric), metric])).values()
+  );
   const metricKeys = metrics.map(metricKey);
   const dims = config.dimensions ?? [];
   const dimensionKey = dims[0] ?? null;
