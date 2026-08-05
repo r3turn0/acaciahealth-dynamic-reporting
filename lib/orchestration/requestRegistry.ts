@@ -17,6 +17,7 @@ export interface RequestSnapshot {
   operation: string;
   resource?: string;
   refreshGroup?: string;
+  requestGroup: string;
   status: RequestStatus;
   startedAt: number;
   endedAt?: number;
@@ -49,8 +50,12 @@ export function requestKey(context: RequestContext): string {
   return [context.scope, context.operation, context.resource ?? "", stable(context.params)].join("::");
 }
 
+function requestGroup(context: RequestContext): string {
+  return context.refreshGroup ?? [context.scope, context.operation, context.resource ?? ""].join("::");
+}
+
 function identityKey(context: RequestContext): string {
-  return context.policy === "dedupe" ? requestKey(context) : [context.scope, context.operation, context.resource ?? ""].join("::");
+  return context.policy === "dedupe" ? requestKey(context) : requestGroup(context);
 }
 
 function emit() { version += 1; listeners.forEach((listener) => listener()); }
@@ -82,7 +87,7 @@ export async function orchestrate<T>(context: RequestContext, task: (signal: Abo
 
   const controller = new AbortController();
   const id = `req_${Date.now()}_${++sequence}`;
-  const snapshot: RequestSnapshot = { id, key, scope: context.scope, operation: context.operation, resource: context.resource, refreshGroup: context.refreshGroup, status: "pending", startedAt: Date.now() };
+  const snapshot: RequestSnapshot = { id, key, scope: context.scope, operation: context.operation, resource: context.resource, refreshGroup: context.refreshGroup, requestGroup: requestGroup(context), status: "pending", startedAt: Date.now() };
   record(snapshot);
   let timer: ReturnType<typeof setTimeout> | undefined;
   if (context.timeoutMs) timer = setTimeout(() => controller.abort(new RequestCancelledError("Request timed out")), context.timeoutMs);
@@ -94,8 +99,9 @@ export async function orchestrate<T>(context: RequestContext, task: (signal: Abo
       return value;
     })
     .catch((error: unknown) => {
+      const existing = snapshots.find((item) => item.id === id);
       const aborted = controller.signal.aborted || (error instanceof Error && error.name === "AbortError");
-      finish(id, aborted ? "cancelled" : "error");
+      if (existing?.status !== "stale") finish(id, aborted ? "cancelled" : "error");
       throw error;
     })
     .finally(() => {
@@ -115,19 +121,31 @@ export function cancelScope(scope: string) {
   });
 }
 
+export function cancelRequestGroup(group: string) {
+  active.forEach((entry) => {
+    const snapshot = snapshots.find((item) => item.id === entry.id);
+    if (snapshot?.requestGroup === group) entry.controller.abort(new RequestCancelledError(`Request group ${group} cancelled`));
+  });
+}
+
 export function getRequestSnapshots(): RequestSnapshot[] { return snapshots.slice(); }
 export function subscribeRequests(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); }
 export function getRequestVersion() { return version; }
 export function getRequestSummary() {
   const completed = snapshots.filter((item) => item.durationMs !== undefined);
   const durations = completed.map((item) => item.durationMs!).sort((a, b) => a - b);
-  const percentile = (ratio: number) => durations.length ? durations[Math.min(durations.length - 1, Math.floor(durations.length * ratio))] : null;
+  const percentile = (ratio: number) => durations.length ? durations[Math.min(durations.length - 1, Math.max(0, Math.ceil(durations.length * ratio) - 1))] : null;
+  const cancelled = snapshots.filter((item) => item.status === "cancelled").length;
+  const stale = snapshots.filter((item) => item.status === "stale").length;
   return {
     active: snapshots.filter((item) => item.status === "pending").length,
     completed: completed.length,
-    cancelled: snapshots.filter((item) => item.status === "cancelled" || item.status === "stale").length,
+    cancelled,
+    stale,
     savedCalls: snapshots.filter((item) => item.savedCall).length,
     p50Ms: percentile(0.5),
     p95Ms: percentile(0.95),
+    p99Ms: percentile(0.99),
+    cancellationRate: completed.length ? (cancelled + stale) / completed.length : 0,
   };
 }
