@@ -84,10 +84,11 @@ async function main() {
     [200, 503]
   );
   await expectStatus(
-    "GET /api/data/<invalid> is rejected",
+    // 400 when the catalog is reachable; 503 when membership cannot be verified.
+    "GET /api/data/<invalid> is rejected or unavailable",
     "/api/data/NOT_A_REAL_TABLE",
     { method: "GET" },
-    [400]
+    [400, 503]
   );
 
   console.log("\nGenerate query (AI with rule-based fallback)");

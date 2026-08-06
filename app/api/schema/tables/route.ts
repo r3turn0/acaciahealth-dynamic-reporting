@@ -7,19 +7,8 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import { executeRawQuery, isDbConfigured } from "@/lib/services/db";
-
-const SQL = `
-  SELECT
-    s.name AS table_schema,
-    o.name AS table_name,
-    CASE o.type WHEN 'U' THEN 'BASE TABLE' WHEN 'V' THEN 'VIEW' ELSE 'BASE TABLE' END AS table_type
-  FROM sys.objects  o
-  JOIN sys.schemas  s ON s.schema_id = o.schema_id
-  WHERE o.type IN ('U','V')
-    AND o.is_ms_shipped = 0
-  ORDER BY o.type DESC, o.name
-`;
+import { isDbConfigured } from "@/lib/services/db";
+import { getLiveTableCatalog } from "@/lib/services/tableCatalog";
 
 export async function GET() {
   if (!isDbConfigured()) {
@@ -32,25 +21,12 @@ export async function GET() {
   }
 
   try {
-    const rows = await executeRawQuery(SQL) as {
-      table_schema: string;
-      table_name: string;
-      table_type: string;
-    }[];
-
-    const tables = rows.map((r) => ({
-      table_schema:   r.table_schema,
-      table_name:     r.table_name,
-      table_type:     r.table_type,
-      qualified_name: r.table_schema === "dbo"
-        ? r.table_name
-        : `${r.table_schema}.${r.table_name}`,
-    }));
+    const catalog = await getLiveTableCatalog();
 
     return NextResponse.json({
       source: "live_db",
-      count: tables.length,
-      tables,
+      count: catalog.tables.length,
+      tables: catalog.tables,
     });
   } catch (err) {
     const msg = (err as Error).message;

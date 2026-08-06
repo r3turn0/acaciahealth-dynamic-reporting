@@ -19,15 +19,18 @@ import { isDbConfigured, BackendUnreachableError } from "@/lib/services/db";
 import { buildCacheKey, withCache } from "@/lib/services/cache";
 import { recordPerformanceSample } from "@/lib/services/performanceTelemetry";
 import { buildStaticCatalog } from "@/lib/services/metadataRegistry";
+import {
+  getLiveTableCatalog,
+  isTableInCatalog,
+  normalizeTableIdentifier,
+} from "@/lib/services/tableCatalog";
 
 const DEMO_TABLES = Object.keys(schemaConfig);
-const TABLE_CATALOG = buildStaticCatalog();
-const TABLE_IDENTIFIER = /^(?:[A-Za-z_][A-Za-z0-9_]*\.)?[A-Za-z_][A-Za-z0-9_]*$/;
+const STATIC_TABLE_CATALOG = buildStaticCatalog();
 
-function isKnownTable(tableName: string): boolean {
-  if (!TABLE_IDENTIFIER.test(tableName)) return false;
-  const canonicalName = tableName.includes(".") ? tableName : `dbo.${tableName}`;
-  return TABLE_CATALOG.has(canonicalName.toLowerCase());
+function isKnownStaticTable(tableName: string): boolean {
+  const canonicalName = normalizeTableIdentifier(tableName);
+  return canonicalName !== null && STATIC_TABLE_CATALOG.has(canonicalName.toLowerCase());
 }
 
 // Only low-change, non-PHI reference tables are eligible for shared caching.
@@ -131,9 +134,18 @@ export async function GET(
 
   const decodedTable = decodeURIComponent(table);
 
-  // Reject unknown or malformed identifiers before attempting a database
-  // connection. The metadata registry is the platform's table allowlist.
-  if (!isKnownTable(decodedTable)) {
+  // Reject malformed identifiers before any database access. Catalog
+  // membership is checked against the active static/live source below.
+  const normalizedTable = normalizeTableIdentifier(decodedTable);
+  if (!normalizedTable) {
+    return NextResponse.json(
+      { error: `Table identifier "${decodedTable}" is invalid.` },
+      { status: 400 }
+    );
+  }
+
+  const dbConfigured = isDbConfigured();
+  if (!dbConfigured && !isKnownStaticTable(decodedTable)) {
     return NextResponse.json(
       { error: `Table "${decodedTable}" is not available in the metadata catalog.` },
       { status: 400 }
@@ -155,7 +167,7 @@ export async function GET(
   }
 
   // Demo mode — no DB configured
-  if (!isDbConfigured()) {
+  if (!dbConfigured) {
     const TOTAL_DEMO = decodedTable === "BRANCHES"     ? BRANCH_CODES.length
                      : decodedTable === "SERVICE_LINES" ? SERVICE_LINES.length
                      : decodedTable === "CARE_TYPES"    ? CARE_TYPES.length
@@ -200,17 +212,26 @@ export async function GET(
     });
   }
 
-  // Live mode — query SQL Server
+  // Live mode — authorize and query against the same catalog exposed by
+  // /api/schema/tables, including tables that are not in static metadata.
   try {
+    const liveCatalog = await getLiveTableCatalog();
+    if (!isTableInCatalog(normalizedTable, liveCatalog)) {
+      return NextResponse.json(
+        { error: `Table "${decodedTable}" is not available in the metadata catalog.` },
+        { status: 400 }
+      );
+    }
+
     const { executeRawMultiQuery } = await import("@/lib/services/db");
 
-    // Build a safe parameterised-style TOP + ORDER BY query (columns are from allowlist)
-    const safeTable = decodedTable.replace(/[^a-zA-Z0-9_.]/g, "");
+    // The table has passed strict syntax and live-catalog membership checks.
+    const safeTable = normalizedTable;
     const orderClause = sortCol
       ? `ORDER BY [${sortCol.replace(/[^a-zA-Z0-9_]/g, "")}] ${sortDir.toUpperCase()}`
       : "ORDER BY (SELECT NULL)";
     const offset = (page - 1) * pageSize;
-    const qualifiedTable = `[${safeTable.replace(".", "].[").replace(/\[/g, "[")}]`;
+    const qualifiedTable = `[${safeTable.split(".").join("].[")}]`;
     const query = `
       SELECT *
       FROM ${qualifiedTable}
