@@ -18,9 +18,17 @@ import schemaConfig from "@/lib/config/schemaConfig.json";
 import { isDbConfigured, BackendUnreachableError } from "@/lib/services/db";
 import { buildCacheKey, withCache } from "@/lib/services/cache";
 import { recordPerformanceSample } from "@/lib/services/performanceTelemetry";
+import { buildStaticCatalog } from "@/lib/services/metadataRegistry";
 
-// Static tables used for demo mode only. In live mode ALL tables are allowed.
 const DEMO_TABLES = Object.keys(schemaConfig);
+const TABLE_CATALOG = buildStaticCatalog();
+const TABLE_IDENTIFIER = /^(?:[A-Za-z_][A-Za-z0-9_]*\.)?[A-Za-z_][A-Za-z0-9_]*$/;
+
+function isKnownTable(tableName: string): boolean {
+  if (!TABLE_IDENTIFIER.test(tableName)) return false;
+  const canonicalName = tableName.includes(".") ? tableName : `dbo.${tableName}`;
+  return TABLE_CATALOG.has(canonicalName.toLowerCase());
+}
 
 // Only low-change, non-PHI reference tables are eligible for shared caching.
 const REFERENCE_TABLE_TTLS = new Map<string, number>([
@@ -123,12 +131,11 @@ export async function GET(
 
   const decodedTable = decodeURIComponent(table);
 
-  // In demo mode (no DB) only the 6 static tables are servable.
-  // In live mode every table/view in sys.objects is allowed — the name is
-  // still sanitized before it reaches the query builder.
-  if (!isDbConfigured() && !DEMO_TABLES.includes(decodedTable)) {
+  // Reject unknown or malformed identifiers before attempting a database
+  // connection. The metadata registry is the platform's table allowlist.
+  if (!isKnownTable(decodedTable)) {
     return NextResponse.json(
-      { error: `Table "${decodedTable}" is not available in demo mode.` },
+      { error: `Table "${decodedTable}" is not available in the metadata catalog.` },
       { status: 400 }
     );
   }
