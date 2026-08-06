@@ -27,6 +27,7 @@ import {
   pinItem,
   unpinByRef,
 } from "@/lib/hooks/useDashboardPins";
+import { orchestratedJson } from "@/lib/orchestration/requestRegistry";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -331,9 +332,20 @@ export function KpiExplorer() {
     setInterpreterKpi(kpi);
     setLoading(true);
     try {
-      const res = await fetch(`/api/kpi/${kpi}`);
-      const json = await res.json();
+      const { ok, data: json } = await orchestratedJson<Record<string, unknown>>({
+        scope: "kpi-explorer",
+        operation: "load-kpi",
+        resource: kpi,
+        refreshGroup: "kpi-explorer:selected",
+        policy: "latest",
+        timeoutMs: 30_000,
+      }, `/api/kpi/${kpi}`);
+      if (!ok) throw new Error("Failed to load KPI");
       setData(json);
+    } catch (cause) {
+      if (!(cause instanceof Error && (cause.name === "AbortError" || cause.name === "StaleRequestError"))) {
+        setData(null);
+      }
     } finally {
       setLoading(false);
     }

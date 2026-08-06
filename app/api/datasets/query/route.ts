@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
       rawSql: sql,
       startDate: String(startDate),
       endDate: String(endDate),
+      signal: req.signal,
     });
 
     if (!result.validation.valid) {
@@ -76,12 +77,19 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const requestedLimit = Number(body.limit);
+    const payloadLimit = Number.isInteger(requestedLimit)
+      ? Math.min(10_000, Math.max(1, requestedLimit))
+      : 2_000;
+    const responseRows = rows.slice(0, payloadLimit);
+
     return NextResponse.json({
-      rows,
+      rows: responseRows,
       columns,
       rowCount: rows.length,
+      returnedRowCount: responseRows.length,
       executionMs,
-      truncated: result.execution?.truncated ?? false,
+      truncated: Boolean(result.execution?.truncated || rows.length > responseRows.length),
       demoMode: result.demoMode,
       gateway: {
         requestId: result.requestId,
@@ -92,6 +100,9 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
+    if (req.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
+      return new NextResponse(null, { status: 499, statusText: "Client Closed Request" });
+    }
     if (err instanceof ReadOnlyViolationError) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: 403 });
     }

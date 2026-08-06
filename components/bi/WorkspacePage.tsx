@@ -46,6 +46,7 @@ import { WorkspaceTabBar } from "./WorkspaceTabBar";
 import { FeedbackModal, type FixResult } from "./FeedbackModal";
 import { AiFixPanel } from "./AiFixPanel";
 import { useQueryFeedbackLog } from "@/lib/hooks/useQueryFeedbackLog";
+import { orchestratedJson } from "@/lib/orchestration/requestRegistry";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -164,18 +165,25 @@ function TabPanel({ tab, onToast }: TabPanelProps) {
     const start = Date.now();
 
     try {
-      const res = await fetch("/api/datasets/query", {
+      const { ok, status, statusText, data: json } = await orchestratedJson<{ rows?: Record<string, unknown>[]; data?: Record<string, unknown>[]; error?: string; details?: string }>({
+        scope: `bi-workspace:${tab.id}`,
+        operation: "run-query",
+        resource: tab.id,
+        params: { sql, startDate, endDate },
+        refreshGroup: `bi-workspace:${tab.id}:execution`,
+        policy: "latest",
+        timeoutMs: 90_000,
+      }, "/api/datasets/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sql, startDate, endDate }),
       });
-      const json = await res.json();
       const durationMs = Date.now() - start;
 
-      if (!res.ok || json.error) {
+      if (!ok || json.error) {
         setError(
           tab.id,
-          `${res.status} ${res.statusText}`,
+          `${status} ${statusText}`,
           json.error ?? json.details ?? "Unknown database error"
         );
         pushHistory({ tabId: tab.id, userQuery: tab.userQuery, generatedSQL: sql, status: "error", durationMs });
@@ -225,18 +233,25 @@ function TabPanel({ tab, onToast }: TabPanelProps) {
 
     const start = Date.now();
     try {
-      const res = await fetch("/api/datasets/query", {
+      const { ok, status, statusText, data: json } = await orchestratedJson<{ rows?: Record<string, unknown>[]; data?: Record<string, unknown>[]; error?: string }>({
+        scope: `bi-workspace:${tab.id}`,
+        operation: "retry-query",
+        resource: tab.id,
+        params: { sql: fixedSQL, startDate, endDate },
+        refreshGroup: `bi-workspace:${tab.id}:execution`,
+        policy: "latest",
+        timeoutMs: 90_000,
+      }, "/api/datasets/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sql: fixedSQL, startDate, endDate }),
       });
-      const json = await res.json();
       const durationMs = Date.now() - start;
 
-      if (!res.ok || json.error) {
+      if (!ok || json.error) {
         setError(
           tab.id,
-          `${res.status} ${res.statusText}`,
+          `${status} ${statusText}`,
           json.error ?? "Unknown error after retry"
         );
         if (logId) markRetryResult(logId, false);
@@ -898,17 +913,28 @@ export function WorkspacePage() {
       updateTab(tabId, { status: "running", rows: [], rowCount: 0 });
       const start = Date.now();
       try {
-        const res = await fetch("/api/datasets/query", {
+        const now = new Date();
+        const endDate = now.toISOString().split("T")[0];
+        now.setDate(now.getDate() - 30);
+        const startDate = now.toISOString().split("T")[0];
+        const { ok, status, statusText, data: json } = await orchestratedJson<{ rows?: Record<string, unknown>[]; data?: Record<string, unknown>[]; error?: string }>({
+          scope: `bi-workspace:${tabId}`,
+          operation: "refresh-query",
+          resource: tabId,
+          params: { sql, startDate, endDate },
+          refreshGroup: `bi-workspace:${tabId}:execution`,
+          policy: "latest",
+          timeoutMs: 90_000,
+        }, "/api/datasets/query", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sql }),
+          body: JSON.stringify({ sql, startDate, endDate }),
         });
-        const json = await res.json();
         const durationMs = Date.now() - start;
-        if (!res.ok || json.error) {
+        if (!ok || json.error) {
           updateTab(tabId, {
             status: "error",
-            apiError: `${res.status} ${res.statusText}`,
+            apiError: `${status} ${statusText}`,
             dbErrorLogs: json.error ?? "Unknown error",
           });
           return;

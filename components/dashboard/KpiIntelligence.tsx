@@ -41,6 +41,7 @@ import type {
   KpiRelationship,
   BranchEntry,
 } from "@/app/api/kpi/intelligence/route";
+import { orchestratedJson } from "@/lib/orchestration/requestRegistry";
 
 // ── Utility sub-components ────────────────────────────────────────────────────
 
@@ -1007,12 +1008,19 @@ export function KpiIntelligence() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/kpi/intelligence");
-      if (!res.ok) throw new Error("Failed to fetch");
-      const json: KpiIntelligenceResponse = await res.json();
+      const { ok, data: json } = await orchestratedJson<KpiIntelligenceResponse>({
+        scope: "kpi-intelligence",
+        operation: "load-catalog",
+        resource: "catalog",
+        policy: "dedupe",
+        timeoutMs: 30_000,
+      }, "/api/kpi/intelligence");
+      if (!ok) throw new Error("Failed to fetch");
       setData(json);
-    } catch {
-      setError("Failed to load KPI intelligence data.");
+    } catch (cause) {
+      if (!(cause instanceof Error && (cause.name === "AbortError" || cause.name === "StaleRequestError"))) {
+        setError("Failed to load KPI intelligence data.");
+      }
     } finally {
       setLoading(false);
     }
@@ -1028,16 +1036,25 @@ export function KpiIntelligence() {
     setEvidenceLoading(true);
     setEvidenceError(null);
     try {
-      const response = await fetch("/api/kpi/intelligence", {
+      const { ok, data: payload } = await orchestratedJson<{ analysis?: KpiEvidenceAnalysis; error?: string }>({
+        scope: "kpi-intelligence",
+        operation: "analyze-evidence",
+        resource: activeCard.kpiKey,
+        params: { startDate, endDate },
+        refreshGroup: "kpi-intelligence:evidence",
+        policy: "latest",
+        timeoutMs: 90_000,
+      }, "/api/kpi/intelligence", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ kpiKey: activeCard.kpiKey, startDate, endDate }),
       });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Evidence analysis failed");
-      setEvidenceAnalysis(payload.analysis as KpiEvidenceAnalysis);
+      if (!ok || !payload.analysis) throw new Error(payload.error ?? "Evidence analysis failed");
+      setEvidenceAnalysis(payload.analysis);
     } catch (requestError) {
-      setEvidenceError(requestError instanceof Error ? requestError.message : "Evidence analysis failed");
+      if (!(requestError instanceof Error && (requestError.name === "AbortError" || requestError.name === "StaleRequestError"))) {
+        setEvidenceError(requestError instanceof Error ? requestError.message : "Evidence analysis failed");
+      }
     } finally {
       setEvidenceLoading(false);
     }

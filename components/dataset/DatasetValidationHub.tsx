@@ -11,20 +11,21 @@ export function DatasetValidationHub({ datasetId, tables, relationshipCount }: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastValidatedAt, setLastValidatedAt] = useState<number | null>(null);
+  const [cacheHit, setCacheHit] = useState(false);
   const intentRef = useRef(0);
   const tableSignature = useMemo(() => JSON.stringify(tables.map((table) => ({ name: table.name, columns: table.columns.map((column) => [column.name, column.type, column.nullable, column.isPk]) }))), [tables]);
-  async function run() {
+  async function run(force = false) {
     const intent = ++intentRef.current;
     setLoading(true);
     setError(null);
     try {
       const data = await orchestrate({ scope: `dataset-validation:${datasetId}`, operation: "validate", resource: datasetId, params: { tables, relationshipCount }, policy: "latest", timeoutMs: 30_000 }, async (signal) => {
-        const response = await fetch("/api/datasets/validate", { method: "POST", headers: { "Content-Type": "application/json" }, signal, body: JSON.stringify({ datasetId, tables, relationshipCount }) });
-        const payload = await response.json() as { validation?: DatasetValidation; error?: string };
+        const response = await fetch("/api/datasets/validate", { method: "POST", headers: { "Content-Type": "application/json" }, signal, body: JSON.stringify({ datasetId, tables, relationshipCount, force }) });
+        const payload = await response.json() as { validation?: DatasetValidation; error?: string; cache?: { hit?: boolean } };
         if (!response.ok || !payload.validation) throw new Error(payload.error ?? "Validation did not return a result");
-        return payload.validation;
+        return { validation: payload.validation, cacheHit: Boolean(payload.cache?.hit) };
       });
-      if (intent === intentRef.current) { setResult(data); setLastValidatedAt(Date.now()); }
+      if (intent === intentRef.current) { setResult(data.validation); setCacheHit(data.cacheHit); setLastValidatedAt(Date.now()); }
     } catch (cause) {
       if (cause instanceof Error && (cause.name === "AbortError" || cause.name === "StaleRequestError")) return;
       if (intent === intentRef.current) setError(cause instanceof Error ? cause.message : "Validation failed");
@@ -35,7 +36,7 @@ export function DatasetValidationHub({ datasetId, tables, relationshipCount }: {
   useEffect(() => { void run(); }, [datasetId, relationshipCount, tableSignature]); // eslint-disable-line react-hooks/exhaustive-deps
   const categoryScores = result ? [...new Set(result.checks.map((check) => check.category))].map((category) => { const checks = result.checks.filter((check) => check.category === category); return { category, score: Math.round(checks.reduce((sum, check) => sum + check.score, 0) / checks.length) }; }) : [];
   return <div className="flex flex-col gap-5">
-    <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center"><div><h3 className="text-base font-semibold text-foreground">Dataset Validation Hub</h3><p className="mt-1 text-xs text-muted-foreground">Validate schema, mappings, relationships, KPI readiness, and data quality before publishing.</p>{lastValidatedAt && <p className="mt-2 text-[10px] text-muted-foreground">Fresh as of {new Date(lastValidatedAt).toLocaleTimeString()} · changes automatically replace stale validation runs</p>}</div><div className="flex items-center gap-2">{loading && <button type="button" onClick={() => cancelScope(`dataset-validation:${datasetId}`)} className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground">Cancel</button>}<button type="button" onClick={() => void run()} disabled={loading} className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50">{loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}{result ? "Run again" : "Run validation"}</button></div></div>
+    <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center"><div><h3 className="text-base font-semibold text-foreground">Dataset Validation Hub</h3><p className="mt-1 text-xs text-muted-foreground">Validate schema, mappings, relationships, KPI readiness, and data quality before publishing.</p>{lastValidatedAt && <p className="mt-2 text-[10px] text-muted-foreground">Fresh as of {new Date(lastValidatedAt).toLocaleTimeString()} · {cacheHit ? "reused matching validation snapshot" : "computed from current schema fingerprint"}</p>}</div><div className="flex items-center gap-2">{loading && <button type="button" onClick={() => cancelScope(`dataset-validation:${datasetId}`)} className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground">Cancel</button>}<button type="button" onClick={() => void run(true)} disabled={loading} className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50">{loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}{result ? "Run again" : "Run validation"}</button></div></div>
     {loading && !result && <div className="rounded-xl border border-border bg-muted/20 p-8 text-center"><Loader2 className="mx-auto size-8 animate-spin text-primary" /><p className="mt-3 text-sm font-medium">Validating {tables.length} source tables</p><p className="mt-1 text-xs text-muted-foreground">Checking schema, relationships, business mappings, KPI readiness, and quality rules.</p></div>}
     {error && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">{error}</div>}
     {!result && !loading && !error && <div className="rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center"><ShieldCheck className="mx-auto size-8 text-primary" /><p className="mt-3 text-sm font-medium">Ready to validate {tables.length} source tables</p><p className="mt-1 text-xs text-muted-foreground">The run also triggers KPI detection and creates intelligence alerts for missing inputs.</p></div>}

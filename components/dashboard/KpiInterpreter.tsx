@@ -32,6 +32,7 @@ import {
 import { format } from "date-fns";
 import type { BusinessInsights } from "@/app/api/kpi/interpret/route";
 import type { SavedReport } from "@/components/studio/SavedReports";
+import { orchestratedJson } from "@/lib/orchestration/requestRegistry";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

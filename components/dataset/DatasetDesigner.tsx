@@ -1005,13 +1005,22 @@ function ScopeSummaryBar({ scope }: { scope: ScopeData | null }) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
+export interface DatasetWorkflowState {
+  tableCount: number;
+  acceptedRelationshipCount: number;
+  datasetCount: number;
+  selectedDatasetId: string | null;
+  selectedDatasetStatus: DSStatus | null;
+}
+
 interface DatasetDesignerProps {
   onNavigate?: (view: string) => void;
   initialTab?: DesignerTab;
   showStageTabs?: boolean;
+  onWorkflowStateChange?: (state: DatasetWorkflowState) => void;
 }
 
-export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStageTabs = true }: DatasetDesignerProps) {
+export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStageTabs = true, onWorkflowStateChange }: DatasetDesignerProps) {
   const [tab, setTab] = useState<DesignerTab>(initialTab);
   const [canvasTables, setCanvasTables] = useState<TableDef[]>([
     SOURCE_TABLES.find((t) => t.name === "CLIENT_EPISODES_ALL")!,
@@ -1288,6 +1297,16 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
   const validationRelationshipCount = selectedDataset
     ? selectedDataset.relationships.filter((relationshipId) => relationships.some((relationship) => relationship.id === relationshipId && relationship.status === "Accepted")).length
     : relationships.filter((relationship) => relationship.status === "Accepted").length;
+
+  useEffect(() => {
+    onWorkflowStateChange?.({
+      tableCount: validationTables.length,
+      acceptedRelationshipCount: validationRelationshipCount,
+      datasetCount: datasets.length,
+      selectedDatasetId: selectedDataset?.datasetId ?? null,
+      selectedDatasetStatus: selectedDataset?.status ?? null,
+    });
+  }, [datasets.length, onWorkflowStateChange, selectedDataset?.datasetId, selectedDataset?.status, validationRelationshipCount, validationTables.length]);
 
   const TABS: { id: DesignerTab; label: string; icon: React.ElementType; count?: number }[] = [
     { id: "discovery",    label: "Table Discovery", icon: Database,    count: SOURCE_TABLES.length },

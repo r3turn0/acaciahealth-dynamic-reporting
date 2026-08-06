@@ -116,6 +116,32 @@ export async function orchestrate<T>(context: RequestContext, task: (signal: Abo
   return promise;
 }
 
+export interface OrchestratedJsonResponse<T> {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  data: T;
+  requestId: string;
+}
+
+export function orchestratedJson<T>(
+  context: RequestContext,
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<OrchestratedJsonResponse<T>> {
+  return orchestrate(context, async (signal, requestId) => {
+    const response = await fetch(input, { ...init, signal });
+    const data = await response.json() as T;
+    return {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      data,
+      requestId,
+    };
+  });
+}
+
 export function cancelScope(scope: string) {
   active.forEach((entry) => {
     const snapshot = snapshots.find((item) => item.id === entry.id);

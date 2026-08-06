@@ -13,6 +13,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { orchestratedJson } from "@/lib/orchestration/requestRegistry";
 
 interface ReportResult {
   report_name: string;
@@ -61,7 +62,15 @@ export function ReportRunner() {
     const name = reportName.trim() || `Report — ${new Date().toLocaleString()}`;
 
     try {
-      const res = await fetch("/api/report/run", {
+      const { ok, data: json } = await orchestratedJson<ReportResult & { error?: string }>({
+        scope: "report-runner",
+        operation: "run-report",
+        resource: name,
+        params: { prompt, startDate, endDate },
+        refreshGroup: "report-runner:active",
+        policy: "latest",
+        timeoutMs: 60_000,
+      }, "/api/report/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -73,9 +82,7 @@ export function ReportRunner() {
         }),
       });
 
-      const json = await res.json();
-
-      if (!res.ok) {
+      if (!ok) {
         setError(json.error || "Request failed");
         return;
       }
