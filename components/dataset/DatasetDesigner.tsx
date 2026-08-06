@@ -1120,11 +1120,11 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
   // immediately (not only after user manually clicks Refresh)
   useEffect(() => { void refreshCatalog(); }, [refreshCatalog]);
 
-  // Canvas: add table from discovery
+  // Add the table to Build state without changing workflow stages. Users can
+  // continue discovering sources, then open Build explicitly when ready.
   function handleAddToCanvas(t: TableDef) {
     setCanvasTables((prev) => prev.find((x) => x.name === t.name) ? prev : [...prev, t]);
-    setTab("canvas");
-    showToast(`${t.name} added to canvas`);
+    showToast(`${t.name} added to Build. Open the Build tab when ready.`);
   }
 
   // Canvas: create relationship (from drag-drop)
