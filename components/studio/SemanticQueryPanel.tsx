@@ -30,6 +30,7 @@ const INTENT_COLORS: Record<IntentType, string> = {
   COMPARISON:   "text-chart-4 bg-chart-4/10 border-chart-4/25",
   TOP_N:        "text-primary bg-primary/10 border-primary/25",
   RANKING:      "text-primary bg-primary/10 border-primary/25",
+  KPI:          "text-chart-2 bg-chart-2/10 border-chart-2/25",
   CLARIFICATION:"text-chart-5 bg-chart-5/10 border-chart-5/25",
 };
 
@@ -58,8 +59,31 @@ const EXAMPLE_QUERIES = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Build a minimal QueryPlan shell from a SemanticResponse so it can be sent to the SQL editor */
-function semanticToQueryPlan(res: SemanticResponse): QueryPlan {
+type SemanticPanelResponse = SemanticResponse & {
+  sql?: string;
+  elapsed_ms?: number;
+};
+
+function isSemanticPanelResponse(value: unknown): value is SemanticPanelResponse {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  const intent = candidate.intent as Record<string, unknown> | undefined;
+  const response = candidate.response as Record<string, unknown> | undefined;
+  const context = candidate.context as Record<string, unknown> | undefined;
+  const metadata = candidate.metadata as Record<string, unknown> | undefined;
+
+  return (
+    typeof candidate.resolvedQuery === "string" &&
+    typeof intent?.type === "string" &&
+    typeof response?.type === "string" &&
+    typeof context?.table === "string" &&
+    typeof metadata?.confidence === "number" &&
+    Array.isArray(candidate.pipelineStages)
+  );
+}
+
+/** Build a QueryPlan from a semantic response for the SQL editor. */
+function semanticToQueryPlan(res: SemanticPanelResponse): QueryPlan {
   const plan = res.logicalPlan;
   const selects = [
     ...(plan?.select ?? []),
@@ -76,12 +100,12 @@ function semanticToQueryPlan(res: SemanticResponse): QueryPlan {
     : "";
   const whereClause   = "\nWHERE epi_SocDate BETWEEN @StartDate AND @EndDate";
 
-  const sql = `SELECT TOP ${limit}
+  const generatedSql = `SELECT TOP ${limit}
   ${selectClause}
 FROM ${plan?.table ?? "CLIENT_EPISODES_ALL"}${whereClause}${groupClause}${orderClause}`;
 
   return {
-    sql,
+    sql: res.sql ?? generatedSql,
     explanation: res.resolvedQuery,
     tables_used: [plan?.table ?? ""],
     filters_applied: res.context.filters,
@@ -280,7 +304,7 @@ export function SemanticQueryPanel({
   const [query, setQuery]               = useState("");
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState<string | null>(null);
-  const [response, setResponse]         = useState<SemanticResponse | null>(null);
+  const [response, setResponse]         = useState<SemanticPanelResponse | null>(null);
   const [showPipeline, setShowPipeline] = useState(false);
   const [elapsed, setElapsed]           = useState<number | null>(null);
   const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
@@ -318,9 +342,14 @@ export function SemanticQueryPanel({
         setError(json.error ?? "Semantic pipeline failed");
         return;
       }
-      const semanticRes = json as SemanticResponse;
+      if (!isSemanticPanelResponse(json)) {
+        setResponse(null);
+        setError("Semantic service returned an invalid response. Please run the query again.");
+        return;
+      }
+      const semanticRes = json;
       setResponse(semanticRes);
-      setElapsed(json.elapsed_ms ?? null);
+      setElapsed(semanticRes.elapsed_ms ?? null);
       setShowPipeline(true);
 
       // Record this successful query in the adaptive learner so future searches

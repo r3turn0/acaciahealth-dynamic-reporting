@@ -34,6 +34,7 @@ export const INTENT_TYPES = [
   "COMPARISON",
   "TOP_N",
   "RANKING",
+  "KPI",
   "CLARIFICATION",
 ] as const;
 
@@ -113,7 +114,9 @@ export const SemanticResponseSchema = z.object({
 
   response: z.object({
     type: z.enum(["TABLE", "SUMMARY_TEXT", "CHART", "KPI"]),
-    data: z.array(z.unknown()).describe("Empty — populated at execution time"),
+    // Planning never returns rows. An explicit empty-object item schema keeps the
+    // generated JSON Schema valid; z.unknown() omits `type` and breaks providers.
+    data: z.array(z.object({})).describe("Empty — populated at execution time"),
     presentation: PresentationSchema,
   }),
 
