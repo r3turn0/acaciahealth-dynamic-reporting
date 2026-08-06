@@ -26,6 +26,7 @@ import {
   useDatasetDraft,
 } from "@/lib/access/datasetDraft";
 import { SemanticSearchPanel } from "@/components/discover/SemanticSearchPanel";
+import type { CatalogNavigationAction } from "@/lib/discovery/navigation";
 import { downloadDataset, estimateCSVBytes } from "@/lib/utils/download";
 import { logExport } from "@/lib/services/observabilityStore";
 import { orchestrate } from "@/lib/orchestration/requestRegistry";
@@ -129,7 +130,12 @@ function ColumnFilter({ col, value, onChange }: {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) {
+interface DataExplorerProps {
+  onOpenBuilder?: () => void;
+  onCatalogNavigate?: (action: Exclude<CatalogNavigationAction, { kind: "table" | "discover-context" }>) => void;
+}
+
+export function DataExplorer({ onOpenBuilder, onCatalogNavigate }: DataExplorerProps) {
   const staged = useDatasetDraft();
   const [selectedTable, setSelectedTable] = useState<string>(TABLES[0]);
   // Full list of tables in the database — populated from /api/schema (live or
@@ -152,6 +158,8 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
   const [error, setError]       = useState<string | null>(null);
   const [showFilters, setShowFilters]   = useState(false);
   const [showSemanticSearch, setShowSemanticSearch] = useState(false);
+  const [catalogSelectionError, setCatalogSelectionError] = useState<string | null>(null);
+  const [selectedCatalogContext, setSelectedCatalogContext] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataIntentRef = useRef(0);
 
@@ -263,6 +271,29 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
     setSortDir("asc");
     setFilters({});
     setShowFilters(false);
+  }
+
+  function handleCatalogSelection(action: CatalogNavigationAction) {
+    setCatalogSelectionError(null);
+    if (action.kind === "table") {
+      const resolvedTable = tableList.find(
+        (table) => table.toLowerCase() === action.tableLocation.toLowerCase()
+      );
+      if (!resolvedTable) {
+        setCatalogSelectionError(`Could not resolve ${action.assetName} to an available table (${action.tableLocation}).`);
+        return;
+      }
+      handleTableChange(resolvedTable);
+      setSelectedCatalogContext(action.assetName);
+      setShowSemanticSearch(false);
+      return;
+    }
+    if (action.kind === "discover-context") {
+      setSelectedCatalogContext(action.assetName);
+      setShowSemanticSearch(false);
+      return;
+    }
+    onCatalogNavigate?.(action);
   }
 
   function handleSort(col: string) {
@@ -445,15 +476,20 @@ export function DataExplorer({ onOpenBuilder }: { onOpenBuilder?: () => void }) 
       {/* Semantic Search Panel */}
       {showSemanticSearch && (
         <div className="bg-muted/20 border border-border rounded-xl p-4">
-          <SemanticSearchPanel
-            onSelectTable={(id) => {
-              // Strip schema prefix for table selector compatibility
-              const tableName = id.includes(".") ? id.split(".").pop()! : id;
-              handleTableChange(tableName);
-              setShowSemanticSearch(false);
-            }}
-          />
+          <SemanticSearchPanel onSelectResult={handleCatalogSelection} />
         </div>
+      )}
+
+      {catalogSelectionError && (
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <AlertCircle className="size-4 shrink-0" />
+          {catalogSelectionError}
+        </div>
+      )}
+      {selectedCatalogContext && !catalogSelectionError && (
+        <p className="text-xs text-muted-foreground">
+          Discovery context: <span className="font-medium text-foreground">{selectedCatalogContext}</span>
+        </p>
       )}
 
       {/* Stats bar */}

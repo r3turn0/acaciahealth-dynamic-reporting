@@ -28,6 +28,7 @@ function TabSkeleton() {
 import { LoginPage }    from "@/components/auth/LoginPage";
 import type { AuthUser } from "@/components/auth/LoginPage";
 import type { LoadedReport } from "@/components/studio/ReportStudio";
+import type { CatalogNavigationAction } from "@/lib/discovery/navigation";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Menu, Bell, Calendar, LogOut, ShieldOff } from "lucide-react";
@@ -205,6 +206,7 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [todayLabel, setTodayLabel]   = useState<string>("");
   const [loadedReport, setLoadedReport] = useState<LoadedReport | null>(null);
+  const [catalogNavigationError, setCatalogNavigationError] = useState<string | null>(null);
   const [authUser, setAuthUser]       = useState<AuthUser | null | false>(null);
   const [azureAuthenticated, setAzureAuthenticated] = useState(false);
   // KPI pre-selection: set when user clicks "Interpret" on a saved report
@@ -244,6 +246,33 @@ export default function Home() {
     }
     setView(canonicalize(raw));
     setSidebarOpen(false);
+  }
+
+  async function handleCatalogNavigate(
+    action: Exclude<CatalogNavigationAction, { kind: "table" | "discover-context" }>
+  ) {
+    setCatalogNavigationError(null);
+    if (action.kind === "navigate") {
+      navigate(action.destination);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/reports/${encodeURIComponent(action.reportId)}`);
+      const report = await response.json() as Partial<LoadedReport> & { error?: string };
+      if (!response.ok || !report.sql || !report.name) {
+        throw new Error(report.error ?? "Report could not be loaded");
+      }
+      setLoadedReport({
+        sql: report.sql,
+        prompt: report.prompt ?? report.name,
+        kpi: report.kpi ?? "",
+        name: report.name,
+      });
+      navigate("reports");
+    } catch (error) {
+      setCatalogNavigationError(error instanceof Error ? error.message : "Report could not be loaded");
+    }
   }
 
   function handleAuthenticated(u: AuthUser) {
@@ -389,6 +418,11 @@ export default function Home() {
 
         {/* Page content — wrapped in ErrorBoundary (R-19) so tab crashes don't unmount the shell */}
         <main className="flex-1 overflow-y-auto px-5 md:px-6 py-6">
+        {catalogNavigationError && (
+          <div role="alert" className="mx-auto mb-4 max-w-7xl rounded-lg border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {catalogNavigationError}
+          </div>
+        )}
         <ErrorBoundary label="the dashboard">
 
           {/* 1. Home */}
@@ -408,7 +442,10 @@ export default function Home() {
           {primary === "discover" && (
             <div className="max-w-7xl mx-auto w-full">
               <Suspense fallback={<TabSkeleton />}>
-                <DataExplorer onOpenBuilder={() => navigate("dataset-studio")} />
+                <DataExplorer
+                  onOpenBuilder={() => navigate("dataset-studio")}
+                  onCatalogNavigate={(action) => { void handleCatalogNavigate(action); }}
+                />
               </Suspense>
             </div>
           )}

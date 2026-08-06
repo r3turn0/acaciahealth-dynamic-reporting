@@ -32,7 +32,7 @@ import {
   classifyFailure,
   hashSql,
 } from "@/lib/services/queryHistoryStore";
-import { retryWithSchemaIntelligence } from "@/lib/agents/SchemaAwareRetryAgent";
+import { retryWithSchemaIntelligence, type RetryAttemptResult } from "@/lib/agents/SchemaAwareRetryAgent";
 import { resolveQueryIntelligence, type IntelligenceMatch } from "@/lib/services/queryIntelligence";
 
 const EXECUTION_TIMEOUT_MS = 12_000;
@@ -1009,6 +1009,19 @@ EXECUTION_TIMEOUT_MS,
           failedSql: sql,
           errorMessage: firstErrMsg,
           originalHistoryId: historyId,
+        }, async (candidateSql) => {
+          try {
+            const execution = await withAbortTimeout(
+              (timeoutSignal) => queryMultiple(candidateSql, { StartDate: startDate, EndDate: endDate }, timeoutSignal),
+              signal,
+              EXECUTION_TIMEOUT_MS,
+              "queryMultiple(retry-verification)"
+            );
+            return { ok: true as const, execution };
+          } catch (error) {
+            if (isAbortError(error) || error instanceof QueryGatewayTimeoutError) throw error;
+            return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+          }
         });
 
         if (retryResult.succeeded && retryResult.correctedSql) {
@@ -1016,12 +1029,8 @@ EXECUTION_TIMEOUT_MS,
           const correctedSql = retryResult.correctedSql;
           const retryT0 = Date.now();
           try {
-const retryQueryResult = await withAbortTimeout(
-(timeoutSignal) => queryMultiple(correctedSql, { StartDate: startDate, EndDate: endDate }, timeoutSignal),
-signal,
-EXECUTION_TIMEOUT_MS,
-"queryMultiple(retry)"
-);
+            const retryQueryResult = retryResult.verifiedExecution;
+            if (!retryQueryResult) throw new Error("Verified retry execution result was not returned");
             const retryRows = retryQueryResult.rows;
 
             const MAX_ROWS = 100_000;

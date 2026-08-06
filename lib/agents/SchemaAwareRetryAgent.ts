@@ -75,10 +75,18 @@ export interface RetryAttemptResult {
   validationErrors: string[];
   elapsed_ms: number;
   success: boolean;
+  duplicateRejected?: boolean;
+  runtimeError?: string;
   abortReason?: string;
 }
 
-export interface RetryResult {
+export type RuntimeVerificationResult<TExecution> =
+  | { ok: true; execution: TExecution }
+  | { ok: false; error: string };
+
+export type RuntimeVerifier<TExecution> = (sql: string) => Promise<RuntimeVerificationResult<TExecution>>;
+
+export interface RetryResult<TExecution = never> {
   correctedSql: string | null;
   explanation: string;
   attempts: RetryAttemptResult[];
@@ -88,6 +96,7 @@ export interface RetryResult {
   /** The failure classification of the original error */
   failureClass: FailureClass;
   learnedMappingsUsed: Array<{ term: string; suggestion: string; confidence: number }>;
+  verifiedExecution: TExecution | null;
 }
 
 // ── System prompt for schema-aware correction ─────────────────────────────────
@@ -126,7 +135,39 @@ function buildRetrySystemPrompt(
   ].join("\n");
 }
 
-function buildRetryUserPrompt(input: RetryInput, attemptNumber: number, remediationStrategy: string, priorHashes: Set<string>): string {
+const STRATEGY_LADDERS: Record<FailureClass, [string, string, string]> = {
+  TABLE_NOT_FOUND: ["Apply direct schema and learned-mapping substitution", "Use an alternate governed table or join path", "Decompose into a simpler query using only verified tables"],
+  COLUMN_NOT_FOUND: ["Apply direct column substitution from schema metadata", "Use an equivalent column from an alternate governed table", "Remove the unsupported projection and simplify the aggregation"],
+  JOIN_FAILURE: ["Correct the join keys using registered relationships", "Choose an alternate governed join path", "Decompose the query to avoid the failing join"],
+  FILTER_ERROR: ["Correct filter types, parameters, and NULL handling", "Move filtering to an alternate valid column or table", "Simplify filters to the required date window only"],
+  TYPE_MISMATCH: ["Apply the precise CAST or CONVERT required by schema types", "Use an alternate type-compatible source column", "Decompose conversions into a guarded CTE"],
+  PERMISSION_ERROR: ["Replace inaccessible objects with approved read-only sources", "Use an alternate governed source path", "Simplify to accessible catalog objects only"],
+  TIMEOUT: ["Add TOP, date bounds, and selective predicates", "Use a narrower join path with pre-aggregation", "Decompose the query into a minimal bounded aggregate"],
+  SYNTAX_ERROR: ["Correct the specific T-SQL syntax error", "Rewrite the affected clause using a different T-SQL construct", "Rebuild as a minimal SELECT with simple CTEs"],
+  AGGREGATION_ERROR: ["Correct GROUP BY and aggregate references", "Pre-aggregate in a CTE before joining", "Simplify to one bounded aggregation level"],
+  UNKNOWN: ["Apply a direct correction grounded in schema metadata", "Try an alternate governed table and join path", "Rebuild as a minimal read-only query"],
+};
+
+export function buildProgressiveRemediationStrategy(
+  failureClass: FailureClass,
+  attemptNumber: number,
+  errorMessage: string,
+  learnedMappings: Parameters<typeof buildRemediationStrategy>[2]
+): string {
+  const base = buildRemediationStrategy(failureClass, errorMessage, learnedMappings);
+  const step = STRATEGY_LADDERS[failureClass][Math.min(attemptNumber - 1, 2)];
+  return `Attempt ${attemptNumber}: ${step}. ${base}`;
+}
+
+function buildRetryUserPrompt(
+  input: RetryInput,
+  failedSql: string,
+  errorMessage: string,
+  attemptNumber: number,
+  remediationStrategy: string,
+  priorHashes: Set<string>,
+  priorStrategies: string[]
+): string {
   return [
     `Original user request: "${input.userRequest}"`,
     `Date range: ${input.startDate} to ${input.endDate}`,
@@ -135,12 +176,13 @@ function buildRetryUserPrompt(input: RetryInput, attemptNumber: number, remediat
     ``,
     `FAILED SQL:`,
     "```sql",
-    input.failedSql,
+    failedSql,
     "```",
     ``,
-    `ERROR: ${input.errorMessage}`,
+    `LATEST ERROR: ${errorMessage}`,
     ``,
     `Remediation strategy: ${remediationStrategy}`,
+    priorStrategies.length > 0 ? `PRIOR STRATEGIES (do not repeat): ${priorStrategies.join(" | ")}` : "",
     ``,
     priorHashes.size > 0
       ? `PRIOR ATTEMPT HASHES (your corrected SQL must NOT produce any of these hashes): ${[...priorHashes].join(", ")}`
@@ -153,9 +195,10 @@ function buildRetryUserPrompt(input: RetryInput, attemptNumber: number, remediat
 
 // ── Main retry loop ───────────────────────────────────────────────────────────
 
-export async function retryWithSchemaIntelligence(
-  input: RetryInput
-): Promise<RetryResult> {
+export async function retryWithSchemaIntelligence<TExecution = never>(
+  input: RetryInput,
+  verifyCandidate?: RuntimeVerifier<TExecution>
+): Promise<RetryResult<TExecution>> {
   const attempts: RetryAttemptResult[] = [];
   const failureClass = classifyFailure(input.errorMessage);
 
@@ -216,32 +259,18 @@ export async function retryWithSchemaIntelligence(
 
   let currentSql = input.failedSql;
   let currentError = input.errorMessage;
-  let lastRemediationStrategy = "";
+  const priorStrategies: string[] = [];
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const t0 = Date.now();
 
-    // Build remediation strategy for this attempt
-    const remediationStrategy = buildRemediationStrategy(failureClass, currentError, allMappings);
-
-    // Anti-loop: abort if strategy is unchanged and we've already tried
-    if (attempt > 1 && remediationStrategy === lastRemediationStrategy) {
-      const abortMsg = `Retry aborted: same remediation strategy as attempt ${attempt - 1} with no structural change`;
-      attempts.push({
-        attemptNumber: attempt,
-        correctedSql: currentSql,
-        normalizedHash: hashSql(currentSql),
-        explanation: abortMsg,
-        failureClass,
-        remediationStrategy,
-        validationErrors: [abortMsg],
-        elapsed_ms: Date.now() - t0,
-        success: false,
-        abortReason: abortMsg,
-      });
-      break;
-    }
-    lastRemediationStrategy = remediationStrategy;
+    const remediationStrategy = buildProgressiveRemediationStrategy(
+      failureClass,
+      attempt,
+      currentError,
+      allMappings
+    );
+    priorStrategies.push(remediationStrategy);
 
     // AI not configured — cannot generate corrected SQL
     if (!isAiConfigured()) {
@@ -304,7 +333,15 @@ export async function retryWithSchemaIntelligence(
       const { text } = await generateText({
         model: getModel("capable"),
         system: systemPrompt,
-        prompt: buildRetryUserPrompt(input, attempt, remediationStrategy, triedHashes),
+        prompt: buildRetryUserPrompt(
+          input,
+          currentSql,
+          currentError,
+          attempt,
+          remediationStrategy,
+          triedHashes,
+          priorStrategies.slice(0, -1)
+        ),
         maxOutputTokens: 1024,
         temperature: 0.1 + attempt * 0.05, // Slightly higher temp on later attempts for diversity
       });
@@ -346,44 +383,58 @@ export async function retryWithSchemaIntelligence(
     const elapsed_ms = Date.now() - t0;
 
     // ── Anti-loop: duplicate detection ─────────────────────────────────────────
-    if (triedHashes.has(newHash) || isSqlDuplicate(correctedSql, input.failedSql)) {
-      const abortMsg = `Retry aborted: SQL hash ${newHash} was already tried. Structurally identical to a prior attempt.`;
+    if (triedHashes.has(newHash) || isSqlDuplicate(correctedSql, currentSql)) {
+      const duplicateMessage = `Candidate rejected: SQL hash ${newHash} was already tried or unchanged from the latest failed SQL.`;
       attempts.push({
         attemptNumber: attempt,
         correctedSql,
         normalizedHash: newHash,
-        explanation: abortMsg,
+        explanation: duplicateMessage,
         failureClass,
         remediationStrategy,
-        validationErrors: [abortMsg],
+        validationErrors: [duplicateMessage],
         elapsed_ms,
         success: false,
-        abortReason: abortMsg,
+        duplicateRejected: true,
       });
 
-      // Record in history
       await recordQueryAttempt({
         user_request: input.userRequest,
         query_text: correctedSql,
-        status: "aborted",
+        status: "retry",
         retry_version: attempt,
         failure_reason: failureClass,
         remediation_strategy: remediationStrategy,
-        error_message: abortMsg,
+        error_message: duplicateMessage,
         execution_ms: elapsed_ms,
-        schema_hash: hashSql(correctedSql),
+        schema_hash: newHash,
         final_success_query: null,
         learned_mappings_snapshot: null,
       });
 
-      break; // Stop — we have no new strategies
+      currentError = duplicateMessage;
+      continue;
     }
 
     // Add to tried hashes
     triedHashes.add(newHash);
 
-    // ── Validate corrected SQL ─────────────────────────────────────────────────
+    // ── Validate corrected SQL ─────────���───────────────────────────────────────
     const validation = validateQuery(correctedSql);
+    let verifiedExecution: TExecution | null = null;
+    let runtimeError: string | undefined;
+    if (validation.valid && verifyCandidate) {
+      try {
+        const verification = await verifyCandidate(correctedSql);
+        if (verification.ok) verifiedExecution = verification.execution;
+        else runtimeError = verification.error;
+      } catch (error) {
+        if (error instanceof Error && (error.name === "AbortError" || error.name === "QueryGatewayTimeoutError")) throw error;
+        runtimeError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    const candidateSucceeded = validation.valid && !runtimeError;
+    const candidateErrors = runtimeError ? [`Runtime verification failed: ${runtimeError}`] : validation.errors;
 
     const attemptResult: RetryAttemptResult = {
       attemptNumber: attempt,
@@ -392,9 +443,10 @@ export async function retryWithSchemaIntelligence(
       explanation,
       failureClass,
       remediationStrategy,
-      validationErrors: validation.errors,
-      elapsed_ms,
-      success: validation.valid,
+      validationErrors: candidateErrors,
+      elapsed_ms: Date.now() - t0,
+      success: candidateSucceeded,
+      runtimeError,
     };
 
     attempts.push(attemptResult);
@@ -403,14 +455,14 @@ export async function retryWithSchemaIntelligence(
     await recordQueryAttempt({
       user_request: input.userRequest,
       query_text: correctedSql,
-      status: validation.valid ? "success" : "retry",
+      status: candidateSucceeded ? "success" : "retry",
       retry_version: attempt,
-      failure_reason: validation.valid ? null : failureClass,
+      failure_reason: candidateSucceeded ? null : failureClass,
       remediation_strategy: remediationStrategy,
-      error_message: validation.valid ? null : validation.errors.join("; "),
-      execution_ms: elapsed_ms,
+      error_message: candidateSucceeded ? null : candidateErrors.join("; "),
+      execution_ms: Date.now() - t0,
       schema_hash: newHash,
-      final_success_query: validation.valid ? correctedSql : null,
+      final_success_query: candidateSucceeded ? correctedSql : null,
       learned_mappings_snapshot: JSON.stringify(
         allMappings.slice(0, 20).reduce((acc, m) => {
           acc[m.user_term] = m.actual_object;
@@ -419,7 +471,7 @@ export async function retryWithSchemaIntelligence(
       ),
     });
 
-    if (validation.valid) {
+    if (candidateSucceeded) {
       // Learn from success
       await learnFromSuccess(input.userRequest, correctedSql);
 
@@ -439,12 +491,15 @@ export async function retryWithSchemaIntelligence(
         finalError: null,
         failureClass,
         learnedMappingsUsed: mappingSuggestions,
+        verifiedExecution,
       };
     }
 
-    // Feed validation errors back as new error for next attempt
+    // Feed the latest static or runtime failure into the next, different strategy.
     currentSql = correctedSql;
-    currentError = `Validation failed on attempt ${attempt}: ${validation.errors.join("; ")}`;
+    currentError = runtimeError
+      ? `Runtime failed on attempt ${attempt}: ${runtimeError}`
+      : `Validation failed on attempt ${attempt}: ${validation.errors.join("; ")}`;
 
     // Learn from this failure too
     await learnFromFailure(input.userRequest, correctedSql, currentError);
@@ -459,5 +514,6 @@ export async function retryWithSchemaIntelligence(
     finalError: `Query correction exhausted ${attempts.length} attempt(s). Last failure: ${currentError}`,
     failureClass,
     learnedMappingsUsed: mappingSuggestions,
+    verifiedExecution: null,
   };
 }
