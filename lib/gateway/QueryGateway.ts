@@ -625,7 +625,9 @@ async function runSQLGeneratorAgent(
         [kgResult, learnedMappings] = await withAbortTimeout(
           () =>
             Promise.all([
-              inferQueryContext(query).catch(() => null),
+              // Prompt enrichment must be deterministic and non-blocking. Live
+              // schema access belongs to dedicated metadata/execution stages.
+              inferQueryContext(query, { source: "static" }).catch(() => null),
               getLearnedMappings(50).catch(() => []),
             ]),
           signal,

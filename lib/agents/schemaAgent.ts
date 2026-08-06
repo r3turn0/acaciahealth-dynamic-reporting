@@ -712,30 +712,33 @@ export async function getSchemaIntelligence(
   options: {
     metadata?: MetadataJson;
     forceRefresh?: boolean;
+    source?: "auto" | "static";
   } = {}
 ): Promise<SchemaIntelligence> {
+  const source = options.source ?? "auto";
+  const cacheKey = source === "static" ? `${SCHEMA_CACHE_KEY}:static` : SCHEMA_CACHE_KEY;
+
   if (!options.forceRefresh) {
-    const cached = getCache<SchemaIntelligence>(SCHEMA_CACHE_KEY);
+    const cached = getCache<SchemaIntelligence>(cacheKey);
     if (cached) return cached;
   }
 
   const metadata: MetadataJson = options.metadata ?? {};
-
   let schema: SchemaIntelligence;
 
-  const { isDbConfigured } = await import("../services/db");
-  if (isDbConfigured()) {
-    const live = await introspectFromDb(metadata);
-    if (live) {
-      schema = live;
+  if (source === "static") {
+    schema = buildStaticSchema(metadata);
+  } else {
+    const { isDbConfigured } = await import("../services/db");
+    if (isDbConfigured()) {
+      const live = await introspectFromDb(metadata);
+      schema = live ?? buildStaticSchema(metadata);
     } else {
       schema = buildStaticSchema(metadata);
     }
-  } else {
-    schema = buildStaticSchema(metadata);
   }
 
-  setCache(SCHEMA_CACHE_KEY, schema, SCHEMA_TTL_MS);
+  setCache(cacheKey, schema, SCHEMA_TTL_MS);
   return schema;
 }
 
@@ -743,8 +746,11 @@ export async function getSchemaIntelligence(
  * Convenience: resolve a natural language query to candidate tables using the
  * cached Knowledge Graph. Returns ContextInferenceResult.
  */
-export async function inferQueryContext(query: string): Promise<ContextInferenceResult> {
-  const schema = await getSchemaIntelligence();
+export async function inferQueryContext(
+  query: string,
+  options: { source?: "auto" | "static" } = {}
+): Promise<ContextInferenceResult> {
+  const schema = await getSchemaIntelligence({ source: options.source });
   return resolveQueryContext(query, schema.knowledgeGraph, schema.tables);
 }
 
@@ -755,4 +761,5 @@ export function invalidateSchemaCache(): void {
   // Cache keys are managed by the cache service — overwrite with a no-op entry
   // that expires immediately by setting null. We achieve this by setting TTL = 1ms.
   setCache(SCHEMA_CACHE_KEY, null as unknown as SchemaIntelligence, 1);
+  setCache(`${SCHEMA_CACHE_KEY}:static`, null as unknown as SchemaIntelligence, 1);
 }
