@@ -3,11 +3,13 @@
 /**
  * KpiIntelligenceHub
  *
- * Single governed KPI surface — 4 tabs:
+ * Governed KPI surfaces:
  *   interpreter  — Select a saved report and get AI-powered business interpretation (KpiInterpreter)
- *   intelligence — AI analysis panel: trends, variance, root cause, anomaly detection (KpiIntelligence)
  *   registry     — Browse all KPI definitions, single source of truth (KpiExplorer)
  *   governance   — Create, version, approve, publish KPI definitions (KpiSchemaAdmin)
+ *
+ * Registry mode intentionally excludes Interpreter and Intelligence so the
+ * registry does not duplicate separate KPI workflows.
  */
 
 import { useState, useEffect } from "react";
@@ -16,18 +18,16 @@ import {
   BookOpen,
   SlidersHorizontal,
   TrendingUp,
-  Brain,
   Sparkles,
   ArrowRight,
 } from "lucide-react";
-import { KpiIntelligence }  from "@/components/dashboard/KpiIntelligence";
 import { KpiExplorer }      from "@/components/dashboard/KpiExplorer";
 import { KpiSchemaAdmin }   from "@/components/kpi-admin/KpiSchemaAdmin";
 import { KpiInterpreter }   from "@/components/dashboard/KpiInterpreter";
 
 // ── Tab definitions ───────────────────────────────────────────────────────────
 
-type KpiTab = "interpreter" | "intelligence" | "registry" | "governance";
+type KpiTab = "interpreter" | "registry" | "governance";
 
 const TABS: {
   id:          KpiTab;
@@ -40,12 +40,6 @@ const TABS: {
     label:       "KPI Interpreter",
     icon:        Sparkles,
     description: "Select a saved report and get AI-powered business interpretation — trends, alerts, root cause, and follow-up Q&A",
-  },
-  {
-    id:          "intelligence",
-    label:       "KPI Intelligence",
-    icon:        Brain,
-    description: "AI-powered KPI analysis — trends, variance, root cause, anomaly detection, and executive summaries",
   },
   {
     id:          "registry",
@@ -92,7 +86,10 @@ export function KpiIntelligenceHub({
     }
   }, [preselectedKpi]);
 
-  const activeTab = TABS.find((t) => t.id === tab) ?? TABS[0];
+  const visibleTabs = tab === "interpreter"
+    ? TABS.filter((item) => item.id === "interpreter")
+    : TABS.filter((item) => item.id === "registry" || item.id === "governance");
+  const activeTab = visibleTabs.find((item) => item.id === tab) ?? visibleTabs[0];
 
   return (
     <div className="flex flex-col gap-0 bg-card border border-border rounded-xl overflow-hidden">
@@ -107,24 +104,26 @@ export function KpiIntelligenceHub({
         </span>
       </div>
 
-      {/* Tab strip */}
-      <div className="flex items-stretch border-b border-border overflow-x-auto bg-card shrink-0">
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
-            className={cn(
-              "flex items-center gap-2 px-5 py-3 text-xs font-medium whitespace-nowrap border-b-2 transition-colors shrink-0",
-              tab === id
-                ? "border-primary text-primary bg-primary/5"
-                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40"
-            )}
-          >
-            <Icon className="w-3.5 h-3.5 shrink-0" />
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Registry navigation only appears when there is more than one related view. */}
+      {visibleTabs.length > 1 && (
+        <div className="flex items-stretch border-b border-border overflow-x-auto bg-card shrink-0">
+          {visibleTabs.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={cn(
+                "flex items-center gap-2 px-5 py-3 text-xs font-medium whitespace-nowrap border-b-2 transition-colors shrink-0",
+                tab === id
+                  ? "border-primary text-primary bg-primary/5"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40"
+              )}
+            >
+              <Icon className="w-3.5 h-3.5 shrink-0" />
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Description bar */}
       <div className="flex items-center gap-2 px-5 py-2 bg-muted/20 border-b border-border/60">
@@ -162,7 +161,6 @@ export function KpiIntelligenceHub({
             />
           </div>
         )}
-        {tab === "intelligence" && <KpiIntelligence />}
         {tab === "registry" && (
           <div className="p-5">
             <KpiExplorer />

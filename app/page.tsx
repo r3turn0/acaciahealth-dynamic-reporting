@@ -300,12 +300,12 @@ export default function Home() {
   const subTab = deriveSubTab(view);
 
   // Resolve KPI sub-tab string → KpiIntelligenceHub tab ID
-  function resolveKpiTab(raw: string | undefined): "interpreter" | "intelligence" | "registry" | "governance" | undefined {
+  function resolveKpiTab(raw: string | undefined): "interpreter" | "registry" | "governance" | undefined {
     if (!raw) return undefined;
     if (raw === "admin") return "governance";         // legacy alias
     if (raw === "governance") return "governance";
     if (raw === "interpreter") return "interpreter";
-    if (raw === "intelligence") return "intelligence";
+    if (raw === "intelligence") return "registry";   // retired duplicate tab
     if (raw === "registry") return "registry";
     return undefined;
   }
@@ -442,7 +442,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* 5. KPI Intelligence — Interpreter + Intelligence + Registry + Governance */}
+          {/* 5. KPI Intelligence — Interpreter entry plus Registry and Governance */}
           {primary === "kpi" && (
             <div className="max-w-7xl mx-auto w-full">
               <Suspense fallback={<TabSkeleton />}>
