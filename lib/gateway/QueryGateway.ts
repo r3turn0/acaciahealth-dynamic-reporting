@@ -211,6 +211,8 @@ export interface GatewayResult {
     totalAttempts: number;
     failureClass: string;
     learnedMappingsUsed: Array<{ term: string; suggestion: string; confidence: number }>;
+    attempts: RetryAttemptResult[];
+    finalSql: string | null;
   };
   /** History entry id for the initial attempt */
   historyId?: string;
@@ -834,6 +836,8 @@ interface ExecutionEngineResult {
     totalAttempts: number;
     failureClass: string;
     learnedMappingsUsed: Array<{ term: string; suggestion: string; confidence: number }>;
+    attempts: RetryAttemptResult[];
+    finalSql: string | null;
   };
   historyId?: string;
 }
@@ -1061,6 +1065,8 @@ EXECUTION_TIMEOUT_MS,
                 totalAttempts: retryResult.totalAttempts,
                 failureClass: retryResult.failureClass,
                 learnedMappingsUsed: retryResult.learnedMappingsUsed,
+                attempts: retryResult.attempts,
+                finalSql: correctedSql,
               },
               stageResult: makeStage(
                 "ExecutionEngine", "ok", Date.now() - t0,
@@ -1083,6 +1089,8 @@ EXECUTION_TIMEOUT_MS,
                 totalAttempts: retryResult.totalAttempts,
                 failureClass: retryResult.failureClass,
                 learnedMappingsUsed: retryResult.learnedMappingsUsed,
+                attempts: retryResult.attempts,
+                finalSql: correctedSql,
               },
               stageResult: makeStage(
                 "ExecutionEngine", "error", Date.now() - t0,
@@ -1103,6 +1111,8 @@ EXECUTION_TIMEOUT_MS,
             totalAttempts: retryResult.totalAttempts,
             failureClass: retryResult.failureClass,
             learnedMappingsUsed: retryResult.learnedMappingsUsed,
+            attempts: retryResult.attempts,
+            finalSql: retryResult.correctedSql,
           },
           stageResult: makeStage(
             "ExecutionEngine", "error", Date.now() - t0,

@@ -31,11 +31,12 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import {
-  correctQuery,
-  MAX_CORRECTION_ATTEMPTS,
-  type CorrectionInput,
-} from "@/lib/services/queryCorrectionService";
+  MAX_RETRIES,
+  retryWithSchemaIntelligence,
+} from "@/lib/agents/SchemaAwareRetryAgent";
 import { isAiConfigured } from "@/lib/ai/gateway";
+import { queryMultiple } from "@/lib/db/readOnlyClient";
+import type { CorrectionInput } from "@/lib/services/queryCorrectionService";
 
 export async function POST(req: NextRequest) {
   const start = Date.now();
@@ -71,18 +72,56 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await correctQuery({
-      originalPrompt,
-      failedSQL,
-      errorMessage,
-      startDate,
-      endDate,
-      branchCode,
-    });
+    const result = await retryWithSchemaIntelligence(
+      {
+        userRequest: originalPrompt,
+        failedSql: failedSQL,
+        errorMessage,
+        startDate,
+        endDate,
+        branchCode,
+      },
+      async (candidateSql) => {
+        try {
+          const execution = await queryMultiple(
+            candidateSql,
+            { StartDate: startDate, EndDate: endDate, BranchCode: branchCode },
+            req.signal
+          );
+          return { ok: true as const, execution };
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") throw error;
+          return {
+            ok: false as const,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+    );
+
+    const correctedPlan = result.succeeded && result.correctedSql
+      ? {
+          sql: result.correctedSql,
+          explanation: result.explanation,
+          tables_used: [...result.correctedSql.matchAll(/(?:FROM|JOIN)\s+([\w.[\]"]+)/gi)]
+            .map((match) => match[1].replace(/[\[\]"]/g, "")),
+          filters_applied: [`Date range: ${startDate} to ${endDate}`, ...(branchCode ? [`Branch: ${branchCode}`] : [])],
+          kpi_detected: null,
+          strategy: "sql" as const,
+          api_fallback_reason: null,
+          cost_warning: null,
+          optimized_suggestion: null,
+          confidenceScore: 1,
+        }
+      : null;
 
     return NextResponse.json({
-      ...result,
-      maxAttempts: MAX_CORRECTION_ATTEMPTS,
+      correctedPlan,
+      attempts: result.attempts,
+      totalAttempts: result.totalAttempts,
+      succeeded: result.succeeded,
+      finalError: result.finalError,
+      maxAttempts: MAX_RETRIES,
       elapsed_ms: Date.now() - start,
     });
   } catch (err) {

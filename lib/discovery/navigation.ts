@@ -17,6 +17,15 @@ export type CatalogNavigationAction =
 
 const QUALIFIED_TABLE = /^(?:[A-Za-z_][\w$]*\.)[A-Za-z_][\w$]*$/;
 
+function normalizeTableLocation(location: string): string {
+  const normalized = location.trim().replace(/[\[\]"]/g, "").toLowerCase();
+  return normalized.startsWith("dbo.") ? normalized.slice(4) : normalized;
+}
+
+export function catalogTableMatches(availableTable: string, catalogLocation: string): boolean {
+  return normalizeTableLocation(availableTable) === normalizeTableLocation(catalogLocation);
+}
+
 function tableFromColumnLocation(location: string): string | null {
   const parts = location.split(".");
   if (parts.length < 3) return null;

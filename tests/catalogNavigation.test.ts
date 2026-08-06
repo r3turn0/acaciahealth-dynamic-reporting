@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolveCatalogNavigation, type CatalogNavigationAsset } from "@/lib/discovery/navigation";
+import {
+  catalogTableMatches,
+  resolveCatalogNavigation,
+  type CatalogNavigationAsset,
+} from "@/lib/discovery/navigation";
 
 function asset(overrides: Partial<CatalogNavigationAsset>): CatalogNavigationAsset {
   return {
@@ -17,6 +21,11 @@ describe("resolveCatalogNavigation", () => {
   it("uses canonical table location instead of the search index id", () => {
     expect(resolveCatalogNavigation(asset({ id: "table-dbo-service-lines", location: "dbo.SERVICE_LINES" })))
       .toEqual({ kind: "table", tableLocation: "dbo.SERVICE_LINES", assetName: "Asset" });
+  });
+
+  it("matches dbo-qualified catalog locations to unqualified explorer tables", () => {
+    expect(catalogTableMatches("SERVICE_LINES", "dbo.SERVICE_LINES")).toBe(true);
+    expect(catalogTableMatches("billing.LINE_ITEMS", "dbo.LINE_ITEMS")).toBe(false);
   });
 
   it("resolves a column to its containing table", () => {

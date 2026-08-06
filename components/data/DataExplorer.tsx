@@ -26,7 +26,7 @@ import {
   useDatasetDraft,
 } from "@/lib/access/datasetDraft";
 import { SemanticSearchPanel } from "@/components/discover/SemanticSearchPanel";
-import type { CatalogNavigationAction } from "@/lib/discovery/navigation";
+import { catalogTableMatches, type CatalogNavigationAction } from "@/lib/discovery/navigation";
 import { downloadDataset, estimateCSVBytes } from "@/lib/utils/download";
 import { logExport } from "@/lib/services/observabilityStore";
 import { orchestrate } from "@/lib/orchestration/requestRegistry";
@@ -276,8 +276,8 @@ export function DataExplorer({ onOpenBuilder, onCatalogNavigate }: DataExplorerP
   function handleCatalogSelection(action: CatalogNavigationAction) {
     setCatalogSelectionError(null);
     if (action.kind === "table") {
-      const resolvedTable = tableList.find(
-        (table) => table.toLowerCase() === action.tableLocation.toLowerCase()
+      const resolvedTable = tableList.find((table) =>
+        catalogTableMatches(table, action.tableLocation)
       );
       if (!resolvedTable) {
         setCatalogSelectionError(`Could not resolve ${action.assetName} to an available table (${action.tableLocation}).`);

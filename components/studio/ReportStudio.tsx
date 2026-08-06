@@ -269,36 +269,31 @@ export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportSt
     autoFixRequestRef.current = { controller, id: requestId };
     setAutoFixing(true);
     try {
-      const res = await fetchWithTimeout("/api/generate-query", {
+      const res = await fetchWithTimeout("/api/generate-query/correct", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: `The following SQL query produced an error. Fix the SQL so it runs correctly. 
-Original prompt: ${currentPlan?.explanation ?? ""}
-Failed SQL:
-${sql}
-
-Error message:
-${execError}
-
-Return only the corrected SQL.`,
-          start_date: startDate,
-          end_date: endDate,
+          originalPrompt: currentPlan?.explanation ?? "Repair this reporting query",
+          failedSQL: sql,
+          errorMessage: execError,
+          startDate,
+          endDate,
         }),
         signal: controller.signal,
-        timeoutMs: 30_000,
+        timeoutMs: 60_000,
       });
       const json = await res.json().catch(() => ({}));
       if (autoFixRequestRef.current?.id !== requestId) return;
-      if (res.ok && json.sql) {
-        setSql(json.sql);
+      const correctedPlan = json.correctedPlan as QueryPlan | undefined;
+      if (res.ok && json.succeeded && correctedPlan?.sql) {
+        setSql(correctedPlan.sql);
         setSqlDirty(false);
         setExecError(null);
-        setCurrentPlan((prev) =>
-          prev ? { ...prev, sql: json.sql, correction_applied: true } : prev
-        );
+        setCurrentPlan({ ...correctedPlan, correction_applied: true });
       } else {
-        setExecError(json.error ?? "AI could not repair this query. Edit the SQL or retry.");
+        setExecError(
+          json.finalError ?? json.error ?? "AI could not verify a safe repair. Edit the SQL or retry."
+        );
       }
     } catch (error) {
       if (autoFixRequestRef.current?.id !== requestId || controller.signal.aborted) return;
