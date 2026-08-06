@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, BookOpen, CheckCircle2, Database, GitMerge, Layers, Network, Send } from "lucide-react";
-import { DatasetDesigner } from "@/components/dataset/DatasetDesigner";
+import { DatasetDesigner, type DatasetWorkflowState } from "@/components/dataset/DatasetDesigner";
 import { cn } from "@/lib/utils";
 
 type DatasetTab = "discover" | "build" | "relationships" | "semantics" | "validate" | "publish" | "history";
@@ -29,11 +29,28 @@ function normalizeTab(tab: DatasetTab): Exclude<DatasetTab, "history"> {
 
 export function DatasetStudioHub({ initialTab = "discover", onNavigate }: DatasetStudioHubProps) {
   const [tab, setTab] = useState<Exclude<DatasetTab, "history">>(normalizeTab(initialTab));
+  const [workflow, setWorkflow] = useState<DatasetWorkflowState>({ tableCount: 0, acceptedRelationshipCount: 0, datasetCount: 0, selectedDatasetId: null, selectedDatasetStatus: null });
+  const [guardMessage, setGuardMessage] = useState<string | null>(null);
 
   useEffect(() => { setTab(normalizeTab(initialTab)); }, [initialTab]);
 
   const active = useMemo(() => TABS.find((item) => item.id === tab) ?? TABS[0], [tab]);
   const activeIndex = TABS.findIndex((item) => item.id === tab);
+  const handleWorkflowStateChange = useCallback((state: DatasetWorkflowState) => setWorkflow(state), []);
+
+  function guardFor(target: Exclude<DatasetTab, "history">): string | null {
+    if (["relationships", "semantics", "validate", "publish"].includes(target) && workflow.tableCount === 0) return "Add at least one governed source table before continuing.";
+    if (["validate", "publish"].includes(target) && workflow.datasetCount === 0) return "Create a semantic dataset before validation or publication.";
+    if (target === "publish" && workflow.selectedDatasetStatus === "Draft") return "Run validation, then request approval before opening Publish.";
+    return null;
+  }
+
+  function moveTo(target: Exclude<DatasetTab, "history">) {
+    const message = guardFor(target);
+    if (message) { setGuardMessage(message); return; }
+    setGuardMessage(null);
+    setTab(target);
+  }
 
   return (
     <section className="overflow-hidden rounded-xl border border-border bg-card" aria-label="Dataset Builder workflow">
@@ -53,7 +70,7 @@ export function DatasetStudioHub({ initialTab = "discover", onNavigate }: Datase
           const complete = index < activeIndex;
           const selected = item.id === tab;
           return (
-            <button key={item.id} type="button" onClick={() => setTab(item.id)} aria-current={selected ? "step" : undefined} className={cn("flex min-w-fit flex-1 items-center justify-center gap-2 border-b-2 px-4 py-3 text-xs font-medium transition-colors", selected ? "border-primary bg-primary/5 text-primary" : "border-transparent text-muted-foreground hover:bg-accent/30 hover:text-foreground")}>
+            <button key={item.id} type="button" onClick={() => moveTo(item.id)} aria-current={selected ? "step" : undefined} className={cn("flex min-w-fit flex-1 items-center justify-center gap-2 border-b-2 px-4 py-3 text-xs font-medium transition-colors", selected ? "border-primary bg-primary/5 text-primary" : "border-transparent text-muted-foreground hover:bg-accent/30 hover:text-foreground")}>
               <span className={cn("flex size-5 items-center justify-center rounded-full border text-[10px] font-semibold", selected ? "border-primary bg-primary text-primary-foreground" : complete ? "border-primary/40 bg-primary/10 text-primary" : "border-border bg-muted/30")}>{complete ? <CheckCircle2 className="size-3" /> : index + 1}</span>
               <Icon className="size-3.5" />{item.label}
             </button>
@@ -62,19 +79,21 @@ export function DatasetStudioHub({ initialTab = "discover", onNavigate }: Datase
       </nav>
 
       <div className="flex items-center gap-2 border-b border-border/60 bg-muted/10 px-5 py-2.5"><active.icon className="size-3.5 shrink-0 text-primary" /><p className="text-[11px] text-muted-foreground">{active.description}</p></div>
+      {guardMessage && <div role="alert" className="border-b border-chart-5/30 bg-chart-5/10 px-5 py-3 text-xs text-foreground"><span className="font-semibold">Stage blocked.</span> {guardMessage}</div>}
 
       <div className="p-5">
         <DatasetDesigner
           initialTab={active.designerStage}
           showStageTabs={false}
+          onWorkflowStateChange={handleWorkflowStateChange}
           onNavigate={(id) => onNavigate?.(id === "registry" ? "schema" : id)}
         />
       </div>
 
       <footer className="flex items-center justify-between gap-3 border-t border-border bg-muted/10 px-5 py-3">
-        <button type="button" disabled={activeIndex === 0} onClick={() => setTab(TABS[Math.max(0, activeIndex - 1)].id)} className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition hover:text-foreground disabled:opacity-40">Previous stage</button>
-        <div className="flex items-center gap-2 text-[10px] text-muted-foreground"><span>Stage {activeIndex + 1} of {TABS.length}</span><span className="hidden md:inline">Changes remain in the shared session registry.</span></div>
-        <button type="button" disabled={activeIndex === TABS.length - 1} onClick={() => setTab(TABS[Math.min(TABS.length - 1, activeIndex + 1)].id)} className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-40">Next stage<ArrowRight className="size-3" /></button>
+        <button type="button" disabled={activeIndex === 0} onClick={() => moveTo(TABS[Math.max(0, activeIndex - 1)].id)} className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition hover:text-foreground disabled:opacity-40">Previous stage</button>
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground"><span>Stage {activeIndex + 1} of {TABS.length}</span><span className="hidden md:inline">{workflow.tableCount} tables · {workflow.datasetCount} datasets · {workflow.acceptedRelationshipCount} accepted relationships</span></div>
+        <button type="button" disabled={activeIndex === TABS.length - 1} onClick={() => moveTo(TABS[Math.min(TABS.length - 1, activeIndex + 1)].id)} className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-40">Next stage<ArrowRight className="size-3" /></button>
       </footer>
     </section>
   );
