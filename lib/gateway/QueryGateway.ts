@@ -55,6 +55,27 @@ export function isAbortError(error: unknown): boolean {
   );
 }
 
+/**
+ * True for conditions where AI enrichment/generation is *expected* to be
+ * unavailable and the gateway deliberately degrades to a lower stage:
+ * deadline exceeded, unauthenticated/misconfigured AI Gateway, or an
+ * unreachable read-only backend. These are operational states, not code
+ * defects, so they are logged at warn level rather than as errors + stacks.
+ */
+export function isExpectedAiFallback(error: unknown): boolean {
+  if (error instanceof QueryGatewayTimeoutError) return true;
+  if (error instanceof Error) {
+    const name = error.name;
+    return (
+      name === "GatewayAuthenticationError" ||
+      name === "BackendUnreachableError" ||
+      /unauthenticated request to ai gateway/i.test(error.message) ||
+      /AI_GATEWAY_API_KEY/.test(error.message)
+    );
+  }
+  return false;
+}
+
 function abortReason(signal: AbortSignal): Error {
   if (signal.reason instanceof Error) return signal.reason;
   return new DOMException("The request was cancelled.", "AbortError");
@@ -458,7 +479,7 @@ async function runIntentAgent(
   };
 }
 
-// ── Stage 2: SemanticSearchAgent ──────────────────────────────────────────────
+// ── Stage 2: SemanticSearchAgent ───────────────────────────────���──────────────
 
 async function runSemanticSearchAgent(
   intent: IntentResult,
@@ -595,27 +616,29 @@ async function runSQLGeneratorAgent(
       // Phase 3: resolve user query against the Knowledge Graph before calling LLM
       const { inferQueryContext } = await import("@/lib/agents/schemaAgent");
       const { getLearnedMappings } = await import("@/lib/services/queryHistoryStore");
-      const [kgResult, learnedMappings] = await withAbortTimeout(
-        () =>
-          Promise.all([
-            inferQueryContext(query).catch(() => null),
-            getLearnedMappings(50).catch(
-              () =>
-                [] as Array<{
-                  user_term: string;
-                  actual_object: string;
-                  confidence: number;
-                  success_count: number;
-                  failure_count: number;
-                  last_used: string;
-                  id: string;
-                }>
-            ),
-          ]),
-        signal,
-        RETRIEVAL_TIMEOUT_MS,
-        "AI metadata retrieval"
-      );
+      // KG/history lookup is optional enrichment. A slow or unavailable
+      // database must not prevent the already-resolved semantic context from
+      // reaching the LLM.
+      let kgResult: Awaited<ReturnType<typeof inferQueryContext>> | null = null;
+      let learnedMappings: Awaited<ReturnType<typeof getLearnedMappings>> = [];
+      try {
+        [kgResult, learnedMappings] = await withAbortTimeout(
+          () =>
+            Promise.all([
+              inferQueryContext(query).catch(() => null),
+              getLearnedMappings(50).catch(() => []),
+            ]),
+          signal,
+          RETRIEVAL_TIMEOUT_MS,
+          "AI metadata retrieval"
+        );
+      } catch (metadataError) {
+        if (signal?.aborted) throw abortReason(signal);
+        const message = metadataError instanceof Error ? metadataError.message : String(metadataError);
+        console.warn(
+          `[QueryGateway] Optional AI metadata enrichment unavailable; continuing with semantic context: ${message}`
+        );
+      }
 
       // Build KG context for the prompt
       const kgContext = kgResult ? {
@@ -704,7 +727,12 @@ async function runSQLGeneratorAgent(
       };
     } catch (err) {
       if (signal?.aborted) throw abortReason(signal);
-      console.error("[QueryGateway] SQLGeneratorAgent AI failed:", err);
+      if (isExpectedAiFallback(err)) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[QueryGateway] AI query generation unavailable; using rule-based fallback: ${message}`);
+      } else {
+        console.error("[QueryGateway] SQLGeneratorAgent AI failed:", err);
+      }
     }
   }
 
