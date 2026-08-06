@@ -443,6 +443,7 @@ export default function Home() {
             <div className="max-w-7xl mx-auto w-full">
               <Suspense fallback={<TabSkeleton />}>
                 <DataExplorer
+                  initialSemanticSearch={view === "discover-semantic"}
                   onOpenBuilder={() => navigate("dataset-studio")}
                   onCatalogNavigate={(action) => { void handleCatalogNavigate(action); }}
                 />

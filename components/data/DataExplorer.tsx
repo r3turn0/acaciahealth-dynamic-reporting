@@ -132,10 +132,15 @@ function ColumnFilter({ col, value, onChange }: {
 
 interface DataExplorerProps {
   onOpenBuilder?: () => void;
+  initialSemanticSearch?: boolean;
   onCatalogNavigate?: (action: Exclude<CatalogNavigationAction, { kind: "table" | "discover-context" }>) => void;
 }
 
-export function DataExplorer({ onOpenBuilder, onCatalogNavigate }: DataExplorerProps) {
+export function DataExplorer({
+  onOpenBuilder,
+  initialSemanticSearch = false,
+  onCatalogNavigate,
+}: DataExplorerProps) {
   const staged = useDatasetDraft();
   const [selectedTable, setSelectedTable] = useState<string>(TABLES[0]);
   // Full list of tables in the database — populated from /api/schema (live or
@@ -157,11 +162,15 @@ export function DataExplorer({ onOpenBuilder, onCatalogNavigate }: DataExplorerP
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [showFilters, setShowFilters]   = useState(false);
-  const [showSemanticSearch, setShowSemanticSearch] = useState(false);
+  const [showSemanticSearch, setShowSemanticSearch] = useState(initialSemanticSearch);
   const [catalogSelectionError, setCatalogSelectionError] = useState<string | null>(null);
   const [selectedCatalogContext, setSelectedCatalogContext] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataIntentRef = useRef(0);
+
+  useEffect(() => {
+    if (initialSemanticSearch) setShowSemanticSearch(true);
+  }, [initialSemanticSearch]);
 
   const fetchData = useCallback(async (
     table: string,
