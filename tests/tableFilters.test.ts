@@ -3,6 +3,7 @@ import {
   buildTableFilterSql,
   escapeSqlLikeLiteral,
   parseTableFilters,
+  quoteSqlIdentifier,
   TableFilterError,
 } from "@/lib/services/tableFilters";
 
@@ -64,5 +65,11 @@ describe("buildTableFilterSql", () => {
 describe("escapeSqlLikeLiteral", () => {
   it("treats SQL LIKE wildcard characters as literal text", () => {
     expect(escapeSqlLikeLiteral("a%b_c[d\\e")).toBe("a\\%b\\_c\\[d\\\\e");
+  });
+});
+
+describe("quoteSqlIdentifier", () => {
+  it("escapes closing brackets in allowlisted SQL Server identifiers", () => {
+    expect(quoteSqlIdentifier("branch]name")).toBe("[branch]]name]");
   });
 });

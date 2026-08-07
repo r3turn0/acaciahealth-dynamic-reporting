@@ -58,7 +58,8 @@ export function escapeSqlLikeLiteral(value: string): string {
 }
 
 export function quoteSqlIdentifier(identifier: string): string {
-  return `[${identifier.replaceAll("]", "]]" )}]`;
+  const escaped = identifier.replaceAll("]", "]]");
+  return `[${escaped}]`;
 }
 
 export function buildTableFilterSql(
@@ -76,7 +77,7 @@ export function buildTableFilterSql(
     }
 
     const paramName = `TableFilter${params.length}`;
-    const quotedColumn = `[${column.split("]").join("]]".trim())}]`;
+    const quotedColumn = quoteSqlIdentifier(column);
     predicates.push(
       `LOWER(TRY_CONVERT(nvarchar(max), ${quotedColumn})) LIKE LOWER(@${paramName}) ESCAPE '\\'`
     );

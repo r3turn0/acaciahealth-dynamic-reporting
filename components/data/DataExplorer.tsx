@@ -224,11 +224,6 @@ export function DataExplorer({
     const filtersChanged = previousFilterKeyRef.current !== filterKey;
     previousFilterKeyRef.current = filterKey;
 
-    if (filtersChanged && page !== 1) {
-      setPage(1);
-      return;
-    }
-
     const timer = setTimeout(() => {
       fetchData(selectedTable, page, pageSize, sort, sortDir, filters);
     }, filtersChanged ? 350 : 0);
@@ -326,6 +321,7 @@ export function DataExplorer({
   }
 
   function handleFilterChange(col: string, val: string) {
+    setPage(1);
     setFilters((prev) => ({ ...prev, [col]: val }));
   }
 

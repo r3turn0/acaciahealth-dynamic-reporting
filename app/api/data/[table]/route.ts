@@ -27,6 +27,7 @@ import {
 import {
   buildTableFilterSql,
   parseTableFilters,
+  quoteSqlIdentifier,
   TableFilterError,
 } from "@/lib/services/tableFilters";
 
@@ -263,10 +264,10 @@ export async function GET(
 
     const filterSql = buildTableFilterSql(filters, cols);
     const orderClause = resolvedSort
-      ? `ORDER BY [${resolvedSort.replace(/]/g, "]]" )}] ${sortDir.toUpperCase()}`
+      ? `ORDER BY ${quoteSqlIdentifier(resolvedSort)} ${sortDir.toUpperCase()}`
       : "ORDER BY (SELECT NULL)";
     const offset = (page - 1) * pageSize;
-    const qualifiedTable = `[${safeTable.split(".").join("].[")}]`;
+    const qualifiedTable = safeTable.split(".").map(quoteSqlIdentifier).join(".");
     const query = `
       SELECT *
       FROM ${qualifiedTable}
