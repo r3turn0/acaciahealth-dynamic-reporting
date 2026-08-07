@@ -3,10 +3,11 @@
 /**
  * Schema Intelligence Registry
  *
- * Three tabs backed by /api/schema/intelligence + /api/kpi-admin:
+ * Four tabs backed by /api/schema/intelligence + /api/kpi-admin:
  *   1. Registry     — browse tables, columns, domains with live search + domain filter
- *   2. Lineage Map  — visual node graph of Source → Dataset → KPI paths
- *   3. KPI Dependencies — live KPI-to-table dependency mapping from kpi-admin API
+ *   2. Lineage Map  — metadata-derived Column → Table → Metric → KPI paths
+ *   3. Business Glossary — governed definitions, aliases, statuses, and source fields
+ *   4. KPI Dependencies — live KPI-to-table dependency mapping from kpi-admin API
  *
  * Scope Summary bar at top shows live aggregate metrics.
  * Table drawer shows full column detail + upstream/downstream lineage + KPI dependencies.
@@ -112,6 +113,21 @@ interface CatalogProvenance {
   correlationId: string;
 }
 
+interface GlossaryTerm {
+  term: string;
+  aliases: string[];
+  definition: string;
+  status: "Certified" | "Validated" | "Discovered";
+  sources: string[];
+}
+
+interface BusinessGlossary {
+  correlationId: string;
+  owner: string;
+  generatedAt: string;
+  terms: GlossaryTerm[];
+}
+
 interface KpiDef {
   id:       string;
   label:    string;
@@ -121,7 +137,7 @@ interface KpiDef {
   source:   string;
 }
 
-type RegistryTab = "registry" | "lineage" | "kpis";
+type RegistryTab = "registry" | "lineage" | "glossary" | "kpis";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -688,6 +704,7 @@ export function SchemaIntelligenceRegistry({ onNavigate }: SchemaIntelligenceReg
   const [scope, setScope] = useState<ScopeData | null>(null);
   const [domains, setDomains] = useState<string[]>([]);
   const [provenance, setProvenance] = useState<CatalogProvenance | null>(null);
+  const [glossary, setGlossary] = useState<BusinessGlossary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -711,12 +728,14 @@ export function SchemaIntelligenceRegistry({ onNavigate }: SchemaIntelligenceReg
         lineage: LineageNode[];
         domains: string[];
         provenance?: CatalogProvenance;
+        glossary?: BusinessGlossary;
       };
       setTables(json.tables ?? []);
       setScope(json.scope ?? null);
       setLineage(json.lineage ?? []);
       setDomains(["All", ...(json.domains ?? [])]);
       setProvenance(json.provenance ?? null);
+      setGlossary(json.glossary ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load schema intelligence data");
     } finally {
@@ -744,6 +763,7 @@ export function SchemaIntelligenceRegistry({ onNavigate }: SchemaIntelligenceReg
   const TABS: { id: RegistryTab; label: string; icon: React.ElementType }[] = [
     { id: "registry", label: "Table Registry",    icon: Database  },
     { id: "lineage",  label: "Lineage Map",        icon: Network   },
+    { id: "glossary", label: "Business Glossary",   icon: BookOpen  },
     { id: "kpis",     label: "KPI Dependencies",   icon: BarChart3 },
   ];
 
@@ -898,6 +918,43 @@ export function SchemaIntelligenceRegistry({ onNavigate }: SchemaIntelligenceReg
             ) : (
               <LineageMap nodes={lineage} />
             )}
+          </div>
+        )}
+
+        {/* ── Business Glossary tab ── */}
+        {tab === "glossary" && (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-primary" />
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Governed business terminology</p>
+                  <p className="text-[11px] text-muted-foreground">Owned by {glossary?.owner ?? "Data Governance"}; aliases and source fields connect business language to lineage.</p>
+                </div>
+              </div>
+              <span className="text-xs font-medium text-primary">{glossary?.terms.length ?? 0} terms</span>
+            </div>
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              {glossary?.terms.map((item) => (
+                <article key={item.term} className="flex flex-col gap-3 rounded-lg border border-border bg-muted/10 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">{item.term}</h3>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.definition}</p>
+                    </div>
+                    <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium", item.status === "Certified" ? "border-primary/25 bg-primary/10 text-primary" : item.status === "Validated" ? "border-chart-3/25 bg-chart-3/10 text-chart-3" : "border-border bg-muted text-muted-foreground")}>{item.status}</span>
+                  </div>
+                  {item.aliases.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5" aria-label={`Aliases for ${item.term}`}>
+                      {item.aliases.map((alias) => <span key={alias} className="rounded border border-border bg-background px-2 py-0.5 text-[10px] text-foreground">{alias}</span>)}
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-1">
+                    {item.sources.map((source) => <code key={source} className="text-[10px] text-muted-foreground">{source}</code>)}
+                  </div>
+                </article>
+              ))}
+            </div>
           </div>
         )}
 

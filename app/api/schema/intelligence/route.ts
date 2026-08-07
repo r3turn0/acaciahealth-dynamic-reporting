@@ -301,20 +301,48 @@ const CATALOG_BY_ID = new Map<string, RegistryTable>();
 for (const table of [...DERIVED_CATALOG, ...CATALOG]) CATALOG_BY_ID.set(table.id.toLowerCase(), table);
 const UNIFIED_CATALOG = [...CATALOG_BY_ID.values()];
 
-const LINEAGE: LineageNode[] = [
-  { id: "n1",  label: "CLIENT_EPISODES_ALL",       type: "source",    depth: 0, children: ["n3", "n4", "n5", "n6"] },
-  { id: "n2",  label: "BRANCHES",                  type: "source",    depth: 0, children: ["n3"] },
-  { id: "n3",  label: "DS-001: Enterprise Rpt",    type: "transform", depth: 1, children: ["n7", "n8"] },
-  { id: "n4",  label: "DS-002: PDGM Analytics",    type: "transform", depth: 1, children: ["n9"] },
-  { id: "n5",  label: "Billing.LINE_ITEMS",         type: "source",    depth: 0, children: ["n3"] },
-  { id: "n6",  label: "PDGM_PERIOD",               type: "source",    depth: 0, children: ["n4"] },
-  { id: "n7",  label: "KPI: ADC",                  type: "kpi",       depth: 2, children: [] },
-  { id: "n8",  label: "KPI: Revenue/Patient Day",  type: "kpi",       depth: 2, children: [] },
-  { id: "n9",  label: "KPI: LUPA Rate",            type: "kpi",       depth: 2, children: [] },
-  { id: "n10", label: "WORKER_BASE",               type: "source",    depth: 0, children: ["n11"] },
-  { id: "n11", label: "DS-003: Worker Productivity", type: "transform", depth: 1, children: ["n12"] },
-  { id: "n12", label: "KPI: Worker Points %",      type: "kpi",       depth: 2, children: [] },
-];
+function lineageId(kind: string, value: string): string {
+  return `${kind}:${value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`;
+}
+
+function buildDynamicLineage(): LineageNode[] {
+  const nodes = new Map<string, LineageNode>();
+  const ensureNode = (node: Omit<LineageNode, "children">) => {
+    if (!nodes.has(node.id)) nodes.set(node.id, { ...node, children: [] });
+    return nodes.get(node.id)!;
+  };
+  const connect = (parent: LineageNode, child: LineageNode) => {
+    if (!parent.children.includes(child.id)) parent.children.push(child.id);
+  };
+
+  for (const glossaryTerm of businessGlossary.terms) {
+    const metricId = lineageId("metric", glossaryTerm.term);
+    const kpiId = lineageId("kpi", glossaryTerm.aliases[0] ?? glossaryTerm.term);
+    const metric = ensureNode({ id: metricId, label: `Metric: ${glossaryTerm.term}`, type: "transform", depth: 2 });
+    const kpi = ensureNode({ id: kpiId, label: `KPI: ${glossaryTerm.aliases[0] ?? glossaryTerm.term}`, type: "kpi", depth: 3 });
+    connect(metric, kpi);
+
+    for (const source of glossaryTerm.sources) {
+      if (/\.(json|xlsx)(:|$)/i.test(source)) continue;
+      const [rawTable, rawColumn] = source.split(".");
+      const table = UNIFIED_CATALOG.find((candidate) => candidate.name.toLowerCase() === rawTable.toLowerCase());
+      const tableName = table?.name ?? rawTable;
+      const tableId = lineageId("table", tableName);
+      const tableNode = ensureNode({ id: tableId, label: tableName, type: "source", depth: 1 });
+      connect(tableNode, metric);
+
+      if (rawColumn) {
+        const columnId = lineageId("column", `${tableName}.${rawColumn}`);
+        const columnNode = ensureNode({ id: columnId, label: `${tableName}.${rawColumn}`, type: "source", depth: 0 });
+        connect(columnNode, tableNode);
+      }
+    }
+  }
+
+  return [...nodes.values()].sort((a, b) => a.depth - b.depth || a.label.localeCompare(b.label));
+}
+
+const LINEAGE = buildDynamicLineage();
 
 // ── GET ───────────────────────────────────────────────────────────────────────
 
