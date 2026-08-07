@@ -25,7 +25,7 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { parseFile, inferRelationships } from "@/lib/bi/inference";
+import { combineWorkbookSheets, parseFile, inferRelationships, type WorkbookAnalysis } from "@/lib/bi/inference";
 import { downloadDataset } from "@/lib/utils/download";
 import type {
   DataRow,
@@ -79,6 +79,7 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
   const [saving, setSaving] = useState(false);
   const [bumpVersion, setBumpVersion] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [workbookAnalysis, setWorkbookAnalysis] = useState<WorkbookAnalysis | null>(null);
   const [reportName, setReportName] = useState("");
   const [savingReport, setSavingReport] = useState(false);
   const [savedReportFlash, setSavedReportFlash] = useState(false);
@@ -185,12 +186,15 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
   async function handleFile(file: File) {
     setUploadError(null);
     try {
-      const { sheets } = await parseFile(file);
-      if (sheets.length === 0) {
+      const parsed = await parseFile(file);
+      if (parsed.sheets.length === 0) {
         setUploadError("No tabular data found in that file.");
         return;
       }
-      const sheet = sheets[0];
+      const sheet = parsed.scorecard?.isScorecard
+        ? parsed.sheets[0]
+        : combineWorkbookSheets(parsed.sheets, file.name.replace(/\.[^.]+$/, ""));
+      setWorkbookAnalysis(parsed.analysis);
       const ext = file.name.split(".").pop()?.toLowerCase();
       setDraft((d) => ({
         ...d,
@@ -291,6 +295,7 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
           onClick={() => {
             setDraft(BLANK);
             setUploadError(null);
+            setWorkbookAnalysis(null);
             setShowAdvanced(false);
           }}
           className={cn(
@@ -435,6 +440,15 @@ export function DatasetBuilder({ onOpenInExplorer }: Props) {
           <div className="flex items-center gap-2 text-xs text-destructive">
             <AlertTriangle className="w-3.5 h-3.5" /> {uploadError}
           </div>
+        )}
+        {workbookAnalysis && (
+          <section aria-label="Workbook analysis" className="rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">Workbook analysis</p>
+            <p className="mt-1">{workbookAnalysis.sheetCount} worksheet{workbookAnalysis.sheetCount === 1 ? "" : "s"} · {workbookAnalysis.totalRows.toLocaleString()} rows · {workbookAnalysis.sharedFields.length} shared fields · {workbookAnalysis.formulas.length} formulas</p>
+            <p className="mt-1">Included tabs: {workbookAnalysis.sheets.map((sheet) => `${sheet.name} (${sheet.rowCount.toLocaleString()})`).join(", ")}</p>
+            {workbookAnalysis.relationshipCandidates.length > 0 && <p className="mt-1">Cross-sheet keys: {workbookAnalysis.relationshipCandidates.slice(0, 5).map((candidate) => candidate.field).join(", ")}</p>}
+            {workbookAnalysis.warnings.map((warning) => <p key={warning} className="mt-1 text-chart-5">{warning}</p>)}
+          </section>
         )}
         {draft.sampleData.length > 0 && (
           <div className="flex flex-col gap-2">

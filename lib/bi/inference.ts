@@ -16,8 +16,27 @@ export interface ParsedSheet {
   rows: DataRow[];
 }
 
+export interface WorkbookFormula {
+  sheet: string;
+  cell: string;
+  expression: string;
+  referencedSheets: string[];
+}
+
+export interface WorkbookAnalysis {
+  sheetCount: number;
+  totalRows: number;
+  sharedFields: string[];
+  relationshipCandidates: Array<{ field: string; sheets: string[] }>;
+  formulas: WorkbookFormula[];
+  lookupSheets: string[];
+  warnings: string[];
+  sheets: Array<{ name: string; rowCount: number; columnCount: number; warnings: string[] }>;
+}
+
 export interface ParsedWorkbook {
   sheets: ParsedSheet[];
+  analysis: WorkbookAnalysis;
   /** Present when the workbook is a pivoted KPI scorecard (see scorecard.ts). */
   scorecard?: ScorecardResult;
 }
@@ -32,6 +51,47 @@ export function combineWorkbookSheets(sheets: ParsedSheet[], name = "Workbook"):
   );
   const { fields, rows } = inferSchemaFromRecords(records);
   return { name, fields, rows };
+}
+
+export function analyzeWorkbookSheets(
+  sheets: ParsedSheet[],
+  formulas: WorkbookFormula[] = []
+): WorkbookAnalysis {
+  const fieldSheets = new Map<string, string[]>();
+  for (const sheet of sheets) {
+    for (const field of sheet.fields) {
+      const names = fieldSheets.get(field.name) ?? [];
+      names.push(sheet.name);
+      fieldSheets.set(field.name, names);
+    }
+  }
+  const relationshipCandidates = [...fieldSheets.entries()]
+    .filter(([, names]) => names.length > 1)
+    .map(([field, names]) => ({ field, sheets: names }));
+  const sharedFields = relationshipCandidates
+    .filter(({ sheets: names }) => names.length === sheets.length)
+    .map(({ field }) => field);
+  const lookupSheets = sheets
+    .filter((sheet) => sheet.rows.length <= 100 && sheet.fields.some((field) => /(^id$|_id$|code$|key$)/i.test(field.name)))
+    .map((sheet) => sheet.name);
+  const sheetDetails = sheets.map((sheet) => {
+    const warnings: string[] = [];
+    if (sheet.rows.length === 0) warnings.push("No data rows detected.");
+    if (sheet.fields.length === 0) warnings.push("No header fields detected.");
+    return { name: sheet.name, rowCount: sheet.rows.length, columnCount: sheet.fields.length, warnings };
+  });
+  const warnings = sheetDetails.flatMap((sheet) => sheet.warnings.map((warning) => `${sheet.name}: ${warning}`));
+  if (sheets.length > 1 && sharedFields.length === 0) warnings.push("Worksheets have no field shared across every tab; the union will be sparse.");
+  return {
+    sheetCount: sheets.length,
+    totalRows: sheets.reduce((total, sheet) => total + sheet.rows.length, 0),
+    sharedFields,
+    relationshipCandidates,
+    formulas,
+    lookupSheets,
+    warnings,
+    sheets: sheetDetails,
+  };
 }
 
 const BOOL_TRUE = new Set(["true", "yes", "y", "1"]);
@@ -253,11 +313,23 @@ export async function parseFile(file: File): Promise<ParsedWorkbook> {
     const datasetBase = file.name.replace(/\.[^.]+$/, "").trim() || "Scorecard";
     const scorecard = parseScorecard(buf, datasetBase);
     if (scorecard.isScorecard) {
-      return { sheets: [scorecard.tidy], scorecard };
+      return { sheets: [scorecard.tidy], analysis: analyzeWorkbookSheets([scorecard.tidy]), scorecard };
     }
   }
 
-  const wb = XLSX.read(buf, { type: "array", cellDates: false });
+  const wb = XLSX.read(buf, { type: "array", cellDates: false, cellFormula: true });
+  const formulas: WorkbookFormula[] = wb.SheetNames.flatMap((sheetName) => {
+    const worksheet = wb.Sheets[sheetName];
+    return Object.entries(worksheet)
+      .filter(([cell, value]) => !cell.startsWith("!") && typeof value === "object" && value !== null && "f" in value && typeof value.f === "string")
+      .map(([cell, value]) => {
+        const expression = String((value as XLSX.CellObject).f);
+        const referencedSheets = [...expression.matchAll(/(?:'([^']+)'|([A-Za-z0-9_ ]+))!/g)]
+          .map((match) => (match[1] ?? match[2]).trim())
+          .filter((name, index, all) => all.indexOf(name) === index);
+        return { sheet: sheetName, cell, expression, referencedSheets };
+      });
+  });
 
   const sheets: ParsedSheet[] = wb.SheetNames.map((name) => {
     const ws = wb.Sheets[name];
@@ -269,5 +341,5 @@ export async function parseFile(file: File): Promise<ParsedWorkbook> {
     return { name, fields, rows };
   }).filter((s) => s.fields.length > 0);
 
-  return { sheets };
+  return { sheets, analysis: analyzeWorkbookSheets(sheets, formulas) };
 }

@@ -14,7 +14,7 @@ import {
   Target,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { combineWorkbookSheets, parseFile, type ParsedSheet } from "@/lib/bi/inference";
+import { combineWorkbookSheets, parseFile, type ParsedSheet, type WorkbookAnalysis } from "@/lib/bi/inference";
 import type { ScorecardResult } from "@/lib/bi/scorecard";
 import { suggestKpis } from "@/lib/bi/kpiService";
 import { createDataset, createReport } from "@/lib/hooks/useBiStore";
@@ -37,6 +37,7 @@ export function ExcelImport({ onDone }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [fileName, setFileName] = useState("");
   const [sheets, setSheets] = useState<ParsedSheet[]>([]);
+  const [analysis, setAnalysis] = useState<WorkbookAnalysis | null>(null);
   const [scorecard, setScorecard] = useState<ScorecardResult | null>(null);
   const [datasetName, setDatasetName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -50,34 +51,10 @@ export function ExcelImport({ onDone }: Props) {
     setFileName(file.name);
     try {
       const parsed = await parseFile(file);
-      if (parsed.sheets.length === 0) {
-        setError("No readable tables found in that file.");
-        setPhase("idle");
-        return;
-      }
+      if (!parsed.sheets.length) throw new Error("No readable worksheets found.");
       setSheets(parsed.sheets);
-      // Prefer the file name (friendlier) and fall back to the sheet name.
-      const fileBase = file.name.replace(/\.[^.]+$/, "").trim();
-      const name = fileBase || parsed.sheets[0].name;
-      setDatasetName(name);
-      if (parsed.scorecard?.isScorecard) {
-        setScorecard(parsed.scorecard);
-        await runScorecardImport(parsed.scorecard, name);
-      } else {
-        const combined = combineWorkbookSheets(parsed.sheets, name);
-        await runImport(combined, name, parsed.sheets);
-      }
-    } catch {
-      setError("Could not parse that file. Use a .xlsx, .xls, or .csv export.");
-      setPhase("idle");
-    }
-  }
-
-  const primary = sheets[0];
-  const suggestions = primary ? suggestKpis(primary.fields) : [];
-
-  async function runImport(sheet: ParsedSheet, name: string, workbookSheets: ParsedSheet[]) {
-    setPhase("importing");
+      setAnalysis(parsed.analysis);
+      setPhase("importing");
     try {
       const dataset = await createDataset({
         name: name.trim() || sheet.name,
