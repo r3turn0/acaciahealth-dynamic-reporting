@@ -207,7 +207,7 @@ function KpiResult({ data, columns }: { data: Record<string, unknown>[]; columns
   );
 }
 
-// ── Message bubble ─────────────────────────────────────────────────────�����──────
+// ── Message bubble ───────────────────────────────────────────��─────────�����──────
 
 interface Message {
   role: "user" | "assistant";
@@ -319,6 +319,7 @@ export function PostQueryAnalytics({ result }: PostQueryAnalyticsProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [selectedResultIndex, setSelectedResultIndex] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -336,7 +337,17 @@ export function PostQueryAnalytics({ result }: PostQueryAnalyticsProps) {
     }
   }, [open]);
 
-  const dataset = toDataset(result);
+  const selectedSet = result.result_sets?.[selectedResultIndex];
+  const activeResult: ReportResult = selectedSet
+    ? {
+        ...result,
+        report_name: selectedSet.name ?? `Result Set ${selectedResultIndex + 1}`,
+        data: selectedSet.rows,
+        result_sets: undefined,
+        summary: { row_count: selectedSet.rowCount, columns: selectedSet.columns },
+      }
+    : result;
+  const dataset = toDataset(activeResult);
 
   const sendQuestion = useCallback(async (question: string) => {
     if (!question.trim() || loading) return;
@@ -447,12 +458,31 @@ export function PostQueryAnalytics({ result }: PostQueryAnalyticsProps) {
       {/* Panel body */}
       {open && (
         <div className="flex flex-col gap-0 border-t border-border">
+          {(result.result_sets?.length ?? 0) > 1 && (
+            <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/20 px-4 py-3" role="group" aria-label="Dataset to analyze">
+              <span className="text-[11px] font-medium text-muted-foreground">Analyze dataset:</span>
+              {result.result_sets?.map((resultSet, index) => (
+                <button
+                  key={`${resultSet.name ?? "result"}-${index}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectedResultIndex(index);
+                    setMessages([]);
+                  }}
+                  className={`rounded-full border px-3 py-1 text-xs transition-colors ${selectedResultIndex === index ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-background text-muted-foreground hover:text-foreground"}`}
+                  aria-pressed={selectedResultIndex === index}
+                >
+                  {resultSet.name ?? `Result Set ${index + 1}`} ({resultSet.rowCount.toLocaleString()})
+                </button>
+              ))}
+            </div>
+          )}
           {/* Conversation thread */}
           <div className="flex flex-col gap-3 px-4 py-4 max-h-[480px] overflow-y-auto">
             {messages.length === 0 && (
               <div className="flex flex-col gap-3">
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Ask analytical questions about the <span className="font-medium text-foreground">{result.summary.row_count.toLocaleString()} rows</span> returned.
+                  Ask analytical questions about <span className="font-medium text-foreground">{activeResult.report_name}</span> and its <span className="font-medium text-foreground">{activeResult.summary.row_count.toLocaleString()} rows</span>.
                   The engine groups, filters, ranks, and summarizes data without running new queries.
                 </p>
                 <div className="flex flex-wrap gap-1.5">

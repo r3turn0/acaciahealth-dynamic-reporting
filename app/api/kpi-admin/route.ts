@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import baseConfig from "@/lib/config/kpiConfig.json";
+import scorecardDiscovery from "@/lib/config/scorecardDiscovery.json";
 
 // ── In-memory registry ─────────────────────────────────────────────────────────
 // In production this would persist to a DB. For now it starts from kpiConfig.json
@@ -20,6 +21,21 @@ type KpiDef = Record<string, unknown> & {
   service_line_field: string;
   active_service_lines: string[];
   description: string;
+  owner?: string;
+  steward?: string;
+  grain?: string;
+  sourceColumns?: string[];
+  dependencies?: string[];
+  aliases?: string[];
+  discoveryState?: "Configured" | "Discovered";
+  provenance?: Record<string, unknown>;
+  validation?: {
+    status: "validated" | "partial" | "unverified";
+    confidence: number;
+    variance: number | null;
+    reason: string;
+    lastRun?: string;
+  };
   _meta?: {
     createdBy?: string;
     createdDate?: string;
@@ -49,13 +65,49 @@ type DeploymentRecord = {
   kpiCount: number;
 };
 
-// Seed from static config
+function normalizedKpiName(value: string): string {
+  return value.toLowerCase().replace(/\b(avg|average|total|current)\b/g, "").replace(/[^a-z0-9]/g, "");
+}
+
+const configuredKpis = JSON.parse(JSON.stringify((baseConfig as { kpis: Record<string, unknown> }).kpis ?? {})) as Record<string, KpiDef>;
+const configuredNames = new Set(Object.values(configuredKpis).map((definition) => normalizedKpiName(definition.label)));
+for (const candidate of scorecardDiscovery.candidates) {
+  if (configuredNames.has(normalizedKpiName(candidate.label))) continue;
+  const id = configuredKpis[candidate.id] ? `scorecard_${candidate.id}` : candidate.id;
+  configuredKpis[id] = {
+    label: candidate.label,
+    category: candidate.category,
+    version: "0.1.0",
+    status: "Draft",
+    formula: candidate.formula,
+    source: candidate.source,
+    dimensions: candidate.dimensions,
+    parameters: {},
+    filters: {},
+    location_key: "epi_branchcode",
+    service_line_field: "epi_slid",
+    active_service_lines: ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    description: `${candidate.label} was discovered in the uploaded KPI scorecard and requires governed formula validation.`,
+    owner: `${candidate.category} Owner`,
+    steward: "Data Governance",
+    grain: "Branch / reporting period",
+    sourceColumns: candidate.sourceColumns,
+    dependencies: [],
+    aliases: candidate.aliases,
+    discoveryState: "Discovered",
+    provenance: candidate.provenance,
+    validation: candidate.validation as KpiDef["validation"],
+    _meta: { createdBy: "Source Documentation Agent", createdDate: scorecardDiscovery.generatedAt, changeLog: ["Discovered from KPI scorecard workbook"] },
+  };
+}
+
+// Seed from static config plus non-certified scorecard discoveries.
 const registry: Registry = {
   schemaVersion: (baseConfig._meta as { schemaVersion: string }).schemaVersion,
   effectiveDate: (baseConfig._meta as { updatedAt: string }).updatedAt,
   status: "Published",
-  totalKpis: Object.keys((baseConfig as { kpis: Record<string, unknown> }).kpis ?? {}).length,
-  kpis: JSON.parse(JSON.stringify((baseConfig as { kpis: Record<string, unknown> }).kpis ?? {})) as Record<string, KpiDef>,
+  totalKpis: Object.keys(configuredKpis).length,
+  kpis: configuredKpis,
   deploymentHistory: [
     {
       deploymentId: "deploy-001",
@@ -132,6 +184,14 @@ export async function GET(req: NextRequest) {
         }, {})
       ).map(([domain, count]) => ({ domain, count })),
       deploymentHistory: registry.deploymentHistory,
+      discovery: {
+        correlationId: scorecardDiscovery.correlationId,
+        sourceFile: scorecardDiscovery.sourceFile,
+        worksheetCount: scorecardDiscovery.worksheetCount,
+        candidateCount: scorecardDiscovery.candidateCount,
+        discoveredCount: Object.values(registry.kpis).filter((kpi) => kpi.discoveryState === "Discovered").length,
+        generatedAt: scorecardDiscovery.generatedAt,
+      },
     });
   }
 

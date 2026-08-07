@@ -1,0 +1,18 @@
+{
+  "correlationId": "acacia-reporting-enhancement-v1",
+  "owner": "Data Governance",
+  "generatedAt": "2026-08-07T00:00:00.000Z",
+  "terms": [
+    { "term": "Branch", "aliases": ["Location", "Agency"], "definition": "Governed operating unit identified by epi_branchcode and resolved through the Acacia Enterprise Branch Map.", "status": "Certified", "sources": ["CLIENT_EPISODES_ALL.epi_branchcode", "kpiConfig.json:_meta.branchMap"] },
+    { "term": "Service Line", "aliases": ["Line of Business"], "definition": "Enterprise care-delivery classification identified by epi_slid, including Home Health, Hospice, and Private Duty.", "status": "Certified", "sources": ["CLIENT_EPISODES_ALL.epi_slid", "kpiConfig.json:_meta.serviceLines"] },
+    { "term": "Census", "aliases": ["Current Census", "Active Patients"], "definition": "Distinct patients admitted on or before the as-of date who have not been discharged before that date.", "status": "Certified", "sources": ["CLIENT_EPISODES_ALL.epi_SocDate", "CLIENT_EPISODES_ALL.epi_DischargeDate"] },
+    { "term": "Average Daily Census", "aliases": ["ADC"], "definition": "Average active patient count per day across the governed reporting window.", "status": "Certified", "sources": ["CLIENT_EPISODES_ALL.epi_SocDate", "CLIENT_EPISODES_ALL.epi_DischargeDate"] },
+    { "term": "Patient Days", "aliases": ["Service Days"], "definition": "Sum of daily active-patient observations across the reporting window.", "status": "Validated", "sources": ["CLIENT_EPISODES_ALL"] },
+    { "term": "Admissions", "aliases": ["Admits", "Start of Care", "SOC"], "definition": "Distinct patient episodes with a start-of-care date inside the reporting period.", "status": "Certified", "sources": ["CLIENT_EPISODES_ALL.epi_SocDate"] },
+    { "term": "Live Discharge", "aliases": ["Live DC"], "definition": "A discharge classified as patient-initiated or hospice-initiated rather than death.", "status": "Validated", "sources": ["CLIENT_EPISODES_ALL.epi_DischargeDate", "kpiConfig.json:_meta.dischargeClassMap"] },
+    { "term": "Not Taken Under Care", "aliases": ["NTUC", "Non-Admit"], "definition": "A referral or intake outcome that does not become an admitted patient episode.", "status": "Discovered", "sources": ["KPI-Scorecard-67-ad39de.xlsx"] },
+    { "term": "Length of Stay", "aliases": ["LOS"], "definition": "Elapsed days from start of care through discharge, or through the as-of date for active patients.", "status": "Validated", "sources": ["CLIENT_EPISODES_ALL.epi_SocDate", "CLIENT_EPISODES_ALL.epi_DischargeDate"] },
+    { "term": "Revenue per Patient Day", "aliases": ["RPD"], "definition": "Governed revenue divided by patient days for the same scope and reporting period.", "status": "Discovered", "sources": ["Billing.LINE_ITEMS", "KPI-Scorecard-67-ad39de.xlsx"] },
+    { "term": "LUPA", "aliases": ["Low Utilization Payment Adjustment"], "definition": "Home-health payment adjustment associated with an episode below the applicable visit threshold.", "status": "Validated", "sources": ["PDGM_PERIOD", "kpiConfig.json:_meta.LUPA_CODES"] }
+  ]
+}

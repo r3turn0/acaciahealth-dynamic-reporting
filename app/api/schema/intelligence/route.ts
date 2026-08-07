@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import governanceCatalog from "@/lib/config/governanceCatalog.json";
+import businessGlossary from "@/lib/config/businessGlossary.json";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -358,6 +359,7 @@ export async function GET(req: NextRequest) {
     total: tables.length,
     scope,
     lineage: LINEAGE,
+    glossary: businessGlossary,
     domains: [...new Set(UNIFIED_CATALOG.map((t) => t.domain))],
     entityTypes: [...new Set(UNIFIED_CATALOG.map((t) => t.entityType))],
     provenance: {

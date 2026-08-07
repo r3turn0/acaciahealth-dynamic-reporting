@@ -47,6 +47,15 @@ interface KpiDef {
   service_line_field: string;
   active_service_lines: string[];
   description: string;
+  owner?: string;
+  steward?: string;
+  grain?: string;
+  sourceColumns?: string[];
+  dependencies?: string[];
+  aliases?: string[];
+  discoveryState?: "Configured" | "Discovered";
+  provenance?: Record<string, unknown>;
+  validation?: { status: "validated" | "partial" | "unverified"; confidence: number; variance: number | null; reason: string; lastRun?: string };
   _meta?: {
     createdBy?: string;
     createdDate?: string;
@@ -62,6 +71,14 @@ interface RegistryMeta {
   status: string;
   totalKpis: number;
   domains: { domain: string; count: number }[];
+  discovery?: {
+    correlationId: string;
+    sourceFile: string;
+    worksheetCount: number;
+    candidateCount: number;
+    discoveredCount: number;
+    generatedAt: string;
+  };
   deploymentHistory: {
     deploymentId: string;
     schemaVersion: string;
@@ -691,9 +708,21 @@ export function KpiSchemaAdmin({ userRole = "Admin" }: { userRole?: "Admin" | "A
         </div>
       )}
 
-      {/* ── REGISTRY TAB ─────────────────────────────────────────────────────── */}
+      {/* ── REGISTRY TAB ───────────────────────────���─────────────────────────── */}
       {tab === "registry" && registry && (
         <div className="flex flex-col gap-4">
+          {registry.discovery && (
+            <aside className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3" aria-label="Scorecard discovery provenance">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                <div>
+                  <p className="text-xs font-semibold text-foreground">{registry.discovery.discoveredCount} governed KPI candidates discovered</p>
+                  <p className="text-[11px] text-muted-foreground">{registry.discovery.worksheetCount} worksheets analyzed from {registry.discovery.sourceFile}; discoveries remain Draft until validated.</p>
+                </div>
+              </div>
+              <code className="rounded border border-border bg-background px-2 py-1 text-[10px] text-muted-foreground">{registry.discovery.correlationId}</code>
+            </aside>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Schema info */}
             <div className="bg-card border border-border rounded-lg p-4 flex flex-col gap-3">

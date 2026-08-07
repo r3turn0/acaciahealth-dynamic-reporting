@@ -83,3 +83,11 @@ The `mssql` request now sets `multiple = true` and consumes every returned recor
 2. For dashboards that request admissions, discharges, census, and care type together, introduce one purpose-built batch and compare all four outputs.
 3. For finance dashboards requesting revenue, AR, and collections together, introduce one purpose-built batch with shared date predicates.
 4. Obtain actual SQL Server execution plans and IO/time statistics before selecting CTE versus temp-table staging.
+
+## Reporting governance enhancement v1
+
+All enhancement artifacts share correlation ID `acacia-reporting-enhancement-v1`. The Source Documentation Agent owns deterministic extraction from the metadata export and eight-sheet KPI workbook; the Reporting Engine owns guarded `SELECT`/CTE execution, bound date parameters, named result sets, and result-specific analytics; the Data Governance Agent owns KPI lifecycle metadata, glossary definitions, lineage, and validation semantics.
+
+The SQL Server boundary remains immutable. Multi-result responses add named `{ name, columns, rows, rowCount }` datasets while retaining Result Set 1 compatibility. KPI confidence from SQL structure or metadata matching is evidence only: `validated` requires a matching read-only verification result, `partial` identifies variance or incomplete coverage, and `unverified` is used when no safe aggregate comparison is available.
+
+Compact artifacts are versioned at `lib/config/governanceCatalog.json`, `lib/config/scorecardDiscovery.json`, and `lib/config/businessGlossary.json`; the full metadata export is excluded from runtime and client bundles. Regenerate scorecard discoveries with `node scripts/generate-scorecard-catalog.mjs` after replacing the governed workbook source, then review every new discovery as Draft before promotion.

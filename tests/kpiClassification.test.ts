@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeSqlGovernance, classifySqlKpis, splitReadOnlyStatements } from "@/lib/services/kpiClassification";
+import { analyzeSqlGovernance, classifySqlKpis, compareValidationValues, splitReadOnlyStatements } from "@/lib/services/kpiClassification";
 
 describe("KPI classification and lineage", () => {
   const censusSql = `
@@ -33,5 +33,13 @@ describe("KPI classification and lineage", () => {
     ]));
     expect(analysis.validation.confidence).toBeGreaterThan(0);
     expect(analysis.validation.confidence).toBeLessThanOrEqual(100);
+    expect(analysis.verificationPlans).toHaveLength(2);
+    expect(analysis.verificationPlans.every((plan) => plan.supported)).toBe(true);
+  });
+
+  it("compares observed and read-only verification values without overstating confidence", () => {
+    expect(compareValidationValues(100, 100)).toEqual(expect.objectContaining({ status: "validated", confidence: 100, variance: 0 }));
+    expect(compareValidationValues(90, 100)).toEqual(expect.objectContaining({ status: "partial", variance: 0.1 }));
+    expect(compareValidationValues("not-a-number", 100)).toEqual(expect.objectContaining({ status: "unverified", confidence: 0 }));
   });
 });

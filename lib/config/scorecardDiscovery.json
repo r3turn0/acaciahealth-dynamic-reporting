@@ -1,0 +1,2492 @@
+{
+  "correlationId": "acacia-reporting-enhancement-v1",
+  "generatedAt": "2026-08-07T22:42:34.714Z",
+  "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+  "worksheetCount": 8,
+  "worksheets": [
+    "Company Scorecard",
+    "Financial",
+    "HR",
+    "Avg Salary by Position",
+    "Hospice Administrator Scorecard",
+    "Data",
+    "HH Admin Scorecard",
+    "Central Support HH&P"
+  ],
+  "candidateCount": 81,
+  "candidates": [
+    {
+      "id": "100_qa_compliance_noe_non_covered_transfer_f2f_cert_recert",
+      "label": "100% QA Compliance: NOE/Non-covered/Transfer/F2F/Cert/Recert",
+      "category": "Clinical Quality",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 44
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "compliance_qa",
+      "label": "COMPLIANCE/ QA",
+      "category": "Clinical Quality",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "HR",
+        "row": 24
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "falls",
+      "label": "FALLS",
+      "category": "Clinical Quality",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "HR",
+        "row": 25
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "incident_reports",
+      "label": "iNCIDENT REPORTS",
+      "category": "Clinical Quality",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "HR",
+        "row": 42
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "infections",
+      "label": "INFECTIONS",
+      "category": "Clinical Quality",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "HR",
+        "row": 29
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "100_days_or_less",
+      "label": "100 days or less",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "100 days or less"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Hospice Administrator Scorecard",
+        "row": 47,
+        "worksheets": [
+          "Hospice Administrator Scorecard"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "admissions",
+      "label": "Admissions",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Hospice Administrator Scorecard",
+        "row": 9
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "ar_aging_by_patient_report",
+      "label": "AR Aging by Patient Report",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": "$253,336",
+      "aliases": [
+        "AR Aging by Patient Report"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 74,
+        "worksheets": [
+          "Company Scorecard"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "census_per_ee",
+      "label": "Census per EE",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 89
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "current_adc",
+      "label": "Current ADC",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 6
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "current_census",
+      "label": "Current Census",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "Current Census"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Hospice Administrator Scorecard",
+        "row": 3,
+        "worksheets": [
+          "Hospice Administrator Scorecard",
+          "Central Support HH&P"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "discharge",
+      "label": "Discharge",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "HH Admin Scorecard",
+        "row": 16
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "hchb_analytics_hospice_key_metrics_los",
+      "label": "HCHB Analytics - Hospice Key Metrics - LOS",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "HCHB Analytics - Hospice Key Metrics - LOS"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 60,
+        "worksheets": [
+          "Company Scorecard"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "hchb_app_unduplicated_census_report_at_eom",
+      "label": "HCHB App-Unduplicated Census Report at EOM",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "HH Admin Scorecard",
+        "row": 24
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "home_health_waar_report_weekly_ending_sunday",
+      "label": "Home Health WAAR report - weekly ending Sunday",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "Home Health WAAR report - weekly ending Sunday"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 7,
+        "worksheets": [
+          "Company Scorecard"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "hospice_census_equivalent",
+      "label": "Hospice Census Equivalent",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "Hospice Census Equivalent"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 16,
+        "worksheets": [
+          "Company Scorecard",
+          "Central Support HH&P"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "hospice_median_los_report",
+      "label": "Hospice Median LOS Report",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Hospice Administrator Scorecard",
+        "row": 46
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "hospice_waar_report_weekly_ending_sunday",
+      "label": "Hospice WAAR report - weekly ending Sunday",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "Hospice WAAR report - weekly ending Sunday"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 10,
+        "worksheets": [
+          "Company Scorecard"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "hospice_waar_report_weekly_ending_sunday_key_metrics_report_monthly",
+      "label": "Hospice WAAR report - weekly ending Sunday; Key Metrics Report - Monthly",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "Hospice WAAR report - weekly ending Sunday; Key Metrics Report - Monthly"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 45,
+        "worksheets": [
+          "Company Scorecard"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "live_discharge",
+      "label": "Live Discharge",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "Live Discharge"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 44,
+        "worksheets": [
+          "Company Scorecard",
+          "Hospice Administrator Scorecard"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "live_discharge_hospice_initiated",
+      "label": "Live Discharge - Hospice Initiated",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Hospice Administrator Scorecard",
+        "row": 34
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "live_discharge_patient_initiated",
+      "label": "Live Discharge - Patient Initiated",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Hospice Administrator Scorecard",
+        "row": 29
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "median_los",
+      "label": "MEDIAN LOS",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Hospice Administrator Scorecard",
+        "row": 45
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "medicare_discharge_total_los_monthly",
+      "label": "Medicare Discharge Total LOS - Monthly",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 59
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "month_end_close_report_summary",
+      "label": "Month end close report summary",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": "$331,506",
+      "aliases": [
+        "Month end close report summary"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 3,
+        "worksheets": [
+          "Company Scorecard"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "multiply_adc_by_days_in_month_or_weekly_7",
+      "label": "multiply ADC by days in month or weekly - 7",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "multiply ADC by days in month or weekly - 7"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 50,
+        "worksheets": [
+          "Company Scorecard"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "total_discharges",
+      "label": "Total Discharges",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 35
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "total_patient_days",
+      "label": "Total Patient Days",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "Total Patient Days"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 49,
+        "worksheets": [
+          "Company Scorecard",
+          "Data"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "weekly_admission",
+      "label": "Weekly Admission",
+      "category": "Executive",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "Weekly Admission"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 19,
+        "worksheets": [
+          "Company Scorecard",
+          "Central Support HH&P"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "of_unbilled_claims_by_location_and_service_line",
+      "label": "$ of Unbilled claims by Location and service line",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 16
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "accounts_receivable_aging",
+      "label": "Accounts Receivable Aging",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Financial",
+        "row": 10
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "average_revenue_per_day_in_trailing_3_months",
+      "label": "Average Revenue per day in trailing 3 months",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Financial",
+        "row": 15
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "billing_holds",
+      "label": "Billing Holds",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Central Support HH&P",
+        "row": 16
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "billing_holds_for_previous_month_cleared_by_the_3rd_third_day_of_the_new_month",
+      "label": "Billing Holds for previous month cleared by the (3rd) third day of the new month",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 45
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "billing_manual_adjustment",
+      "label": "Billing Manual Adjustment %",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Financial",
+        "row": 41
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "billing_manual_adjustment_breakdown",
+      "label": "Billing Manual Adjustment Breakdown %",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Financial",
+        "row": 53
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "billing_system_adjustment",
+      "label": "Billing System Adjustment %",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": "Billing System Adjustment %",
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Financial",
+        "row": 30
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "client_mgmt_home_health_lupa",
+      "label": "Client Mgmt - Home Health LUPA",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": "5.0%",
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 66
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "contributiion_margin_per_fte",
+      "label": "Contributiion Margin Per FTE",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Financial",
+        "row": 27
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "contribution_margin",
+      "label": "Contribution Margin",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "Contribution Margin"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 92,
+        "worksheets": [
+          "Company Scorecard",
+          "Central Support HH&P"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "lupa",
+      "label": "Lupa %",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "Lupa %"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 64,
+        "worksheets": [
+          "Company Scorecard",
+          "HH Admin Scorecard"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "maintain_gross_margin_xx",
+      "label": "Maintain Gross Margin xx%",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Monthly",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 48
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "month_end_close_adjustment_detail_report",
+      "label": "Month End Close Adjustment Detail Report",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": "0.8%",
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Financial",
+        "row": 54
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "month_end_close_revenue_report",
+      "label": "Month End Close Revenue Report",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": "0.0%",
+      "aliases": [
+        "Month End Close Revenue Report"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Financial",
+        "row": 33,
+        "worksheets": [
+          "Financial"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "over_120_days",
+      "label": "Over 120 days",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Financial",
+        "row": 2
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "revenue_per_patient",
+      "label": "Revenue per patient",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Central Support HH&P",
+        "row": 24
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "revenue_per_patient_day",
+      "label": "Revenue per Patient Day",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "RPD"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 55
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "revenue_per_period",
+      "label": "Revenue per period",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "Revenue per period"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 2,
+        "worksheets": [
+          "Company Scorecard",
+          "Data"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "sequestration",
+      "label": "SEQUESTRATION",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": "1.8%",
+      "aliases": [
+        "SEQUESTRATION"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Financial",
+        "row": 59,
+        "worksheets": [
+          "Financial"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "total_average_revnue_per_day",
+      "label": "Total average Revnue per day",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Financial",
+        "row": 19
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "unbilled_claims",
+      "label": "Unbilled Claims",
+      "category": "Financial Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "Total Unbilled Claims",
+        "Unbilled Claims"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 73,
+        "worksheets": [
+          "Company Scorecard",
+          "HH Admin Scorecard"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "of_live_discharges_by_location",
+      "label": "# of Live Discharges by location",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 12
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "of_recert_of_census",
+      "label": "# of recert / # of census",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 11
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "0_30_days",
+      "label": "0% >30 days",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": "35%",
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Central Support HH&P",
+        "row": 17
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "14_days",
+      "label": "14 days",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [
+        "14 days"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "HR",
+        "row": 12,
+        "worksheets": [
+          "HR"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "80_of_new_admissions_bp1",
+      "label": "80% of new admissions BP1",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 37
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "all_live_discharges_7_or_less_per_month",
+      "label": "All Live Discharges: 7% or less per month",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 41
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "average_length_of_stay_100_days_or_less",
+      "label": "Average Length of Stay: 100 days or less",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 36
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "avg_total_los_and_by_hchb_location",
+      "label": "AVG Total LOS and by HCHB Location",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 10
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "christina_godbee_liason_admission_report_by_liason_include_house_accounts",
+      "label": "Christina Godbee - Liason admission report by Liason include house accounts",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 27
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "current_census_by_location_and_service_line",
+      "label": "Current Census by Location & Service Line",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 5
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "current_census_increase_net_census_by_15_quarter_over_quarter",
+      "label": "Current Census: Increase Net Census by 15% quarter over quarter",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 33
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "data_needs_to_be_updated_by_end_of_day_tuesday_for_prior_week_s",
+      "label": "Data needs to be updated by end of day Tuesday for prior week #'s",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 23
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "live_dc_s_patient_initated_revocations_transfer_to_other_hospice_3_or_less_per_month",
+      "label": "Live DC's: Patient Initated: Revocations / Transfer to other hospice: 3% or less per month",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 42
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "order_tracking",
+      "label": "Order Tracking",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Central Support HH&P",
+        "row": 19
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "outstanding_ar_over_90_days",
+      "label": "Outstanding AR over 90 days",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Monthly",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 18
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "retention_rate",
+      "label": "Retention Rate",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": "90%",
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "HR",
+        "row": 17
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "weekly_admissions_by_location_and_service_line",
+      "label": "Weekly Admissions by Location & Service Line",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 7
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "weekly_admissions_increase_admissions_5_month_over_month",
+      "label": "Weekly Admissions: Increase Admissions 5% month over month",
+      "category": "Operations",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 34
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "analytics_intake_referral_conversion",
+      "label": "Analytics: Intake -Referral Conversion",
+      "category": "Referral Management",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": "42.4%",
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Central Support HH&P",
+        "row": 14
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "average_hours_to_admit_from_referral",
+      "label": "Average hours to admit from referral",
+      "category": "Referral Management",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Hospice Administrator Scorecard",
+        "row": 60
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "average_time_to_admit_less_than_2_days_from_referral",
+      "label": "Average time to admit less than 2 days from referral",
+      "category": "Referral Management",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 49
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "conversion_from_palliative_tracker",
+      "label": "Conversion # from Palliative Tracker",
+      "category": "Referral Management",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "HH Admin Scorecard",
+        "row": 23
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "conversion_ratio_by_location_avg_mtd",
+      "label": "Conversion Ratio by location AVG MTD",
+      "category": "Referral Management",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Monthly",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 13
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "intake_conversion",
+      "label": "Intake Conversion",
+      "category": "Referral Management",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Central Support HH&P",
+        "row": 13
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "ntuc_rate",
+      "label": "NTUC Rate",
+      "category": "Referral Management",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Hospice Administrator Scorecard",
+        "row": 19
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "ntuc_rate_less_than_20",
+      "label": "NTUC Rate: Less than 20%",
+      "category": "Referral Management",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 35
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "weekly_referral",
+      "label": "Weekly Referral",
+      "category": "Referral Management",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Hospice Administrator Scorecard",
+        "row": 14
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "census_per_employee_census_employee_by_location_and_service_line",
+      "label": "Census per employee (Census/Employee) by location and service line",
+      "category": "Workforce Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": null,
+      "aliases": [],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Data",
+        "row": 17
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "employee_satisfaction",
+      "label": "Employee Satisfaction",
+      "category": "Workforce Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": "90%",
+      "aliases": [
+        "Employee Satisfaction"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "HR",
+        "row": 21,
+        "worksheets": [
+          "HR"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    },
+    {
+      "id": "field_operations_field_productivity_worker_points",
+      "label": "Field Operations/Field Productivity - Worker Points",
+      "category": "Workforce Performance",
+      "status": "Draft",
+      "discoveryState": "Discovered",
+      "formula": "Pending governed formula validation",
+      "source": "CLIENT_EPISODES_ALL",
+      "sourceColumns": [],
+      "dimensions": [
+        "Service Line",
+        "Branch Code",
+        "Branch Name"
+      ],
+      "cadence": "Scorecard cadence",
+      "benchmark": "90%",
+      "aliases": [
+        "Field Operations/Field Productivity - Worker Points",
+        "Field Operations/Field Productivity/Worker Points"
+      ],
+      "provenance": {
+        "sourceFile": "KPI-Scorecard-67-ad39de.xlsx",
+        "worksheet": "Company Scorecard",
+        "row": 68,
+        "worksheets": [
+          "Company Scorecard",
+          "Data"
+        ]
+      },
+      "validation": {
+        "status": "unverified",
+        "confidence": 0,
+        "variance": null,
+        "reason": "Discovered label; formula and source mapping require steward validation."
+      }
+    }
+  ]
+}

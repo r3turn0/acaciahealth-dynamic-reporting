@@ -27,10 +27,26 @@ export interface KpiClassification {
   validationStatus: "supported" | "partial" | "metadata-only";
 }
 
+export interface ReadOnlyVerificationPlan {
+  statement: number;
+  supported: boolean;
+  aggregateExpressions: string[];
+  sourceTables: string[];
+  reason: string;
+}
+
+export interface ValidationComparison {
+  status: "validated" | "partial" | "unverified";
+  confidence: number;
+  variance: number | null;
+  reason: string;
+}
+
 export interface SqlGovernanceAnalysis {
   statements: SqlStatementAnalysis[];
   classifications: KpiClassification[];
   lineage: Array<{ statement: number; table: string; columns: string[] }>;
+  verificationPlans: ReadOnlyVerificationPlan[];
   validation: {
     confidence: number;
     status: "supported" | "partial" | "metadata-only";
@@ -116,10 +132,40 @@ export function classifySqlKpis(sql: string, rules: KpiRule[] = KPI_RULES): KpiC
   }).filter((classification) => classification.matchedSignals.length > 0).sort((left, right) => right.confidence - left.confidence);
 }
 
+export function buildReadOnlyVerificationPlans(statements: SqlStatementAnalysis[]): ReadOnlyVerificationPlan[] {
+  return statements.map((statement) => {
+    const supported = statement.tables.length > 0 && statement.aggregates.length > 0;
+    return {
+      statement: statement.index + 1,
+      supported,
+      aggregateExpressions: statement.aggregates,
+      sourceTables: statement.tables,
+      reason: supported
+        ? "Aggregate result can be compared with a separately executed read-only verification SELECT."
+        : statement.tables.length === 0
+          ? "No physical source table was identified."
+          : "No supported aggregate expression was identified.",
+    };
+  });
+}
+
+export function compareValidationValues(observed: unknown, verified: unknown, tolerance = 0.0001): ValidationComparison {
+  const observedNumber = typeof observed === "number" ? observed : Number(observed);
+  const verifiedNumber = typeof verified === "number" ? verified : Number(verified);
+  if (!Number.isFinite(observedNumber) || !Number.isFinite(verifiedNumber)) {
+    return { status: "unverified", confidence: 0, variance: null, reason: "Both observed and verification values must be finite numeric values." };
+  }
+  const denominator = Math.max(Math.abs(verifiedNumber), 1);
+  const variance = Math.abs(observedNumber - verifiedNumber) / denominator;
+  if (variance <= tolerance) return { status: "validated", confidence: 100, variance, reason: "Observed value matches the read-only verification result within tolerance." };
+  return { status: "partial", confidence: Math.max(0, Math.round((1 - Math.min(variance, 1)) * 100)), variance, reason: "Observed value differs from the read-only verification result." };
+}
+
 export function analyzeSqlGovernance(sql: string): SqlGovernanceAnalysis {
   const statements = splitReadOnlyStatements(sql).map(analyzeSqlStatement);
   const classifications = classifySqlKpis(sql);
   const lineage = statements.flatMap((statement) => statement.tables.map((table) => ({ statement: statement.index + 1, table, columns: statement.columns })));
+  const verificationPlans = buildReadOnlyVerificationPlans(statements);
   const aggregateCoverage = statements.length ? statements.filter((statement) => statement.aggregates.length > 0).length / statements.length : 0;
   const top = classifications[0];
   const confidence = Math.round((top?.confidence ?? 0) * 0.7 + aggregateCoverage * 30);
@@ -130,5 +176,5 @@ export function analyzeSqlGovernance(sql: string): SqlGovernanceAnalysis {
     top ? `${top.label} matched from ${top.matchedSignals.length} governed signals` : "No governed KPI rule matched",
     aggregateCoverage ? `${Math.round(aggregateCoverage * 100)}% of statements expose aggregate expressions` : "No directly verifiable aggregate expressions",
   ];
-  return { statements, classifications, lineage, validation: { confidence, status, reasons } };
+  return { statements, classifications, lineage, verificationPlans, validation: { confidence, status, reasons } };
 }
