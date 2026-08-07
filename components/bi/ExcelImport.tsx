@@ -14,7 +14,7 @@ import {
   Target,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { parseFile, type ParsedSheet } from "@/lib/bi/inference";
+import { combineWorkbookSheets, parseFile, type ParsedSheet } from "@/lib/bi/inference";
 import type { ScorecardResult } from "@/lib/bi/scorecard";
 import { suggestKpis } from "@/lib/bi/kpiService";
 import { createDataset, createReport } from "@/lib/hooks/useBiStore";
@@ -28,7 +28,7 @@ type Phase = "idle" | "parsing" | "importing" | "done";
 
 /**
  * Excel → KPI Reports flow.
- *  Sheet 1 becomes the dataset (schema inferred from columns).
+ *  Every worksheet contributes to one unioned dataset with provenance.
  *  Numeric columns → metrics, string columns → dimensions.
  *  Starter reports are generated from the KPI suggestions and saved.
  */
@@ -64,7 +64,8 @@ export function ExcelImport({ onDone }: Props) {
         setScorecard(parsed.scorecard);
         await runScorecardImport(parsed.scorecard, name);
       } else {
-        await runImport(parsed.sheets[0], name);
+        const combined = combineWorkbookSheets(parsed.sheets, name);
+        await runImport(combined, name, parsed.sheets);
       }
     } catch {
       setError("Could not parse that file. Use a .xlsx, .xls, or .csv export.");
@@ -75,7 +76,7 @@ export function ExcelImport({ onDone }: Props) {
   const primary = sheets[0];
   const suggestions = primary ? suggestKpis(primary.fields) : [];
 
-  async function runImport(sheet: ParsedSheet, name: string) {
+  async function runImport(sheet: ParsedSheet, name: string, workbookSheets: ParsedSheet[]) {
     setPhase("importing");
     try {
       const dataset = await createDataset({
@@ -90,10 +91,19 @@ export function ExcelImport({ onDone }: Props) {
         return;
       }
 
-      // Auto-generate starter reports from suggestions (cap at 4).
+      // Auto-generate starter reports from the unioned schema (cap at 4).
       const toCreate = suggestKpis(sheet.fields).slice(0, 4);
+      const numericField = sheet.fields.find((field) => field.type === "number");
+      if (workbookSheets.length > 1 && numericField && !toCreate.some((suggestion) => suggestion.dimensions.includes("Worksheet"))) {
+        toCreate.unshift({
+          label: `${numericField.name} by Worksheet`,
+          metrics: [{ agg: "sum", field: numericField.name }],
+          dimensions: ["Worksheet"],
+          chart: "bar",
+        });
+      }
       let n = 0;
-      for (const s of toCreate) {
+      for (const s of toCreate.slice(0, 4)) {
         const r = await createReport({
           name: s.label,
           datasetId: dataset.id,
@@ -273,7 +283,7 @@ export function ExcelImport({ onDone }: Props) {
               </p>
             ) : (
               <p className="text-xs text-muted-foreground max-w-md leading-relaxed">
-                We detected {primary.fields.length} columns from {primary.rows.length} rows and built{" "}
+                We analyzed all {sheets.length} worksheet{sheets.length === 1 ? "" : "s"}, unioned {sheets.reduce((total, sheet) => total + sheet.rows.length, 0)} rows with worksheet provenance, and built{" "}
                 {createdCount} starter report{createdCount === 1 ? "" : "s"}. Head to the KPI Explorer
                 tab to adjust metrics, dimensions, and charts.
               </p>

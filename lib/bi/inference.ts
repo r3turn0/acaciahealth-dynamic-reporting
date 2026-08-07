@@ -22,6 +22,18 @@ export interface ParsedWorkbook {
   scorecard?: ScorecardResult;
 }
 
+/**
+ * Combine ordinary workbook tabs into one unioned dataset. A Worksheet field
+ * preserves provenance and missing tab-specific columns remain null.
+ */
+export function combineWorkbookSheets(sheets: ParsedSheet[], name = "Workbook"): ParsedSheet {
+  const records: Record<string, unknown>[] = sheets.flatMap((sheet) =>
+    sheet.rows.map((row) => ({ Worksheet: sheet.name, ...row }))
+  );
+  const { fields, rows } = inferSchemaFromRecords(records);
+  return { name, fields, rows };
+}
+
 const BOOL_TRUE = new Set(["true", "yes", "y", "1"]);
 const BOOL_FALSE = new Set(["false", "no", "n", "0"]);
 

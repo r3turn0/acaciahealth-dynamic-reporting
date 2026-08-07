@@ -18,6 +18,8 @@ import {
   Hash,
   Type,
   Key,
+  KeyRound,
+  Sigma,
   Loader2,
   CheckCircle,
   AlertCircle,
@@ -128,6 +130,7 @@ export function MetadataReportEngine() {
   const [selectedMeasures, setSelectedMeasures] = useState<{ table: string; column: string }[]>([]);
   const [selectedDimensions, setSelectedDimensions] = useState<{ table: string; column: string }[]>([]);
   const [activeFilters, setActiveFilters] = useState<ReportFilter[]>([]);
+  const [excludedJoinKeys, setExcludedJoinKeys] = useState<string[]>([]);
   const [reportPlan, setReportPlan] = useState<ReportPlan | null>(null);
   const [planCopied, setPlanCopied] = useState(false);
   const [tagStore, setTagStore] = useState<TagStore>({});
@@ -139,6 +142,7 @@ export function MetadataReportEngine() {
     setSelectedMeasures([]);
     setSelectedDimensions([]);
     setActiveFilters([]);
+    setExcludedJoinKeys([]);
     setReportPlan(null);
     setActivePanel("datasets");
     // Auto-tag all tables and wire into the TF-IDF search engine
@@ -170,6 +174,7 @@ export function MetadataReportEngine() {
     setSelectedMeasures([]);
     setSelectedDimensions([]);
     setActiveFilters([]);
+    setExcludedJoinKeys([]);
     setReportPlan(null);
   }
 
@@ -179,6 +184,7 @@ export function MetadataReportEngine() {
     );
     setSelectedMeasures([]);
     setSelectedDimensions([]);
+    setExcludedJoinKeys([]);
     setReportPlan(null);
   }
 
@@ -208,7 +214,8 @@ export function MetadataReportEngine() {
       dimensionColumns: selectedDimensions,
       filters: activeFilters,
     });
-    setReportPlan(plan);
+    const selectedJoins = plan.joins.filter((join) => !excludedJoinKeys.includes(`${join.from}|${join.to}|${join.fromColumn}|${join.toColumn}`));
+    setReportPlan({ ...plan, joins: selectedJoins });
   }
 
   async function copyPlan() {
@@ -290,6 +297,11 @@ export function MetadataReportEngine() {
             model={model}
             selectedTableIds={selectedTableIds}
             resolvedJoins={resolvedJoins}
+            excludedJoinKeys={excludedJoinKeys}
+            onToggleJoin={(key) => {
+              setExcludedJoinKeys((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+              setReportPlan(null);
+            }}
           />
         )}
         {activePanel === "builder" && (
@@ -850,12 +862,37 @@ function SmartFieldPanel({
         title="Time Dimensions"
         icon={<Clock className="w-3.5 h-3.5 text-chart-4" />}
         items={fields.timeColumns}
-        selectedKeys={[]}
-        onToggle={() => {}}
+        selectedKeys={selectedDimensions.map((d) => `${d.table}.${d.column}`)}
+        onToggle={(t, c) => onToggleDimension(t, c)}
         emptyText="No date/time columns found"
         accentClass="text-chart-4"
         badgeClass="bg-chart-4/10 text-chart-4 border-chart-4/20"
-        readOnly
+      />
+
+      <FieldSection
+        title="Attributes & Keys"
+        icon={<KeyRound className="w-3.5 h-3.5 text-chart-2" />}
+        items={fields.attributes}
+        selectedKeys={selectedDimensions.map((d) => `${d.table}.${d.column}`)}
+        onToggle={(t, c) => onToggleDimension(t, c)}
+        emptyText="No descriptive attributes or keys found"
+        accentClass="text-chart-2"
+        badgeClass="bg-chart-2/10 text-chart-2 border-chart-2/20"
+      />
+
+      <FieldSection
+        title="Calculated Fields"
+        icon={<Sigma className="w-3.5 h-3.5 text-chart-5" />}
+        items={fields.calculatedFields}
+        selectedKeys={[...selectedMeasures, ...selectedDimensions].map((field) => `${field.table}.${field.column}`)}
+        onToggle={(table, column) => {
+          const field = fields.calculatedFields.find((item) => item.table === table && item.column.name === column)?.column;
+          if (field?.role === "measure") onToggleMeasure(table, column);
+          else onToggleDimension(table, column);
+        }}
+        emptyText="No computed columns found"
+        accentClass="text-chart-5"
+        badgeClass="bg-chart-5/10 text-chart-5 border-chart-5/20"
       />
     </div>
   );
@@ -936,10 +973,14 @@ function JoinVisualizer({
   model,
   selectedTableIds,
   resolvedJoins,
+  excludedJoinKeys,
+  onToggleJoin,
 }: {
   model: SchemaModel;
   selectedTableIds: string[];
   resolvedJoins: ReturnType<typeof resolveJoins>;
+  excludedJoinKeys: string[];
+  onToggleJoin: (key: string) => void;
 }) {
   if (selectedTableIds.length === 0) {
     return (
@@ -1021,12 +1062,16 @@ function JoinVisualizer({
             Auto-resolved join path
           </h4>
           <div className="flex flex-col gap-1">
-            {resolvedJoins.map((join, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2 px-3 py-2 bg-muted/30 border border-border/50 rounded-md flex-wrap"
-              >
-                <Link2 className="w-3.5 h-3.5 text-primary shrink-0" />
+        {resolvedJoins.map((join, i) => {
+          const joinKey = `${join.from}|${join.to}|${join.fromColumn}|${join.toColumn}`;
+          const enabled = !excludedJoinKeys.includes(joinKey);
+          return (
+          <div
+            key={joinKey}
+            className={cn("flex items-center gap-2 px-3 py-2 border rounded-md flex-wrap", enabled ? "bg-muted/30 border-border/50" : "bg-muted/10 border-border/30 opacity-60")}
+          >
+            <input type="checkbox" checked={enabled} onChange={() => onToggleJoin(joinKey)} aria-label={`Include join ${join.condition}`} className="h-3.5 w-3.5 accent-primary" />
+            <Link2 className="w-3.5 h-3.5 text-primary shrink-0" />
                 <code className="text-[11px] font-mono text-foreground">
                   {join.from.split(".").pop()}
                 </code>
@@ -1041,9 +1086,10 @@ function JoinVisualizer({
                     [{join.via}]
                   </span>
                 )}
-              </div>
-            ))}
           </div>
+          );
+        })}
+      </div>
         </div>
       ) : (
         selectedTableIds.length > 1 && (

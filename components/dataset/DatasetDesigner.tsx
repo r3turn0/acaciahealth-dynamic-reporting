@@ -946,18 +946,21 @@ function DatasetsPanel({
   { label: "Measures (comma separated)", field: "measures", placeholder: "Census, Revenue, Admissions" },
   { label: "Glossary mappings (comma separated)", field: "glossaryMappings", placeholder: "Active Census, Gross Revenue" },
   { label: "Business rules (separate with semicolons)", field: "businessRules", placeholder: "Exclude test records; Use service date" },
-            ].map(({ label, field, placeholder }) => (
+            ].map(({ label, field, placeholder }) => {
+              const stringField = field as Exclude<keyof typeof form, "relationships">;
+              return (
               <div key={field} className="flex flex-col gap-1">
                 <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{label}</label>
                 <input
                   type="text"
-                  value={(form as Record<string, string>)[field]}
+                  value={form[stringField]}
                   onChange={(e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))}
                   placeholder={placeholder}
                   className="bg-muted/30 border border-border rounded-md px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
                 />
               </div>
-            ))}
+              );
+            })}
   </div>
   {editingId && acceptedRels.length > 0 && <fieldset className="flex flex-col gap-2 rounded-lg border border-border p-3"><legend className="px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Accepted relationships</legend>{acceptedRels.map((relationship) => <label key={relationship.id} className="flex items-center gap-2 text-xs text-foreground"><input type="checkbox" checked={form.relationships.includes(relationship.id)} onChange={(event) => setForm((current) => ({ ...current, relationships: event.target.checked ? [...current.relationships, relationship.id] : current.relationships.filter((id) => id !== relationship.id) }))} className="h-3.5 w-3.5 accent-primary" /><span className="font-mono text-[10px]">{relationship.sourceTable}.{relationship.sourceColumn} → {relationship.targetTable}.{relationship.targetColumn}</span></label>)}</fieldset>}
   <div className="flex items-center gap-2 pt-1 border-t border-border/50">

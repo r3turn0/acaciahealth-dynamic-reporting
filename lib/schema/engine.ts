@@ -60,15 +60,23 @@ export function discoverFields(
   model: SchemaModel,
   tableIds: string[]
 ): FieldSuggestions {
-  const result: FieldSuggestions = { measures: [], dimensions: [], timeColumns: [] };
+  const result: FieldSuggestions = {
+    measures: [],
+    dimensions: [],
+    timeColumns: [],
+    attributes: [],
+    calculatedFields: [],
+  };
 
   for (const id of tableIds) {
     const table = model.tables[id];
     if (!table) continue;
 
     for (const col of table.columns) {
-      // Skip audit columns — not useful as selectable fields
+      // Skip audit columns — not useful as selectable fields.
       if (col.role === "audit") continue;
+
+      if (col.isComputed) result.calculatedFields.push({ table: id, column: col });
 
       switch (col.role) {
         case "measure":
@@ -79,6 +87,10 @@ export function discoverFields(
           break;
         case "dimension":
           result.dimensions.push({ table: id, column: col });
+          break;
+        case "primary_key":
+        case "foreign_key":
+          result.attributes.push({ table: id, column: col });
           break;
       }
     }
