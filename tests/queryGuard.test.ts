@@ -79,6 +79,14 @@ describe("validateReadOnlySql", () => {
     expect(validateReadOnlySql(sql)).toEqual({ valid: true, errors: [] });
   });
 
+  it("allows multiple independently read-only result statements", () => {
+    const sql = [
+      "SELECT epi_id FROM CLIENT_EPISODES_ALL WHERE epi_SocDate BETWEEN @StartDate AND @EndDate",
+      "SELECT branch_name FROM BRANCHES WHERE branch_code BETWEEN @StartDate AND @EndDate",
+    ].join(";\n");
+    expect(validateReadOnlySql(sql)).toEqual({ valid: true, errors: [] });
+  });
+
   it.each([
     "INSERT INTO x VALUES (1)",
     "UPDATE x SET value = 1",

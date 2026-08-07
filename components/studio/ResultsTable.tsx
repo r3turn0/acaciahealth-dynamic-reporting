@@ -35,6 +35,7 @@ export interface ReportResult {
   sql_used: string;
   data: Record<string, unknown>[];
   result_sets?: Array<{
+    name?: string;
     columns: string[];
     rows: Record<string, unknown>[];
     rowCount: number;
@@ -97,6 +98,7 @@ interface SortConfig {
 
 interface ResultsTableProps {
   result: ReportResult;
+  datasetOnly?: boolean;
 }
 
 // ── Chart helpers ────────────────────────────────────────────────────────────
@@ -134,7 +136,7 @@ const CHART_COLORS = [
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function ResultsTable({ result }: ResultsTableProps) {
+export function ResultsTable({ result, datasetOnly = false }: ResultsTableProps) {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
   const [sort, setSort] = useState<SortConfig | null>(null);
@@ -199,6 +201,31 @@ export function ResultsTable({ result }: ResultsTableProps) {
       virtual: true,
       authoritative: false,
     });
+  }
+
+  if (!datasetOnly && result.result_sets && result.result_sets.length > 1) {
+    return (
+      <section className="flex flex-col gap-5" aria-label={`${result.report_name} datasets`}>
+        <header className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 p-4">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">{result.report_name}</h2>
+            <p className="text-xs text-muted-foreground">{result.result_sets.length} independently explorable datasets · read-only governed execution</p>
+          </div>
+          <span className="rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">Multi-result report</span>
+        </header>
+        {result.result_sets.map((dataset, index) => {
+          const name = dataset.name ?? `Result Set ${index + 1}`;
+          const datasetResult: ReportResult = {
+            ...result,
+            report_name: name,
+            data: dataset.rows,
+            result_sets: undefined,
+            summary: { row_count: dataset.rowCount, columns: dataset.columns },
+          };
+          return <ResultsTable key={`${name}-${index}`} result={datasetResult} datasetOnly />;
+        })}
+      </section>
+    );
   }
 
   return (

@@ -11,6 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import governanceCatalog from "@/lib/config/governanceCatalog.json";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -256,6 +257,46 @@ const CATALOG: RegistryTable[] = [
   },
 ];
 
+function inferColumnRole(name: string, identity: boolean): ColumnEntry["role"] {
+  if (identity || /(^|_)id$/i.test(name)) return identity ? "primary_key" : "foreign_key";
+  if (/(date|time|period|year|month)$/i.test(name)) return "time_dimension";
+  if (/(amount|total|count|days|rate|percent|balance|revenue|margin)$/i.test(name)) return "measure";
+  if (/(created|updated|modified|audit)/i.test(name)) return "audit";
+  return "dimension";
+}
+
+const DERIVED_CATALOG: RegistryTable[] = governanceCatalog.tables.map((table) => ({
+  id: `${table.schema}.${table.name}`,
+  name: table.name,
+  schema: table.schema,
+  domain: table.domain === "Workforce" ? "HR" : table.domain,
+  entityType: table.entityType === "view" ? "View" : "Table",
+  columnCount: table.columns.length,
+  pkColumns: table.columns.filter((column) => column.identity && column.name).map((column) => column.name as string),
+  fkCount: table.columns.filter((column) => !column.identity && /(^|_)id$/i.test(column.name ?? "")).length,
+  description: `Metadata-derived ${table.domain.toLowerCase()} asset from the governed SQL Server catalog.`,
+  tags: [table.domain.toLowerCase(), "metadata-derived", "read-only"],
+  version: "source-2026.06",
+  rowEstimate: 0,
+  lastSyncAt: governanceCatalog.sourceGeneratedAt,
+  owner: `${table.domain} Data Steward`,
+  usageCount: 0,
+  kpiDependencies: [],
+  upstreamTables: [],
+  downstreamTables: [],
+  columnSummary: table.columns.map((column) => ({
+    name: column.name,
+    type: column.dataType,
+    role: inferColumnRole(column.name, column.identity),
+    nullable: column.nullable,
+    description: column.description ?? `${column.name} (${column.dataType})`,
+  })),
+}));
+
+const CATALOG_BY_ID = new Map<string, RegistryTable>();
+for (const table of [...DERIVED_CATALOG, ...CATALOG]) CATALOG_BY_ID.set(table.id.toLowerCase(), table);
+const UNIFIED_CATALOG = [...CATALOG_BY_ID.values()];
+
 const LINEAGE: LineageNode[] = [
   { id: "n1",  label: "CLIENT_EPISODES_ALL",       type: "source",    depth: 0, children: ["n3", "n4", "n5", "n6"] },
   { id: "n2",  label: "BRANCHES",                  type: "source",    depth: 0, children: ["n3"] },
@@ -281,12 +322,12 @@ export async function GET(req: NextRequest) {
   const q      = searchParams.get("q")?.toLowerCase();
 
   if (id) {
-    const t = CATALOG.find((c) => c.id === id || c.name === id);
+    const t = UNIFIED_CATALOG.find((c) => c.id === id || c.name === id);
     if (!t) return NextResponse.json({ error: `Table '${id}' not found` }, { status: 404 });
     return NextResponse.json(t);
   }
 
-  let tables = [...CATALOG];
+  let tables = [...UNIFIED_CATALOG];
   if (domain) tables = tables.filter((t) => t.domain === domain);
   if (entity) tables = tables.filter((t) => t.entityType === entity);
   if (q) tables = tables.filter(
@@ -294,16 +335,19 @@ export async function GET(req: NextRequest) {
   );
 
   const scope = {
-    tables:       125,
-    columns:      3421,
-    relationships: 412,
-    datasets:     38,
-    kpis:         49,
-    reports:      72,
-    semanticModels: 18,
-    unusedTables: 12,
-    orphanedRels: 5,
-    lastRefresh:  new Date().toISOString(),
+    tables: UNIFIED_CATALOG.length,
+    columns: UNIFIED_CATALOG.reduce((total, table) => total + table.columnCount, 0),
+    relationships: UNIFIED_CATALOG.reduce((total, table) => total + table.fkCount, 0),
+    datasets: 38,
+    kpis: 49,
+    reports: 72,
+    semanticModels: governanceCatalog.domains.length,
+    unusedTables: UNIFIED_CATALOG.filter((table) => table.usageCount === 0).length,
+    orphanedRels: 0,
+    lastRefresh: governanceCatalog.sourceGeneratedAt,
+    sourceTableCount: governanceCatalog.sourceTableCount,
+    provenance: governanceCatalog.sourceFile,
+    correlationId: governanceCatalog.correlationId,
   };
 
   return NextResponse.json({
@@ -311,7 +355,13 @@ export async function GET(req: NextRequest) {
     total: tables.length,
     scope,
     lineage: LINEAGE,
-    domains:    [...new Set(CATALOG.map((t) => t.domain))],
-    entityTypes:[...new Set(CATALOG.map((t) => t.entityType))],
+    domains: [...new Set(UNIFIED_CATALOG.map((t) => t.domain))],
+    entityTypes: [...new Set(UNIFIED_CATALOG.map((t) => t.entityType))],
+    provenance: {
+      sourceFile: governanceCatalog.sourceFile,
+      generatedAt: governanceCatalog.generatedAt,
+      sourceGeneratedAt: governanceCatalog.sourceGeneratedAt,
+      correlationId: governanceCatalog.correlationId,
+    },
   });
 }

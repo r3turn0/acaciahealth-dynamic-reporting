@@ -304,6 +304,8 @@ function bindParam(request: sql.Request, p: NamedParam): void {
 // ── Core query runner ─────────────────────────────────────────────────────────
 
 export interface QueryResultSet {
+  /** Stable display name derived from dataset shape when a report definition does not supply one. */
+  name?: string;
   columns: string[];
   rows: Record<string, unknown>[];
   rowCount: number;
@@ -340,11 +342,20 @@ async function runMultiQuery(
     signal?.removeEventListener("abort", cancel);
   }
   const recordsets = (result.recordsets ?? []) as Record<string, unknown>[][];
-  const resultSets = recordsets.map((rows) => ({
-    columns: rows.length > 0 ? Object.keys(rows[0]) : [],
-    rows,
-    rowCount: rows.length,
-  }));
+  const resultSets = recordsets.map((rows, index) => {
+    const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+    const signature = columns.join(" ").toLowerCase();
+    const name = /average.daily.census|\badc\b/.test(signature)
+      ? "Average Daily Census"
+      : /census/.test(signature)
+        ? "Census"
+        : /admission/.test(signature)
+          ? "Admissions"
+          : /revenue|amount|margin/.test(signature)
+            ? "Financial Results"
+            : `Result Set ${index + 1}`;
+    return { name, columns, rows, rowCount: rows.length };
+  });
   const first = resultSets[0] ?? { columns: [], rows: [], rowCount: 0 };
   return { ...first, resultSets };
 }

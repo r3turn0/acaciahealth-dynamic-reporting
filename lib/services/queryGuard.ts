@@ -55,20 +55,22 @@ export function validateReadOnlySql(sql: string): ValidationResult {
     return { valid: false, errors: ["SQL is required"] };
   }
 
-  // SQL Server commonly prefixes CTEs with a defensive semicolon. Treat only
-  // leading terminators as syntax, while rejecting separators inside the query.
-  const withoutLeadingTerminator = executable.replace(/^(?:;\s*)+/, "");
-  const withoutTrailingTerminator = withoutLeadingTerminator.replace(/;\s*$/, "");
-  if (withoutTrailingTerminator.includes(";")) {
-    errors.push("Multiple SQL statements are not allowed");
-  }
+  // Comments and literals are removed above, so semicolons now represent
+  // statement boundaries. Every statement is independently constrained to a
+  // SELECT or read-only CTE; this safely supports governed multi-result reports.
+  const statements = executable
+    .split(";")
+    .map((statement) => statement.trim())
+    .filter(Boolean);
 
-  if (!/^(?:SELECT|WITH)\b/i.test(withoutTrailingTerminator)) {
-    errors.push("Only SELECT queries and read-only CTEs are allowed");
-  }
+  for (const statement of statements) {
+    if (!/^(?:SELECT|WITH)\b/i.test(statement)) {
+      errors.push("Every statement must be a SELECT query or read-only CTE");
+    }
 
-  for (const { pattern, message } of BLOCKED_COMMANDS) {
-    if (pattern.test(withoutTrailingTerminator)) errors.push(message);
+    for (const { pattern, message } of BLOCKED_COMMANDS) {
+      if (pattern.test(statement)) errors.push(message);
+    }
   }
 
   return { valid: errors.length === 0, errors: [...new Set(errors)] };
