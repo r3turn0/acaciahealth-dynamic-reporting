@@ -100,6 +100,16 @@ interface ScopeData {
   unusedTables:   number;
   orphanedRels:   number;
   lastRefresh:    string;
+  sourceTableCount?: number;
+  provenance?: string;
+  correlationId?: string;
+}
+
+interface CatalogProvenance {
+  sourceFile: string;
+  generatedAt: string;
+  sourceGeneratedAt: string;
+  correlationId: string;
 }
 
 interface KpiDef {
@@ -677,6 +687,7 @@ export function SchemaIntelligenceRegistry({ onNavigate }: SchemaIntelligenceReg
   const [lineage, setLineage] = useState<LineageNode[]>([]);
   const [scope, setScope] = useState<ScopeData | null>(null);
   const [domains, setDomains] = useState<string[]>([]);
+  const [provenance, setProvenance] = useState<CatalogProvenance | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -697,13 +708,15 @@ export function SchemaIntelligenceRegistry({ onNavigate }: SchemaIntelligenceReg
       const json = await res.json() as {
         tables:      RegistryTable[];
         scope:       ScopeData;
-        lineage:     LineageNode[];
-        domains:     string[];
+        lineage: LineageNode[];
+        domains: string[];
+        provenance?: CatalogProvenance;
       };
       setTables(json.tables ?? []);
       setScope(json.scope ?? null);
       setLineage(json.lineage ?? []);
       setDomains(["All", ...(json.domains ?? [])]);
+      setProvenance(json.provenance ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load schema intelligence data");
     } finally {
@@ -738,6 +751,19 @@ export function SchemaIntelligenceRegistry({ onNavigate }: SchemaIntelligenceReg
     <div className="flex flex-col gap-5">
       {/* Scope summary */}
       <ScopeSummary scope={scope} loading={loading} onRefresh={loadData} />
+
+      {provenance && (
+        <aside className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3" aria-label="Catalog provenance">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-primary" />
+            <div>
+              <p className="text-xs font-semibold text-foreground">Metadata-derived, read-only catalog</p>
+              <p className="text-[11px] text-muted-foreground">Source: {provenance.sourceFile} · refreshed {new Date(provenance.sourceGeneratedAt).toLocaleString()}</p>
+            </div>
+          </div>
+          <code className="rounded border border-border bg-background px-2 py-1 text-[10px] text-muted-foreground">{provenance.correlationId}</code>
+        </aside>
+      )}
 
       {/* Tab bar */}
       <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg border border-border w-fit">

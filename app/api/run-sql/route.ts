@@ -19,6 +19,7 @@ import {
   runQueryGateway,
 } from "@/lib/gateway/QueryGateway";
 import { parameterizeDates } from "@/lib/services/dateParams";
+import { analyzeSqlGovernance } from "@/lib/services/kpiClassification";
 import { BackendUnreachableError } from "@/lib/services/db";
 import { RunSqlBodySchema } from "@/lib/validation/apiSchemas";
 
@@ -68,6 +69,7 @@ export async function POST(req: NextRequest) {
       );
     }
     const rows = execution.rows;
+    const sqlGovernance = analyzeSqlGovernance(result.sql ?? normalizedSql);
 
     return NextResponse.json({
       rows,
@@ -91,6 +93,9 @@ export async function POST(req: NextRequest) {
         validation: result.validation,
         lineage: result.lineage,
         governance: result.governance,
+        kpiClassification: sqlGovernance.classifications,
+        statementLineage: sqlGovernance.lineage,
+        validationEvidence: sqlGovernance.validation,
       },
     });
   } catch (err) {

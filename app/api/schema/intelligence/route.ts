@@ -284,13 +284,16 @@ const DERIVED_CATALOG: RegistryTable[] = governanceCatalog.tables.map((table) =>
   kpiDependencies: [],
   upstreamTables: [],
   downstreamTables: [],
-  columnSummary: table.columns.map((column) => ({
-    name: column.name,
-    type: column.dataType,
-    role: inferColumnRole(column.name, column.identity),
-    nullable: column.nullable,
-    description: column.description ?? `${column.name} (${column.dataType})`,
-  })),
+  columnSummary: table.columns.flatMap((column) => {
+    if (!column.name) return [];
+    return [{
+      name: column.name,
+      type: column.dataType,
+      role: inferColumnRole(column.name, column.identity),
+      nullable: column.nullable,
+      description: column.description ?? `${column.name} (${column.dataType})`,
+    }];
+  }),
 }));
 
 const CATALOG_BY_ID = new Map<string, RegistryTable>();
