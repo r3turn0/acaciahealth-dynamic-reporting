@@ -47,14 +47,32 @@ export function ExcelImport({ onDone }: Props) {
   async function handleFile(file: File) {
     setError(null);
     setScorecard(null);
+    setAnalysis(null);
     setPhase("parsing");
     setFileName(file.name);
+    const name = file.name.replace(/\.[^.]+$/, "").trim() || "Imported Workbook";
+    setDatasetName(name);
+
     try {
       const parsed = await parseFile(file);
       if (!parsed.sheets.length) throw new Error("No readable worksheets found.");
       setSheets(parsed.sheets);
       setAnalysis(parsed.analysis);
       setPhase("importing");
+
+      if (parsed.scorecard?.isScorecard) {
+        setScorecard(parsed.scorecard);
+        await runScorecardImport(parsed.scorecard, name);
+      } else {
+        await runImport(combineWorkbookSheets(parsed.sheets, name), name, parsed.sheets);
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not analyze that workbook.");
+      setPhase("idle");
+    }
+  }
+
+  async function runImport(sheet: ParsedSheet, name: string, workbookSheets: ParsedSheet[]) {
     try {
       const dataset = await createDataset({
         name: name.trim() || sheet.name,
@@ -62,13 +80,8 @@ export function ExcelImport({ onDone }: Props) {
         sampleData: sheet.rows.slice(0, 500),
         source: "excel",
       });
-      if (!dataset) {
-        setError("Failed to create dataset.");
-        setPhase("idle");
-        return;
-      }
+      if (!dataset) throw new Error("Failed to create dataset.");
 
-      // Auto-generate starter reports from the unioned schema (cap at 4).
       const toCreate = suggestKpis(sheet.fields).slice(0, 4);
       const numericField = sheet.fields.find((field) => field.type === "number");
       if (workbookSheets.length > 1 && numericField && !toCreate.some((suggestion) => suggestion.dimensions.includes("Worksheet"))) {
@@ -79,24 +92,24 @@ export function ExcelImport({ onDone }: Props) {
           chart: "bar",
         });
       }
-      let n = 0;
-      for (const s of toCreate.slice(0, 4)) {
-        const r = await createReport({
-          name: s.label,
+
+      let created = 0;
+      for (const suggestion of toCreate.slice(0, 4)) {
+        const report = await createReport({
+          name: suggestion.label,
           datasetId: dataset.id,
-          metrics: s.metrics.length ? s.metrics : [{ agg: "count", field: null } as Metric],
-          dimensions: s.dimensions,
+          metrics: suggestion.metrics.length ? suggestion.metrics : [{ agg: "count", field: null } as Metric],
+          dimensions: suggestion.dimensions,
           filters: [],
-          chart: s.chart,
+          chart: suggestion.chart,
         });
-        if (r) n++;
+        if (report) created++;
       }
-      setCreatedCount(n);
+      setCreatedCount(created);
       setPhase("done");
       onDone(dataset);
-    } catch {
-      setError("Import failed while generating reports.");
-      setPhase("idle");
+    } catch (cause) {
+      throw cause instanceof Error ? cause : new Error("Import failed while generating reports.");
     }
   }
 
@@ -176,12 +189,21 @@ export function ExcelImport({ onDone }: Props) {
   function reset() {
     setPhase("idle");
     setSheets([]);
+    setAnalysis(null);
     setScorecard(null);
     setFileName("");
     setDatasetName("");
     setCreatedCount(0);
     setError(null);
+    if (inputRef.current) inputRef.current.value = "";
   }
+
+  const primary = scorecard?.isScorecard
+    ? scorecard.tidy
+    : sheets.length > 0
+      ? combineWorkbookSheets(sheets, datasetName || "Workbook")
+      : null;
+  const suggestions = primary ? suggestKpis(primary.fields) : [];
 
   return (
     <div className="flex flex-col gap-5">
@@ -272,6 +294,22 @@ export function ExcelImport({ onDone }: Props) {
               Import another file
             </button>
           </div>
+
+          {analysis && !scorecard && (
+            <section aria-label="Workbook analysis" className="rounded-lg border border-border bg-card p-4 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold text-foreground">Workbook analysis</p>
+                <span className="rounded border border-border bg-muted/40 px-2 py-0.5">{analysis.sheetCount} tabs</span>
+                <span className="rounded border border-border bg-muted/40 px-2 py-0.5">{analysis.totalRows.toLocaleString()} rows</span>
+                <span className="rounded border border-border bg-muted/40 px-2 py-0.5">{analysis.formulas.length} formulas</span>
+              </div>
+              <p className="mt-2">Included: {analysis.sheets.map((sheet) => `${sheet.name} (${sheet.rowCount.toLocaleString()} rows)`).join(", ")}</p>
+              {analysis.relationshipCandidates.length > 0 && <p className="mt-1">Cross-tab field candidates: {analysis.relationshipCandidates.slice(0, 8).map((candidate) => candidate.field).join(", ")}</p>}
+              {analysis.lookupSheets.length > 0 && <p className="mt-1">Potential lookup tabs: {analysis.lookupSheets.join(", ")}</p>}
+              {analysis.formulas.length > 0 && <p className="mt-1">Cross-sheet formulas: {analysis.formulas.filter((formula) => formula.referencedSheets.length > 0).length} of {analysis.formulas.length}</p>}
+              {analysis.warnings.map((warning) => <p key={warning} className="mt-1 text-chart-5">{warning}</p>)}
+            </section>
+          )}
 
           {/* Scorecard breakdown — each row is a possible KPI report */}
           {scorecard && <ScorecardBreakdown scorecard={scorecard} />}
