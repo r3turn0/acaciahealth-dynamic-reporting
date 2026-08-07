@@ -24,6 +24,11 @@ import {
   isTableInCatalog,
   normalizeTableIdentifier,
 } from "@/lib/services/tableCatalog";
+import {
+  buildTableFilterSql,
+  parseTableFilters,
+  TableFilterError,
+} from "@/lib/services/tableFilters";
 
 const DEMO_TABLES = Object.keys(schemaConfig);
 const STATIC_TABLE_CATALOG = buildStaticCatalog();
@@ -159,11 +164,14 @@ export async function GET(
   const sortDir   = searchParams.get("dir") === "desc" ? "desc" : "asc";
   const filtersRaw = searchParams.get("filters");
 
-  let filters: Record<string, string> = {};
+  let filters: Record<string, string>;
   try {
-    if (filtersRaw) filters = JSON.parse(filtersRaw);
-  } catch {
-    // ignore invalid JSON
+    filters = parseTableFilters(filtersRaw);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Invalid filters." },
+      { status: 400 }
+    );
   }
 
   // Demo mode — no DB configured
@@ -174,6 +182,12 @@ export async function GET(
                      : 500;
 
     let rows = generateRows(decodedTable, TOTAL_DEMO);
+    const cols = rows.length > 0 ? Object.keys(rows[0]) : [];
+    const knownColumns = new Set(cols.map((column) => column.toLowerCase()));
+    const unknownFilter = Object.keys(filters).find((column) => !knownColumns.has(column.toLowerCase()));
+    if (unknownFilter) {
+      return NextResponse.json({ error: `Unknown filter column "${unknownFilter}".` }, { status: 400 });
+    }
 
     // Apply column filters (case-insensitive substring)
     for (const [col, val] of Object.entries(filters)) {
@@ -198,7 +212,6 @@ export async function GET(
     const total  = rows.length;
     const offset = (page - 1) * pageSize;
     const slice  = rows.slice(offset, offset + pageSize);
-    const cols   = slice.length > 0 ? Object.keys(slice[0]) : [];
 
     return NextResponse.json({
       table:      decodedTable,
@@ -223,28 +236,57 @@ export async function GET(
       );
     }
 
-    const { executeRawMultiQuery } = await import("@/lib/services/db");
+    const { executeMultiQueryWithParams, executeQueryWithParams } = await import("@/lib/services/db");
 
-    // The table has passed strict syntax and live-catalog membership checks.
+    // Resolve column identifiers from SQL Server metadata before using them in
+    // ORDER BY or filter predicates. Values remain bound parameters.
     const safeTable = normalizedTable;
-    const orderClause = sortCol
-      ? `ORDER BY [${sortCol.replace(/[^a-zA-Z0-9_]/g, "")}] ${sortDir.toUpperCase()}`
+    const columnRows = await executeQueryWithParams(
+      `SELECT c.name AS column_name
+       FROM sys.columns c
+       WHERE c.object_id = OBJECT_ID(@TableName)
+       ORDER BY c.column_id`,
+      [{ name: "TableName", value: safeTable, type: "nvarchar" }]
+    );
+    const cols = columnRows
+      .map((row) => String(row.column_name ?? ""))
+      .filter(Boolean);
+    if (cols.length === 0) {
+      return NextResponse.json({ error: `No columns are available for table "${decodedTable}".` }, { status: 400 });
+    }
+
+    const canonicalColumns = new Map(cols.map((column) => [column.toLowerCase(), column]));
+    const resolvedSort = sortCol ? canonicalColumns.get(sortCol.toLowerCase()) : null;
+    if (sortCol && !resolvedSort) {
+      return NextResponse.json({ error: `Unknown sort column "${sortCol}".` }, { status: 400 });
+    }
+
+    const filterSql = buildTableFilterSql(filters, cols);
+    const orderClause = resolvedSort
+      ? `ORDER BY [${resolvedSort.replace(/]/g, "]]" )}] ${sortDir.toUpperCase()}`
       : "ORDER BY (SELECT NULL)";
     const offset = (page - 1) * pageSize;
     const qualifiedTable = `[${safeTable.split(".").join("].[")}]`;
     const query = `
       SELECT *
       FROM ${qualifiedTable}
+      ${filterSql.whereClause}
       ${orderClause}
-      OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY;
+      OFFSET @PageOffset ROWS FETCH NEXT @PageSize ROWS ONLY;
 
       SELECT COUNT_BIG(*) AS total
-      FROM ${qualifiedTable};
+      FROM ${qualifiedTable}
+      ${filterSql.whereClause};
     `;
+    const queryParams = [
+      ...filterSql.params,
+      { name: "PageOffset", value: offset, type: "int" },
+      { name: "PageSize", value: pageSize, type: "int" },
+    ];
 
     const loadPage = async () => {
       const sqlStart = Date.now();
-      const result = await executeRawMultiQuery(query);
+      const result = await executeMultiQueryWithParams(query, queryParams);
       const rows = result.resultSets[0]?.rows ?? [];
       const countRows = result.resultSets[1]?.rows ?? [];
       return {
@@ -268,7 +310,6 @@ export async function GET(
         })
       : { value: await loadPage(), cacheStatus: "BYPASS" as const };
     const { total, rows, sqlDurationMs } = loaded.value;
-    const cols = rows.length > 0 ? Object.keys(rows[0]) : [];
     const durationMs = Date.now() - requestStart;
 
     recordPerformanceSample({
@@ -296,6 +337,10 @@ export async function GET(
     response.headers.set("Cache-Control", "private, no-store");
     return response;
   } catch (err) {
+    if (err instanceof TableFilterError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+
     // If the DB is configured but unreachable (VPN/firewall/wrong host), don't
     // hard-fail with a blank 500. Only the statically-known tables can be
     // reconstructed as demo data; unknown live-only tables return 503.
@@ -313,6 +358,12 @@ export async function GET(
         : decodedTable === "CARE_TYPES" ? CARE_TYPES.length
         : 500;
       let rows = generateRows(decodedTable, TOTAL_DEMO);
+      const cols = rows.length > 0 ? Object.keys(rows[0]) : [];
+      const knownColumns = new Set(cols.map((column) => column.toLowerCase()));
+      const unknownFilter = Object.keys(filters).find((column) => !knownColumns.has(column.toLowerCase()));
+      if (unknownFilter) {
+        return NextResponse.json({ error: `Unknown filter column "${unknownFilter}".` }, { status: 400 });
+      }
       for (const [col, val] of Object.entries(filters)) {
         if (!val) continue;
         const lower = val.toLowerCase();
@@ -330,7 +381,6 @@ export async function GET(
       const total = rows.length;
       const offset = (page - 1) * pageSize;
       const slice = rows.slice(offset, offset + pageSize);
-      const cols = slice.length > 0 ? Object.keys(slice[0]) : [];
       return NextResponse.json({
         table: decodedTable,
         columns: cols,

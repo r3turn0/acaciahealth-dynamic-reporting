@@ -110,15 +110,21 @@ function ColumnFilter({ col, value, onChange }: {
   return (
     <div className="relative">
       <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+      <label htmlFor={`table-filter-${col}`} className="sr-only">Filter {col}</label>
       <input
+        id={`table-filter-${col}`}
+        type="search"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={col}
+        autoComplete="off"
         className="w-full pl-6 pr-5 py-1 text-[11px] bg-muted border border-border rounded focus:outline-none focus:border-primary/60 focus:bg-accent/30 transition-colors placeholder:text-muted-foreground/50"
       />
       {value && (
         <button
+          type="button"
           onClick={() => onChange("")}
+          aria-label={`Clear ${col} filter`}
           className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
         >
           <X className="w-3 h-3" />
@@ -165,8 +171,9 @@ export function DataExplorer({
   const [showSemanticSearch, setShowSemanticSearch] = useState(initialSemanticSearch);
   const [catalogSelectionError, setCatalogSelectionError] = useState<string | null>(null);
   const [selectedCatalogContext, setSelectedCatalogContext] = useState<string | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataIntentRef = useRef(0);
+  const filterKey = JSON.stringify(filters);
+  const previousFilterKeyRef = useRef(filterKey);
 
   useEffect(() => {
     if (initialSemanticSearch) setShowSemanticSearch(true);
@@ -211,22 +218,25 @@ export function DataExplorer({
     }
   }, []);
 
-  // Immediate fetch on table / page / pageSize / sort change
+  // One request pipeline handles paging, sorting, table changes, and filters.
+  // Filter edits are debounced; all other changes load immediately.
   useEffect(() => {
-    fetchData(selectedTable, page, pageSize, sort, sortDir, filters);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTable, page, pageSize, sort, sortDir]);
+    const filtersChanged = previousFilterKeyRef.current !== filterKey;
+    previousFilterKeyRef.current = filterKey;
 
-  // Debounced fetch on filter change
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
+    if (filtersChanged && page !== 1) {
       setPage(1);
-      fetchData(selectedTable, 1, pageSize, sort, sortDir, filters);
-    }, 350);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      fetchData(selectedTable, page, pageSize, sort, sortDir, filters);
+    }, filtersChanged ? 350 : 0);
+
+    return () => clearTimeout(timer);
+  // `filterKey` is the stable serialized representation of `filters`.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters]);
+  }, [selectedTable, page, pageSize, sort, sortDir, filterKey, fetchData]);
 
   // Load the complete table list via /api/schema/tables — a dedicated endpoint
   // that bypasses the security validator (schema introspection is always allowed).
@@ -432,7 +442,10 @@ export function DataExplorer({
             Search
           </button>
           <button
+            type="button"
             onClick={() => setShowFilters((s) => !s)}
+            aria-expanded={showFilters}
+            aria-controls="table-column-filters"
             className={cn(
               "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-colors",
               showFilters
@@ -450,6 +463,7 @@ export function DataExplorer({
           </button>
           {(activeFilterCount > 0 || sort) && (
             <button
+              type="button"
               onClick={clearAllFilters}
               className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors"
             >
@@ -458,8 +472,10 @@ export function DataExplorer({
             </button>
           )}
           <button
+            type="button"
             onClick={() => fetchData(selectedTable, page, pageSize, sort, sortDir, filters)}
             disabled={loading}
+            aria-label="Refresh table data"
             className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors disabled:opacity-50"
           >
             <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
@@ -541,8 +557,12 @@ export function DataExplorer({
       <div className="bg-card border border-border rounded-lg overflow-hidden">
         {/* Column filters strip */}
         {showFilters && columns.length > 0 && (
-          <div className="px-4 py-3 border-b border-border bg-muted/30 grid gap-2"
-               style={{ gridTemplateColumns: `repeat(${Math.min(columns.length, 4)}, minmax(0,1fr))` }}>
+          <div
+            id="table-column-filters"
+            aria-label="Column filters"
+            className="px-4 py-3 border-b border-border bg-muted/30 grid gap-2"
+            style={{ gridTemplateColumns: `repeat(${Math.min(columns.length, 4)}, minmax(0,1fr))` }}
+          >
             {columns.map((col) => (
               <ColumnFilter
                 key={col}
