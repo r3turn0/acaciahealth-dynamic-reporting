@@ -70,13 +70,31 @@ export async function POST(req: NextRequest) {
     }
     const rows = execution.rows;
     const sqlGovernance = analyzeSqlGovernance(result.sql ?? normalizedSql);
+    const governedResultSets = execution.resultSets.map((resultSet, index) => {
+      const statement = sqlGovernance.statements[index];
+      const statementNumber = index + 1;
+      const lineage = sqlGovernance.lineage.filter((edge) => edge.statement === statementNumber);
+      const verification = sqlGovernance.verificationPlans.find((plan) => plan.statement === statementNumber);
+      const statementClassifications = statement ? analyzeSqlGovernance(statement.sql).classifications : [];
+      return {
+        ...resultSet,
+        governance: {
+          statement: statementNumber,
+          lineage,
+          classifications: statementClassifications,
+          verification: verification ?? null,
+          confidence: statementClassifications[0]?.confidence ?? 0,
+          status: verification?.supported ? "supported" : statementClassifications.length ? "partial" : "metadata-only",
+        },
+      };
+    });
 
     return NextResponse.json({
       rows,
       columns: execution?.columns ?? [],
       rowCount: execution?.rowCount ?? 0,
-      resultSets: execution?.resultSets ?? [],
-      resultSetCount: execution?.resultSets.length ?? 0,
+      resultSets: governedResultSets,
+      resultSetCount: governedResultSets.length,
       cache_hit: false,
       execution_ms: execution?.executionMs ?? Date.now() - start,
       report_id: report_id ?? null,
@@ -95,6 +113,7 @@ export async function POST(req: NextRequest) {
         governance: result.governance,
         kpiClassification: sqlGovernance.classifications,
         statementLineage: sqlGovernance.lineage,
+        verificationPlans: sqlGovernance.verificationPlans,
         validationEvidence: sqlGovernance.validation,
       },
     });

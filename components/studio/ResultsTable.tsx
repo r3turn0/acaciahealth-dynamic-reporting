@@ -12,6 +12,8 @@ import {
   BarChart2,
   TableIcon,
   FileSpreadsheet,
+  ShieldCheck,
+  GitBranch,
   X,
   Maximize2,
 } from "lucide-react";
@@ -39,6 +41,14 @@ export interface ReportResult {
     columns: string[];
     rows: Record<string, unknown>[];
     rowCount: number;
+    governance?: {
+      statement: number;
+      lineage: Array<{ statement: number; table: string; columns: string[] }>;
+      classifications: Array<{ ruleId: string; label: string; family: string; confidence: number; validationStatus: "supported" | "partial" | "metadata-only" }>;
+      verification: { supported: boolean; aggregateExpressions: string[]; sourceTables: string[]; reason: string } | null;
+      confidence: number;
+      status: "supported" | "partial" | "metadata-only";
+    };
   }>;
   summary: {
     row_count: number;
@@ -48,6 +58,7 @@ export interface ReportResult {
   cache_hit?: boolean;
   demo_mode?: boolean;
   execution_ms?: number;
+  governance?: NonNullable<ReportResult["result_sets"]>[number]["governance"];
 }
 
 interface KpiInsight {
@@ -220,6 +231,7 @@ export function ResultsTable({ result, datasetOnly = false }: ResultsTableProps)
             report_name: name,
             data: dataset.rows,
             result_sets: undefined,
+            governance: dataset.governance,
             summary: { row_count: dataset.rowCount, columns: dataset.columns },
           };
           return <ResultsTable key={`${name}-${index}`} result={datasetResult} datasetOnly />;
@@ -278,6 +290,36 @@ export function ResultsTable({ result, datasetOnly = false }: ResultsTableProps)
             </div>
           ))}
         </div>
+      )}
+
+      {result.governance && (
+        <aside className="flex flex-col gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3" aria-label={`${result.report_name} governance evidence`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-primary" />
+              <div>
+                <p className="text-xs font-semibold text-foreground">Statement {result.governance.statement} validation evidence</p>
+                <p className="text-[11px] text-muted-foreground">{result.governance.verification?.reason ?? "No read-only verification plan is available."}</p>
+              </div>
+            </div>
+            <span className="rounded-full border border-primary/25 bg-background px-2.5 py-1 text-[10px] font-medium text-primary">
+              {result.governance.status} · {result.governance.confidence}% match
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+            <GitBranch className="h-3.5 w-3.5" />
+            {result.governance.lineage.length > 0
+              ? result.governance.lineage.map((edge) => <code key={`${edge.statement}-${edge.table}`} className="rounded border border-border bg-background px-2 py-1">{edge.table}{edge.columns.length ? ` · ${edge.columns.slice(0, 4).join(", ")}` : ""}</code>)
+              : <span>No physical table lineage extracted.</span>}
+          </div>
+          {result.governance.classifications.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {result.governance.classifications.slice(0, 3).map((classification) => (
+                <span key={classification.ruleId} className="rounded border border-border bg-background px-2 py-1 text-[10px] text-foreground">{classification.label} · {classification.confidence}%</span>
+              ))}
+            </div>
+          )}
+        </aside>
       )}
 
       {/* Table card */}

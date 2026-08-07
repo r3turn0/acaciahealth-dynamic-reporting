@@ -207,7 +207,7 @@ function KpiResult({ data, columns }: { data: Record<string, unknown>[]; columns
   );
 }
 
-// ── Message bubble ───────────────────────────────────────────��─────────�����──────
+// ── Message bubble ───────────────────────────────────────────���─────────�����──────
 
 interface Message {
   role: "user" | "assistant";
@@ -344,6 +344,7 @@ export function PostQueryAnalytics({ result }: PostQueryAnalyticsProps) {
         report_name: selectedSet.name ?? `Result Set ${selectedResultIndex + 1}`,
         data: selectedSet.rows,
         result_sets: undefined,
+        governance: selectedSet.governance,
         summary: { row_count: selectedSet.rowCount, columns: selectedSet.columns },
       }
     : result;
