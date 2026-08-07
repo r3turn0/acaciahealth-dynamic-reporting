@@ -52,6 +52,8 @@ export interface FieldSuggestions {
   measures: { table: string; column: Column }[];
   dimensions: { table: string; column: Column }[];
   timeColumns: { table: string; column: Column }[];
+  attributes: { table: string; column: Column }[];
+  calculatedFields: { table: string; column: Column }[];
 }
 
 export function discoverFields(

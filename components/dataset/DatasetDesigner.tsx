@@ -95,6 +95,8 @@ interface SemanticDataset {
   relationships: string[];
   dimensions:    string[];
   measures:      string[];
+  glossaryMappings: string[];
+  businessRules: string[];
   owner:         string;
   version:       string;
   status:        DSStatus;
@@ -428,6 +430,40 @@ function InferencePopup({
 
 // ── Discovery Panel ───────────────────────────────────────────────────────────
 
+function TableSamplePreview({ table }: { table: TableDef }) {
+  const [state, setState] = useState<{ loading: boolean; rows: Record<string, unknown>[]; error: string | null }>({ loading: true, rows: [], error: null });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const identifier = table.schema.toLowerCase() === "dbo" ? table.name : `${table.schema}.${table.name}`;
+    void fetch(`/api/data/${encodeURIComponent(identifier)}?page=1&pageSize=5`, { signal: controller.signal })
+      .then(async (response) => {
+        const payload = await response.json() as { rows?: Record<string, unknown>[]; error?: string };
+        if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
+        setState({ loading: false, rows: payload.rows ?? [], error: null });
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setState({ loading: false, rows: [], error: error instanceof Error ? error.message : "Preview unavailable" });
+      });
+    return () => controller.abort();
+  }, [table.name, table.schema]);
+
+  if (state.loading) return <div role="status" className="flex items-center gap-2 py-3 text-[10px] text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />Loading five-row sample…</div>;
+  if (state.error) return <p role="status" className="py-3 text-[10px] text-destructive">Sample unavailable: {state.error}</p>;
+  if (state.rows.length === 0) return <p role="status" className="py-3 text-[10px] text-muted-foreground">The table has columns but currently returns no rows.</p>;
+
+  const previewColumns = Object.keys(state.rows[0]).slice(0, 4);
+  return (
+    <div className="mt-3 overflow-x-auto rounded-md border border-border" aria-label={`${table.name} sample rows`}>
+      <table className="w-full text-left text-[9px]">
+        <thead className="bg-muted/30 text-muted-foreground"><tr>{previewColumns.map((column) => <th key={column} className="px-2 py-1 font-medium">{column}</th>)}</tr></thead>
+        <tbody>{state.rows.map((row, index) => <tr key={index} className="border-t border-border/50">{previewColumns.map((column) => <td key={column} className="max-w-36 truncate px-2 py-1 font-mono text-foreground">{row[column] == null ? "—" : String(row[column])}</td>)}</tr>)}</tbody>
+      </table>
+    </div>
+  );
+}
+
 function DiscoveryPanel({
   canvasTables,
   onAddToCanvas,
@@ -533,7 +569,7 @@ function DiscoveryPanel({
                 <div className="px-3 pb-3 border-t border-border bg-muted/5">
                   <p className="text-[11px] text-muted-foreground py-2 leading-relaxed">{t.businessDescription}</p>
                   <div className="flex flex-col gap-0.5">
-                    {t.columns.map((c) => (
+                    {t.columns.length === 0 ? <p className="py-2 text-[10px] text-muted-foreground">Column metadata is unavailable for this source.</p> : t.columns.map((c) => (
                       <div key={`${tableId}.${c.name}`} className="flex items-center gap-2 py-1 border-b border-border/30 last:border-0">
                         <div className="flex items-center gap-1 w-8 shrink-0">
                           {c.isPk && <span className="text-[8px] font-bold text-chart-5 bg-chart-5/10 rounded px-0.5">PK</span>}
@@ -544,6 +580,7 @@ function DiscoveryPanel({
                       </div>
                     ))}
                   </div>
+                  <TableSamplePreview table={t} />
                 </div>
               )}
             </div>
@@ -812,37 +849,62 @@ function DatasetsPanel({
   onPublish,
   onRequestApproval,
   onCreate,
+  onUpdate,
   onRefresh,
-}: {
+  }: {
   datasets:      SemanticDataset[];
   relationships: Relationship[];
   loading:       boolean;
   onPublish:     (id: string) => void;
   onRequestApproval: (id: string) => void;
-  onCreate:      (d: Partial<SemanticDataset>) => void;
+  onCreate:      (d: Partial<SemanticDataset>) => Promise<void> | void;
+  onUpdate:      (id: string, d: Partial<SemanticDataset>) => Promise<void> | void;
   onRefresh:     () => void;
-}) {
+  }) {
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ datasetName: "", description: "", owner: "Analytics Team", tables: "", dimensions: "", measures: "" });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const emptyForm = { datasetName: "", description: "", owner: "Analytics Team", tables: "", dimensions: "", measures: "", glossaryMappings: "", businessRules: "", relationships: [] as string[] };
+  const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
   const acceptedRels = relationships.filter((r) => r.status === "Accepted");
 
-  async function handleCreate() {
-    if (!form.datasetName.trim()) return;
-    setSaving(true);
-    await onCreate({
-      datasetName:  form.datasetName.trim(),
-      description:  form.description.trim(),
-      owner:        form.owner.trim() || "Analytics Team",
-      tables:       form.tables.split(",").map((s) => s.trim()).filter(Boolean),
-      dimensions:   form.dimensions.split(",").map((s) => s.trim()).filter(Boolean),
-      measures:     form.measures.split(",").map((s) => s.trim()).filter(Boolean),
-      relationships: acceptedRels.map((r) => r.id),
-    });
-    setSaving(false);
-    setShowCreate(false);
-    setForm({ datasetName: "", description: "", owner: "Analytics Team", tables: "", dimensions: "", measures: "" });
+  async function handleSave() {
+  if (!form.datasetName.trim()) return;
+  setSaving(true);
+  const definition: Partial<SemanticDataset> = {
+  datasetName: form.datasetName.trim(),
+  description: form.description.trim(),
+  owner: form.owner.trim() || "Analytics Team",
+  tables: form.tables.split(",").map((s) => s.trim()).filter(Boolean),
+  dimensions: form.dimensions.split(",").map((s) => s.trim()).filter(Boolean),
+  measures: form.measures.split(",").map((s) => s.trim()).filter(Boolean),
+  glossaryMappings: form.glossaryMappings.split(",").map((s) => s.trim()).filter(Boolean),
+  businessRules: form.businessRules.split(/[;\n]/).map((s) => s.trim()).filter(Boolean),
+  relationships: form.relationships,
+  };
+  if (editingId) await onUpdate(editingId, definition);
+  else await onCreate({ ...definition, relationships: acceptedRels.map((r) => r.id) });
+  setSaving(false);
+  setShowCreate(false);
+  setEditingId(null);
+  setForm(emptyForm);
+  }
+
+  function beginEdit(dataset: SemanticDataset) {
+  setEditingId(dataset.datasetId);
+  setShowCreate(true);
+  setForm({
+  datasetName: dataset.datasetName,
+  description: dataset.description,
+  owner: dataset.owner,
+  tables: dataset.tables.join(", "),
+  dimensions: dataset.dimensions.join(", "),
+  measures: dataset.measures.join(", "),
+  glossaryMappings: (dataset.glossaryMappings ?? []).join(", "),
+  businessRules: (dataset.businessRules ?? []).join("\n"),
+  relationships: dataset.relationships,
+  });
   }
 
   return (
@@ -871,8 +933,8 @@ function DatasetsPanel({
       {showCreate && (
         <div className="border border-primary/30 rounded-lg p-4 bg-primary/5 flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-foreground">Create Semantic Dataset</p>
-            <button onClick={() => setShowCreate(false)} className="p-1 rounded hover:bg-muted/40 text-muted-foreground"><X className="w-3.5 h-3.5" /></button>
+  <p className="text-sm font-semibold text-foreground">{editingId ? "Edit Semantic Dataset" : "Create Semantic Dataset"}</p>
+  <button onClick={() => { setShowCreate(false); setEditingId(null); setForm(emptyForm); }} className="p-1 rounded hover:bg-muted/40 text-muted-foreground"><X className="w-3.5 h-3.5" /></button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
@@ -880,8 +942,10 @@ function DatasetsPanel({
               { label: "Owner", field: "owner", placeholder: "e.g. Analytics Team" },
               { label: "Tables (comma separated)", field: "tables", placeholder: "CLIENT_EPISODES_ALL, BRANCHES" },
               { label: "Dimensions (comma separated)", field: "dimensions", placeholder: "Branch, Service Line, Region" },
-              { label: "Description", field: "description", placeholder: "Purpose and scope…" },
-              { label: "Measures (comma separated)", field: "measures", placeholder: "Census, Revenue, Admissions" },
+  { label: "Description", field: "description", placeholder: "Purpose and scope…" },
+  { label: "Measures (comma separated)", field: "measures", placeholder: "Census, Revenue, Admissions" },
+  { label: "Glossary mappings (comma separated)", field: "glossaryMappings", placeholder: "Active Census, Gross Revenue" },
+  { label: "Business rules (separate with semicolons)", field: "businessRules", placeholder: "Exclude test records; Use service date" },
             ].map(({ label, field, placeholder }) => (
               <div key={field} className="flex flex-col gap-1">
                 <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{label}</label>
@@ -894,17 +958,18 @@ function DatasetsPanel({
                 />
               </div>
             ))}
-          </div>
-          <div className="flex items-center gap-2 pt-1 border-t border-border/50">
-            <p className="text-[10px] text-muted-foreground flex-1">{acceptedRels.length} accepted relationships will be auto-linked.</p>
-            <button onClick={() => setShowCreate(false)} className="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-muted/30 transition-colors">Cancel</button>
-            <button
-              onClick={handleCreate}
+  </div>
+  {editingId && acceptedRels.length > 0 && <fieldset className="flex flex-col gap-2 rounded-lg border border-border p-3"><legend className="px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Accepted relationships</legend>{acceptedRels.map((relationship) => <label key={relationship.id} className="flex items-center gap-2 text-xs text-foreground"><input type="checkbox" checked={form.relationships.includes(relationship.id)} onChange={(event) => setForm((current) => ({ ...current, relationships: event.target.checked ? [...current.relationships, relationship.id] : current.relationships.filter((id) => id !== relationship.id) }))} className="h-3.5 w-3.5 accent-primary" /><span className="font-mono text-[10px]">{relationship.sourceTable}.{relationship.sourceColumn} → {relationship.targetTable}.{relationship.targetColumn}</span></label>)}</fieldset>}
+  <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+  <p className="text-[10px] text-muted-foreground flex-1">{editingId ? "Saving creates a revision and returns pending definitions to Draft." : `${acceptedRels.length} accepted relationships will be auto-linked.`}</p>
+  <button onClick={() => { setShowCreate(false); setEditingId(null); setForm(emptyForm); }} className="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-muted/30 transition-colors">Cancel</button>
+  <button
+  onClick={handleSave}
               disabled={saving || !form.datasetName.trim()}
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60 font-medium"
             >
-              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
-              Create
+  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+  {editingId ? "Save Revision" : "Create"}
             </button>
           </div>
         </div>
@@ -958,15 +1023,16 @@ function DatasetsPanel({
 
               {/* Footer actions */}
               {(ds.status === "Draft" || ds.status === "Pending Approval") && (
-                <div className="pt-2 border-t border-border/50 mt-auto">
-                  <button
-                    onClick={() => ds.status === "Draft" ? onRequestApproval(ds.datasetId) : onPublish(ds.datasetId)}
-                    className="w-full flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg bg-chart-3/15 text-chart-3 border border-chart-3/30 hover:bg-chart-3/25 transition-colors font-medium"
-                  >
-                    <ShieldCheck className="w-3 h-3" />
-                    {ds.status === "Draft" ? "Request Approval" : "Certify & Publish"}
-                  </button>
-                </div>
+  <div className="flex gap-2 pt-2 border-t border-border/50 mt-auto">
+  <button onClick={() => beginEdit(ds)} className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted/30"><Edit3 className="h-3 w-3" />Edit</button>
+  <button
+  onClick={() => ds.status === "Draft" ? onRequestApproval(ds.datasetId) : onPublish(ds.datasetId)}
+  className="flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg bg-chart-3/15 text-chart-3 border border-chart-3/30 hover:bg-chart-3/25 transition-colors font-medium"
+  >
+  <ShieldCheck className="w-3 h-3" />
+  {ds.status === "Draft" ? "Request Approval" : "Certify & Publish"}
+  </button>
+  </div>
               )}
             </div>
           ))}
@@ -1045,35 +1111,45 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
     try {
       const res = await fetch("/api/schema/tables");
       if (!res.ok) return;
-      const json = await res.json() as {
-        source: string;
-        tables: { table_schema: string; table_name: string; qualified_name: string }[];
-      };
-      if (json.source === "no_db" || !json.tables.length) return;
+  const json = await res.json() as {
+  source: string;
+  tables: Array<{
+  table_schema: string;
+  table_name: string;
+  qualified_name: string;
+  estimated_row_count?: number;
+  columns?: Array<{ column_name: string; data_type: string; is_nullable: boolean; is_primary_key: boolean; is_foreign_key: boolean }>;
+  }>;
+  };
+  if (json.source === "no_db" || !json.tables.length) return;
 
-      // Build a lookup of existing SOURCE_TABLE names (unqualified, lowercase)
-      const existingNames = new Set(SOURCE_TABLES.map((t) => t.name.toLowerCase()));
-
-      // Tables present in the live DB but not in SOURCE_TABLES
-      const newTables: TableDef[] = json.tables
-        .filter((r) => !existingNames.has(r.table_name.toLowerCase()))
-        .map((r) => ({
-          name:                r.table_name,
-          schema:              r.table_schema,
-          recordCount:         0,
-          columnCount:         0,
-          primaryKeys:         [],
-          foreignKeys:         [],
-          businessDescription: `Live table discovered from ${r.table_schema} schema.`,
-          columns:             [],
-        }));
-
-      setDiscoveryTables([...SOURCE_TABLES, ...newTables]);
-      if (newTables.length > 0) {
-        showToast(`Catalog refreshed — ${newTables.length} additional table(s) from live DB`);
-      } else {
-        showToast("Catalog is in sync with the live database");
-      }
+  const staticByName = new Map(SOURCE_TABLES.map((table) => [table.name.toLowerCase(), table]));
+  const hydratedTables: TableDef[] = json.tables.map((row) => {
+  const existing = staticByName.get(row.table_name.toLowerCase());
+  const columns = (row.columns ?? []).map((column) => ({
+  name: column.column_name,
+  type: column.data_type,
+  isPk: column.is_primary_key,
+  isFk: column.is_foreign_key,
+  nullable: column.is_nullable,
+  description: existing?.columns.find((item) => item.name.toLowerCase() === column.column_name.toLowerCase())?.description ?? "Live source column",
+  }));
+  return {
+  name: row.table_name,
+  schema: row.table_schema,
+  recordCount: row.estimated_row_count ?? existing?.recordCount ?? 0,
+  columnCount: columns.length || existing?.columnCount || 0,
+  primaryKeys: columns.filter((column) => column.isPk).map((column) => column.name),
+  foreignKeys: columns.filter((column) => column.isFk).map((column) => column.name),
+  businessDescription: existing?.businessDescription ?? `Live table discovered from ${row.table_schema} schema.`,
+  columns: columns.length ? columns : existing?.columns ?? [],
+  };
+  });
+  const liveNames = new Set(hydratedTables.map((table) => table.name.toLowerCase()));
+  const staticOnly = SOURCE_TABLES.filter((table) => !liveNames.has(table.name.toLowerCase()));
+  setDiscoveryTables([...hydratedTables, ...staticOnly]);
+  setCanvasTables((current) => current.map((table) => hydratedTables.find((live) => live.name.toLowerCase() === table.name.toLowerCase()) ?? table));
+  showToast(`Catalog refreshed — ${hydratedTables.length} live table(s) hydrated`);
     } catch {
       // Non-critical — keep showing SOURCE_TABLES
     } finally {
@@ -1287,7 +1363,22 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
         setSelectedDatasetId(json.dataset.datasetId);
         showToast(`Dataset "${json.dataset.datasetName}" created`);
       }
-    } catch (err) { showToast(`Failed to create dataset${err instanceof Error ? `: ${err.message}` : ""}`, false); }
+    } catch (err) { showToast(`Failed to create dataset${err instanceof Error ? `: ${err.message}` : ""}`, false); throw err; }
+  }
+
+  async function handleUpdateDataset(datasetId: string, data: Partial<SemanticDataset>) {
+    try {
+      const res = await fetch("/api/designer/datasets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update_dataset", datasetId, actor: "analyst", ...data }),
+      });
+      const json = await res.json() as { success?: boolean; dataset?: SemanticDataset; error?: string };
+      if (!res.ok || !json.success || !json.dataset) throw new Error(json.error ?? `HTTP ${res.status}`);
+      setDatasets((current) => current.map((dataset) => dataset.datasetId === datasetId ? json.dataset! : dataset));
+      setSelectedDatasetId(datasetId);
+      showToast(`${json.dataset.datasetName} saved as v${json.dataset.version} · ${json.dataset.history?.length ?? 0} revision(s)`);
+    } catch (err) { showToast(`Failed to update dataset${err instanceof Error ? `: ${err.message}` : ""}`, false); throw err; }
   }
 
   const selectedDataset = datasets.find((dataset) => dataset.datasetId === selectedDatasetId) ?? null;
@@ -1387,6 +1478,7 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
   onPublish={handlePublish}
   onRequestApproval={handleRequestApproval}
   onCreate={handleCreateDataset}
+  onUpdate={handleUpdateDataset}
                 onRefresh={loadData}
               />
             )}
