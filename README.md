@@ -35,7 +35,9 @@ Forbidden database operations:
 - `INSERT`, `UPDATE`, `DELETE`, or `MERGE`;
 - `CREATE`, `ALTER`, `DROP`, `TRUNCATE`, or `RENAME`;
 - `GRANT`, `REVOKE`, `DENY`, `USE`, or stored-procedure execution;
-- `SELECT INTO`, multiple SQL statements, or privileged external data access;
+- `SELECT INTO` or privileged external data access;
+
+Governed multi-result reports may contain multiple semicolon-delimited statements only when every statement independently begins with `SELECT` or a read-only CTE and passes the shared guard.
 - migrations, seed scripts, or schema modifications against the source database.
 
 If a feature appears to require a source-data mutation, stop and design a read-only alternative. Application metadata may be virtual or process-local, but it must never be written back to the healthcare source database.
@@ -113,33 +115,123 @@ Do not add a bypass around these modules. New query routes require validation, b
 - Inspect audit records, security configuration, sessions, agents, pipelines, and query history.
 - Analyze retry behavior and learned term mappings without changing source data.
 
-## Architecture
+## User and administrator guide
 
-```text
-Browser
-  |
-  v
-Next.js 16 App Router
-  |-- React application hubs
-  |-- Next.js route handlers
-  |-- NextAuth / Microsoft Entra ID
-  |-- Vercel AI SDK and AI Gateway
-  |
-  v
-Validation and orchestration
-  |-- Query Gateway
-  |-- Read-only SQL guard
-  |-- Schema-aware planning and retry
-  |-- Metadata, KPI, report, and export services
-  |
-  v
-Parameterized mssql data layer
-  |
-  v
-Read-only SQL Server / Azure SQL source
+### Roles
+
+| Persona | Primary activities |
+| --- | --- |
+| Executive or manager | Review KPI cards, trends, exceptions, operational status, and exported reports |
+| Analyst | Discover data, generate and review SQL, build datasets, run reports, investigate results, and export data |
+| Data steward | Review KPI definitions, evidence, aliases, glossary terms, ownership, lineage, and validation status |
+| Administrator | Inspect security posture, sessions, observability, query history, metadata validation, and agent health |
+| Engineer | Maintain guarded APIs, metadata artifacts, integrations, tests, and deployment controls |
+
+The demo identity service currently returns `Admin` and `Analyst` roles. Production authorization must be enforced by each protected server route; hiding a navigation item is not an authorization control.
+
+### Workspace map
+
+```mermaid
+flowchart TD
+    W[AcaciaHealth workspace] --> D[Dashboard]
+    W --> X[Data Explorer]
+    W --> DS[Dataset Studio]
+    W --> BI[BI Workspace]
+    W --> RS[Report Studio]
+    W --> KPI[KPI Intelligence]
+    W --> SH[Schema Intelligence]
+    W --> AD[Administration]
+    W --> AU[Audit]
+    W --> AR[Agent Registry]
+    DS --> DES[Designer]
+    DS --> VAL[Validation]
+    RS --> SQL[SQL editor]
+    RS --> SEM[Semantic query]
+    RS --> VIS[Visual builder]
+    RS --> SAV[Saved reports]
+    SH --> REG[Registry and glossary]
+    SH --> LIN[Metadata and lineage]
 ```
 
-The browser never connects directly to SQL Server. Credentials remain in server-side environment variables, and live SQL is executed through the `mssql` driver. When a usable database connection is absent, supported surfaces can operate with synthetic demo data.
+### Run a report
+
+1. Open **Report Studio** and choose the SQL, semantic, visual, or saved-report workflow.
+2. Set the reporting date range and any governed business filters.
+3. Review generated SQL before execution. Use explicit columns and bound parameters.
+4. Run the report. For a governed batch, each statement is validated separately and each returned dataset remains independent.
+5. Select the named result set to inspect; review row count, execution time, source lineage, classification, confidence, and verification support.
+6. Export only the selected result set to an available CSV, spreadsheet, JSON, or print/PDF workflow.
+7. Open post-query analytics for follow-up questions. Switching result sets clears the prior conversation so analysis cannot cross dataset boundaries.
+
+### Use the BI Workspace
+
+1. Create or select a workspace tab.
+2. Ask a precise question containing the measure, population, date window, and grouping.
+3. Generate SQL from governed schema and saved-report context.
+4. Review the generated SQL, explanation, source context, and confidence.
+5. Execute through `/api/datasets/query` using `StartDate` and `EndDate`.
+6. If execution fails, inspect the proposed read-only correction. High-confidence corrections may be retried by the workflow.
+7. Save successful work only with the understanding that the current report service is process-local and non-authoritative.
+
+### Build a dataset
+
+1. Select trusted source tables and explicit fields in **Dataset Studio**.
+2. Add joins only where known metadata relationships support them.
+3. Add date and business filters, grouping, and supported aggregations.
+4. Preview the generated read-only query and sample data.
+5. Run schema, relationship, filter, and quality validation.
+6. Export the validated result or consume the virtual dataset in reporting workflows.
+
+Interactive filtering and aggregation can operate on already-returned rows to avoid unnecessary database round trips. Dataset execution returns at most 10,000 rows and discloses truncation and demo mode in its result contract.
+
+## KPI and data governance
+
+### Evidence model
+
+| Evidence | Interpretation |
+| --- | --- |
+| Classification | Structural or metadata match to a governed KPI family |
+| Confidence | Match strength; never proof of numerical correctness |
+| Lineage | Statement-specific source tables and extracted columns |
+| Verification plan | Whether a separate safe aggregate can validate the observation |
+| `validated` | Observation and verification agree within tolerance |
+| `partial` | Evidence exists but coverage is incomplete or values differ |
+| `unverified` | A safe numerical comparison is unavailable |
+
+```mermaid
+flowchart LR
+    C[Source column] --> T[Source table]
+    T --> M[Business measure]
+    M --> K[Governed KPI]
+    K --> E[Evidence and verification]
+```
+
+Schema Intelligence derives glossary, provenance, relationships, and lineage from version-controlled metadata and SQL analysis. It must not be described as runtime column-level tracing beyond the evidence available in those artifacts. Newly discovered KPI candidates remain Draft until reviewed by Data Governance; discovery does not imply certification.
+
+### Administrative operations
+
+- **Security Console:** review identity and session posture. Compliance labels in demo UI describe intended controls, not deployment certification.
+- **Observability:** inspect process-local performance, prompt health, failures, and request correlation.
+- **Query History:** identify repeated failures, expensive patterns, and opportunities for canonical reports or glossary aliases.
+- **Metadata Validation:** compare catalogs, expected fields, relationships, and KPI dependencies without repairing or changing source schema.
+- **Agent Registry:** inspect query-planning, schema-aware retry, KPI, metadata, relationship, and orchestration responsibilities.
+
+## Architecture
+
+```mermaid
+flowchart TB
+    Browser[React workspaces] --> App[Next.js 16 App Router]
+    App --> Routes[Route handlers]
+    Routes --> Orch[Request orchestration]
+    Orch --> Services[Report, dataset, KPI and schema services]
+    Services --> Guard[ReadOnlyDataClient and SQL guard]
+    Guard --> DB[(Read-only SQL Server)]
+    Services --> AI[Vercel AI Gateway]
+    Services --> Catalog[Versioned governance catalogs]
+    Services --> Memory[Bounded process-local stores]
+```
+
+The browser never connects directly to SQL Server. Credentials remain in server-side environment variables, and live SQL is executed through the `mssql` driver. When a usable database connection is absent, supported surfaces can operate with synthetic demo data that must be visibly identified as `demoMode`.
 
 ## Technology stack
 
@@ -223,7 +315,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-Development and preview environments expose a credentials-based demo sign-in only when Microsoft Entra ID is not configured. The production authentication path uses Entra ID.
+The current `/api/auth/validate` implementation is a demonstrative identity flow: it includes hardcoded demo users and simulated SSO, passwordless, MFA, device, and network states. Production page middleware can verify a NextAuth token when Azure AD variables are configured, but `/api/*` routes are deliberately excluded from middleware. Before handling sensitive data, replace the demo flow with one server-verifiable session model and enforce authentication and role authorization inside every protected API route.
 
 ### Environment variables
 
@@ -288,18 +380,36 @@ The test suite covers read-only enforcement, query validation, parameterized fil
 
 ## Operational modes and persistence
 
+| Capability | Current mode | Limitation |
+| --- | --- | --- |
+| Operational analytics | Read-only SQL Server | The application must never mutate it |
+| Reports, snapshots, versions, execution records | Bounded process-local maps | Virtual, non-authoritative, and lost on restart |
+| Workspace tabs and selected UI state | Browser/Zustand state | Interactive continuity only; not a record of truth |
+| Query history and telemetry | Process-local or browser-local by surface | Not durable across all deployments |
+| Governance catalogs | Version-controlled JSON and TypeScript | Changed through reviewed code/artifact workflows, never source-schema mutations |
+| Demo results | Synthetic service fallback | Must never be represented as operational data |
+
 - **Live database mode:** executes validated, parameterized reads against SQL Server.
 - **Demo mode:** uses synthetic data when no usable database is configured.
 - **Unavailable mode:** reports a configured but unreachable database without silently treating it as live.
-- **Virtual metadata:** several report, dataset, KPI, and administration stores are process-local or non-authoritative. Treat them as preview/workflow state unless a service explicitly documents durable storage.
 
-Do not represent virtual metadata as a write to the source system. Do not place healthcare source data into client-side persistence.
+```mermaid
+stateDiagram-v2
+    [*] --> Draft
+    Draft --> Validated: evidence reviewed
+    Validated --> Published: steward approval
+    Published --> Archived: retired
+    Validated --> Draft: definition changes
+    Published --> Draft: material revision
+```
+
+The lifecycle diagram is a governance model; process-local saved objects do not become durable records merely because they are labeled published. Do not represent virtual metadata as a write to the source system, and do not place healthcare source data into client-side persistence.
 
 ## Security model
 
-- Microsoft Entra ID is the production identity provider.
+- Microsoft Entra ID with a server-verifiable session is the production target; the current custom validation route remains demonstrative.
 - Database and AI credentials are server-only.
-- SQL guards reject mutations, DDL, multi-statement execution, and privileged commands.
+- SQL guards reject mutations, DDL, permission changes, stored procedures, context changes, `SELECT INTO`, and privileged external access. Governed multi-result batches are permitted only when every statement independently passes read-only validation.
 - Generated analytics queries require governed tables and parameterized date bounds.
 - Dynamic filter values are bound parameters; identifiers are metadata-validated and safely quoted.
 - Connection attempts are bounded, pooled, retried only for appropriate failures, and protected by cooldowns.
