@@ -3,22 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import {
-  ChevronUp,
-  ChevronDown,
-  ChevronsUpDown,
-  ChevronLeft,
-  ChevronRight,
-  Search,
-  X,
-  RefreshCw,
-  Download,
-  Database,
-  Filter,
-  AlertCircle,
-  Boxes,
-  Check,
-  Lock,
-  Sparkles,
+  ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown,
+  Download, Filter, X, RefreshCw, Database, AlertCircle, Sparkles, Boxes, Check,
+  Search, Table2, ShieldCheck, GitBranch, Clock3, Rows3, ArrowRight, Layers3,
 } from "lucide-react";
 import schemaConfig    from "@/lib/config/schemaConfig.json";
 import {
@@ -171,6 +158,8 @@ export function DataExplorer({
   const [showSemanticSearch, setShowSemanticSearch] = useState(initialSemanticSearch);
   const [catalogSelectionError, setCatalogSelectionError] = useState<string | null>(null);
   const [selectedCatalogContext, setSelectedCatalogContext] = useState<string | null>(null);
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const [catalogView, setCatalogView] = useState<"discover" | "analyze">("discover");
   const dataIntentRef = useRef(0);
   const filterKey = JSON.stringify(filters);
   const previousFilterKeyRef = useRef(filterKey);
@@ -278,6 +267,21 @@ export function DataExplorer({
     loadTableList();
   }, [loadTableList]);
 
+  const filteredCatalogTables = tableList.filter((table) =>
+    table.toLowerCase().includes(catalogQuery.trim().toLowerCase())
+  );
+  const featuredTables = (filteredCatalogTables.length > 0 ? filteredCatalogTables : tableList).slice(0, 6);
+  const selectedDomain = selectedTable.includes(".") ? selectedTable.split(".")[0] : "Enterprise";
+
+  function tableLabel(table: string) {
+    return table.split(".").at(-1)?.replace(/_/g, " ") ?? table;
+  }
+
+  function openTable(t: string) {
+    handleTableChange(t);
+    setCatalogView("analyze");
+  }
+
   function handleTableChange(t: string) {
     setSelectedTable(t);
     setPage(1);
@@ -365,7 +369,70 @@ export function DataExplorer({
   const isStaged = staged.some((t) => t.toLowerCase() === selectedTable.toLowerCase());
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
+      <section className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="flex flex-col gap-5 border-b border-border bg-muted/20 p-5 md:flex-row md:items-end md:justify-between">
+          <div className="flex max-w-2xl flex-col gap-2">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+              <Layers3 className="size-4" />
+              Governed data catalog
+            </div>
+            <div>
+              <h1 className="font-sans text-2xl font-semibold tracking-tight text-foreground text-balance">Discover trusted data, then analyze the detail</h1>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground text-pretty">Find operational tables by domain or meaning. Every preview remains read-only and preserves source context for dataset design.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1" aria-label="Discovery workflow">
+            <button type="button" onClick={() => setCatalogView("discover")} className={cn("rounded-md px-3 py-1.5 text-xs font-medium transition-colors", catalogView === "discover" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>Discover</button>
+            <button type="button" onClick={() => setCatalogView("analyze")} className={cn("rounded-md px-3 py-1.5 text-xs font-medium transition-colors", catalogView === "analyze" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>Analyze</button>
+          </div>
+        </div>
+
+        {catalogView === "discover" && (
+          <div className="flex flex-col gap-5 p-5">
+            <div className="relative max-w-2xl">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <label htmlFor="catalog-search" className="sr-only">Search the data catalog</label>
+              <input id="catalog-search" type="search" value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="Search tables, domains, or business concepts" className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-4 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {[
+                { label: "Available tables", value: tableList.length, icon: Table2 },
+                { label: "Catalog source", value: tableSource === "live_db" ? "Live DB" : "Static", icon: Database },
+                { label: "Staged tables", value: staged.length, icon: Boxes },
+                { label: "Access policy", value: "Read only", icon: ShieldCheck },
+              ].map((metric) => (
+                <div key={metric.label} className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"><metric.icon className="size-4" /></div>
+                  <div className="min-w-0"><p className="truncate text-[11px] text-muted-foreground">{metric.label}</p><p className="text-sm font-semibold text-foreground tabular-nums">{metric.value}</p></div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-semibold text-foreground">Featured datasets</h2><p className="text-xs text-muted-foreground">Start with a governed source, then inspect rows and columns.</p></div><button type="button" onClick={() => setShowSemanticSearch(true)} className="flex items-center gap-1.5 text-xs font-medium text-primary"><Sparkles className="size-3.5" />Semantic search</button></div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {featuredTables.map((table, index) => (
+                  <article key={table} className="group flex min-h-40 flex-col justify-between gap-4 rounded-lg border border-border bg-background p-4 transition-colors hover:border-primary/40">
+                    <div className="flex items-start justify-between gap-3"><div className="flex size-9 items-center justify-center rounded-md bg-muted text-muted-foreground"><Rows3 className="size-4" /></div><span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{index < 2 ? "Featured" : selectedDomain}</span></div>
+                    <div><h3 className="text-sm font-semibold capitalize text-foreground text-balance">{tableLabel(table)}</h3><p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">Operational source available for governed preview, filtering, export, and dataset composition.</p></div>
+                    <div className="flex items-center justify-between gap-3"><code className="truncate text-[10px] text-muted-foreground">{table}</code><button type="button" onClick={() => openTable(table)} className="flex shrink-0 items-center gap-1 text-xs font-medium text-primary">Open <ArrowRight className="size-3.5" /></button></div>
+                  </article>
+                ))}
+              </div>
+              {featuredTables.length === 0 && <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">No catalog assets match your search.</p>}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {catalogView === "analyze" && (
+      <>
+      <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3"><div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"><Table2 className="size-4" /></div><div className="min-w-0"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Analyzing</p><h2 className="truncate text-sm font-semibold text-foreground">{tableLabel(selectedTable)}</h2><code className="block truncate text-[10px] text-muted-foreground">{selectedTable}</code></div></div>
+        <div className="flex items-center gap-3 text-[11px] text-muted-foreground"><span className="flex items-center gap-1"><GitBranch className="size-3.5" />{selectedDomain}</span><span className="flex items-center gap-1"><Clock3 className="size-3.5" />On demand</span><span className="flex items-center gap-1"><ShieldCheck className="size-3.5" />Read only</span></div>
+      </div>
       {/* Header row */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         {/* Table picker — dropdown of all tables in the database */}
@@ -408,7 +475,7 @@ export function DataExplorer({
             className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium bg-muted text-muted-foreground border border-border"
             title="Tables are read-only in Discover Data"
           >
-            <Lock className="w-2.5 h-2.5" />
+            <ShieldCheck className="size-2.5" />
             Read-only
           </span>
           <button
@@ -690,6 +757,8 @@ export function DataExplorer({
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }
