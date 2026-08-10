@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import useSWR from "swr";
 import { cn } from "@/lib/utils";
 import {
   ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown,
@@ -41,6 +42,35 @@ interface DataPage {
   totalPages: number;
   source:     "demo" | "live_db";
 }
+
+interface CatalogTable {
+  id: string;
+  name: string;
+  schema: string;
+  domain: string;
+  entityType: string;
+  columnCount: number;
+  description: string;
+  tags: string[];
+  rowEstimate: number;
+  lastSyncAt: string;
+  owner: string;
+  usageCount: number;
+  kpiDependencies: string[];
+  upstreamTables: string[];
+  downstreamTables: string[];
+}
+
+interface CatalogResponse {
+  tables: CatalogTable[];
+  scope: { tables: number; relationships: number; kpis: number; lastRefresh: string };
+}
+
+const catalogFetcher = async (url: string): Promise<CatalogResponse> => {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("Catalog metadata is unavailable");
+  return response.json() as Promise<CatalogResponse>;
+};
 
 const TABLES: string[] =
   allTablesJson.length > 0
@@ -135,6 +165,10 @@ export function DataExplorer({
   onCatalogNavigate,
 }: DataExplorerProps) {
   const staged = useDatasetDraft();
+  const { data: catalog, error: catalogError } = useSWR("/api/schema/intelligence", catalogFetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60_000,
+  });
   const [selectedTable, setSelectedTable] = useState<string>(TABLES[0]);
   // Full list of tables in the database — populated from /api/schema (live or
   // static). Falls back to the statically-known schemaConfig tables.
@@ -267,14 +301,43 @@ export function DataExplorer({
     loadTableList();
   }, [loadTableList]);
 
-  const filteredCatalogTables = tableList.filter((table) =>
-    table.toLowerCase().includes(catalogQuery.trim().toLowerCase())
-  );
-  const featuredTables = (filteredCatalogTables.length > 0 ? filteredCatalogTables : tableList).slice(0, 6);
-  const selectedDomain = selectedTable.includes(".") ? selectedTable.split(".")[0] : "Enterprise";
+  function normalizedTableName(table: string) {
+    return table.replace(/^\[|\]$/g, "").replace(/\]\./g, ".").toLowerCase();
+  }
+
+  function metadataFor(table: string) {
+    const normalized = normalizedTableName(table);
+    const shortName = normalized.split(".").at(-1);
+    return catalog?.tables.find((asset) => {
+      const id = normalizedTableName(asset.id);
+      return id === normalized || (id.split(".").at(-1) === shortName && normalized.split(".").length === 1);
+    });
+  }
+
+  const filteredCatalogTables = tableList.filter((table) => {
+    const query = catalogQuery.trim().toLowerCase();
+    if (!query) return true;
+    const metadata = metadataFor(table);
+    return [table, metadata?.name, metadata?.domain, metadata?.owner, metadata?.description, ...(metadata?.tags ?? []), ...(metadata?.kpiDependencies ?? [])]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
+  const featuredTables = [...filteredCatalogTables]
+    .sort((a, b) => (metadataFor(b)?.usageCount ?? 0) - (metadataFor(a)?.usageCount ?? 0))
+    .slice(0, 6);
+  const selectedMetadata = metadataFor(selectedTable);
+  const selectedDomain = selectedMetadata?.domain ?? (selectedTable.includes(".") ? selectedTable.split(".")[0] : "Enterprise");
+  const relatedTables = [...(selectedMetadata?.upstreamTables ?? []), ...(selectedMetadata?.downstreamTables ?? [])]
+    .map((related) => tableList.find((table) => catalogTableMatches(table, related)))
+    .filter((table): table is string => Boolean(table))
+    .slice(0, 6);
 
   function tableLabel(table: string) {
     return table.split(".").at(-1)?.replace(/_/g, " ") ?? table;
+  }
+
+  function formatCompactNumber(value: number) {
+    return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
   }
 
   function openTable(t: string) {
@@ -390,18 +453,21 @@ export function DataExplorer({
 
         {catalogView === "discover" && (
           <div className="flex flex-col gap-5 p-5">
-            <div className="relative max-w-2xl">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <label htmlFor="catalog-search" className="sr-only">Search the data catalog</label>
-              <input id="catalog-search" type="search" value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="Search tables, domains, or business concepts" className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-4 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary" />
+            <div className="flex max-w-2xl flex-col gap-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <label htmlFor="catalog-search" className="sr-only">Search the data catalog</label>
+                <input id="catalog-search" type="search" value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="Search tables, domains, owners, KPIs, or business concepts" className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-4 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary" />
+              </div>
+              {catalogError && <p role="status" className="text-xs text-muted-foreground">Governance metadata is temporarily unavailable. Physical table discovery remains available.</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               {[
                 { label: "Available tables", value: tableList.length, icon: Table2 },
-                { label: "Catalog source", value: tableSource === "live_db" ? "Live DB" : "Static", icon: Database },
-                { label: "Staged tables", value: staged.length, icon: Boxes },
-                { label: "Access policy", value: "Read only", icon: ShieldCheck },
+                { label: "Governed KPIs", value: catalog?.scope.kpis ?? "—", icon: ShieldCheck },
+                { label: "Relationships", value: catalog?.scope.relationships ?? "—", icon: GitBranch },
+                { label: "Catalog coverage", value: catalog ? `${Math.round((tableList.filter((table) => metadataFor(table)).length / Math.max(tableList.length, 1)) * 100)}%` : "—", icon: Database },
               ].map((metric) => (
                 <div key={metric.label} className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
                   <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"><metric.icon className="size-4" /></div>
@@ -413,13 +479,18 @@ export function DataExplorer({
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-semibold text-foreground">Featured datasets</h2><p className="text-xs text-muted-foreground">Start with a governed source, then inspect rows and columns.</p></div><button type="button" onClick={() => setShowSemanticSearch(true)} className="flex items-center gap-1.5 text-xs font-medium text-primary"><Sparkles className="size-3.5" />Semantic search</button></div>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {featuredTables.map((table, index) => (
-                  <article key={table} className="group flex min-h-40 flex-col justify-between gap-4 rounded-lg border border-border bg-background p-4 transition-colors hover:border-primary/40">
-                    <div className="flex items-start justify-between gap-3"><div className="flex size-9 items-center justify-center rounded-md bg-muted text-muted-foreground"><Rows3 className="size-4" /></div><span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{index < 2 ? "Featured" : selectedDomain}</span></div>
-                    <div><h3 className="text-sm font-semibold capitalize text-foreground text-balance">{tableLabel(table)}</h3><p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">Operational source available for governed preview, filtering, export, and dataset composition.</p></div>
-                    <div className="flex items-center justify-between gap-3"><code className="truncate text-[10px] text-muted-foreground">{table}</code><button type="button" onClick={() => openTable(table)} className="flex shrink-0 items-center gap-1 text-xs font-medium text-primary">Open <ArrowRight className="size-3.5" /></button></div>
-                  </article>
-                ))}
+                {featuredTables.map((table, index) => {
+                  const metadata = metadataFor(table);
+                  const relationshipCount = (metadata?.upstreamTables.length ?? 0) + (metadata?.downstreamTables.length ?? 0);
+                  return (
+                    <article key={table} className="group flex min-h-48 flex-col justify-between gap-4 rounded-lg border border-border bg-background p-4 transition-colors hover:border-primary/40">
+                      <div className="flex items-start justify-between gap-3"><div className="flex size-9 items-center justify-center rounded-md bg-muted text-muted-foreground"><Rows3 className="size-4" /></div><span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{index < 2 ? "Featured" : metadata?.domain ?? "Catalog"}</span></div>
+                      <div><h3 className="text-sm font-semibold capitalize text-foreground text-balance">{tableLabel(table)}</h3><p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{metadata?.description ?? "Operational source available for governed preview, filtering, export, and dataset composition."}</p></div>
+                      <dl className="grid grid-cols-3 gap-2 text-[10px]"><div><dt className="text-muted-foreground">Rows est.</dt><dd className="font-medium text-foreground">{metadata ? formatCompactNumber(metadata.rowEstimate) : "—"}</dd></div><div><dt className="text-muted-foreground">Columns</dt><dd className="font-medium text-foreground">{metadata?.columnCount ?? "—"}</dd></div><div><dt className="text-muted-foreground">Relations</dt><dd className="font-medium text-foreground">{metadata ? relationshipCount : "—"}</dd></div></dl>
+                      <div className="flex items-center justify-between gap-3"><div className="min-w-0"><code className="block truncate text-[10px] text-muted-foreground">{table}</code><span className="block truncate text-[10px] text-muted-foreground">{metadata ? `Owner: ${metadata.owner}` : "Metadata not cataloged"}</span></div><button type="button" onClick={() => openTable(table)} className="flex shrink-0 items-center gap-1 text-xs font-medium text-primary">Explore <ArrowRight className="size-3.5" /></button></div>
+                    </article>
+                  );
+                })}
               </div>
               {featuredTables.length === 0 && <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">No catalog assets match your search.</p>}
             </div>
@@ -429,9 +500,13 @@ export function DataExplorer({
 
       {catalogView === "analyze" && (
       <>
-      <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-center gap-3"><div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"><Table2 className="size-4" /></div><div className="min-w-0"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Analyzing</p><h2 className="truncate text-sm font-semibold text-foreground">{tableLabel(selectedTable)}</h2><code className="block truncate text-[10px] text-muted-foreground">{selectedTable}</code></div></div>
-        <div className="flex items-center gap-3 text-[11px] text-muted-foreground"><span className="flex items-center gap-1"><GitBranch className="size-3.5" />{selectedDomain}</span><span className="flex items-center gap-1"><Clock3 className="size-3.5" />On demand</span><span className="flex items-center gap-1"><ShieldCheck className="size-3.5" />Read only</span></div>
+      <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3"><div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"><Table2 className="size-4" /></div><div className="min-w-0"><p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Analyzing</p><h2 className="truncate text-sm font-semibold capitalize text-foreground">{tableLabel(selectedTable)}</h2><code className="block truncate text-[10px] text-muted-foreground">{selectedTable}</code><p className="mt-2 max-w-2xl text-xs leading-relaxed text-muted-foreground">{selectedMetadata?.description ?? "This source is available for a governed, read-only data preview."}</p></div></div>
+          <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground"><span className="flex items-center gap-1"><GitBranch className="size-3.5" />{selectedDomain}</span><span className="flex items-center gap-1"><Clock3 className="size-3.5" />On demand</span><span className="flex items-center gap-1"><ShieldCheck className="size-3.5" />Read only</span></div>
+        </div>
+        <dl className="grid grid-cols-2 gap-3 border-t border-border pt-3 sm:grid-cols-4"><div><dt className="text-[10px] text-muted-foreground">Preview rows</dt><dd className="text-sm font-semibold text-foreground tabular-nums">{data?.total.toLocaleString() ?? "—"}</dd></div><div><dt className="text-[10px] text-muted-foreground">Catalog estimate</dt><dd className="text-sm font-semibold text-foreground tabular-nums">{selectedMetadata ? formatCompactNumber(selectedMetadata.rowEstimate) : "—"}</dd></div><div><dt className="text-[10px] text-muted-foreground">Columns</dt><dd className="text-sm font-semibold text-foreground tabular-nums">{selectedMetadata?.columnCount ?? data?.columns.length ?? "—"}</dd></div><div><dt className="text-[10px] text-muted-foreground">Owner</dt><dd className="truncate text-sm font-semibold text-foreground">{selectedMetadata?.owner ?? "Not cataloged"}</dd></div></dl>
+        {relatedTables.length > 0 && <div className="flex flex-wrap items-center gap-2"><span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Related tables</span>{relatedTables.map((table) => <button key={table} type="button" onClick={() => openTable(table)} className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] text-foreground transition-colors hover:border-primary/40">{tableLabel(table)}</button>)}</div>}
       </div>
       {/* Header row */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
