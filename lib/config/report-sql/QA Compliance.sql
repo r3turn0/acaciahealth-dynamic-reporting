@@ -5,7 +5,11 @@ DECLARE @StartDate DATE = DATEADD(DAY,-14,@EndDate);
 
 ;WITH dim_branch AS
 (
-    SELECT *
+    SELECT
+        m.service_line,
+        m.epi_slid,
+        m.epi_branchcode,
+        m.branch_name
     FROM (VALUES
         ('HOME HEALTH',1,'PO1','ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH',1,'HL1','ACACIA HOME HEALTH SERVICES'),
@@ -56,7 +60,11 @@ episodes AS
 flags AS
 (
     SELECT
-        ep.*,
+        ep.epi_id,
+        ep.epi_SocDate,
+        ep.epi_RecertFlag,
+        ep.bucket,
+        ep.bucket_sort,
 
         /* Face-to-face */
 
@@ -105,7 +113,14 @@ flags AS
 scored AS
 (
     SELECT
-        *,
+        flags.epi_id,
+        flags.epi_SocDate,
+        flags.epi_RecertFlag,
+        flags.bucket,
+        flags.bucket_sort,
+        flags.is_f2f_compliant,
+        flags.is_cert_compliant,
+        flags.is_recert_compliant,
 
         CASE
             WHEN is_f2f_compliant = 1

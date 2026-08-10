@@ -5,7 +5,11 @@ DECLARE @StartDate DATE = DATEADD(DAY, -14, @EndDate);
 
 ;WITH bucket_map AS
 (
-    SELECT *
+    SELECT
+        m.service_line,
+        m.service_line_id,
+        m.branch_code,
+        m.bucket
     FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
@@ -113,7 +117,11 @@ ORDER BY bucket_sort, bucket;
 
 ;WITH bucket_map AS
 (
-    SELECT *
+    SELECT
+        v.sl_name,
+        v.sl_id,
+        v.branch_code,
+        v.bucket
     FROM (VALUES
         ('HOME HEALTH',1,'PO1','ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH',1,'HL1','ACACIA HOME HEALTH SERVICES'),

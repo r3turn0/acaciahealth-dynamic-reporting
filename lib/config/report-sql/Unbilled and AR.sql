@@ -64,7 +64,7 @@ ORDER BY bucket_sort, ar.branch_code;
 
 ;WITH dim_branch (service_line, epi_slid, epi_branchcode, branch_name) AS
 (
-    SELECT * FROM (VALUES
+    SELECT v.service_line, v.epi_slid, v.epi_branchcode, v.branch_name FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
         ('HOSPICE', 2, 'XO1', 'ACACIA HOSPICE AND PALLIATIVE SERVICES OC'),
@@ -116,7 +116,7 @@ ORDER BY bucket_sort, branch_code
 
 ;WITH dim_branch (service_line, epi_slid, epi_branchcode, branch_name) AS
 (
-    SELECT * FROM (VALUES
+    SELECT v.service_line, v.epi_slid, v.epi_branchcode, v.branch_name FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
         ('HOSPICE', 2, 'XO1', 'ACACIA HOSPICE AND PALLIATIVE SERVICES OC'),

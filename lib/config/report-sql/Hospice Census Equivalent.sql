@@ -12,7 +12,11 @@ DECLARE @HceFactor decimal(5,3) = 0.40;
    DIMENSION (shared pattern)
 ============================================================================ */
 WITH dim_branch AS (
-    SELECT *
+    SELECT
+        d.service_line,
+        d.epi_slid,
+        d.epi_branchcode,
+        d.branch_name
     FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
@@ -86,7 +90,11 @@ FROM census;
 -- RESULT 2: HH + Palliative Combined HCE
 -- ============================================================================
 ;WITH dim_branch AS (
-    SELECT *
+    SELECT
+        d.service_line,
+        d.epi_slid,
+        d.epi_branchcode,
+        d.branch_name
     FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
@@ -151,7 +159,11 @@ FROM hh_pal;
 -- RESULT 3: TOTAL HCE (ALL LOCATIONS)
 -- ============================================================================
 ;WITH dim_branch AS (
-    SELECT *
+    SELECT
+        d.service_line,
+        d.epi_slid,
+        d.epi_branchcode,
+        d.branch_name
     FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),

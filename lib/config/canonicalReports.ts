@@ -34,6 +34,11 @@ const SOURCES: SourceDefinition[] = [
   { file: "Referrals and NTUC - Fixed.sql", kpi: "referrals_ntuc", resultNames: ["Referrals and NTUC - Fixed — Result 1", "Referrals and NTUC - Fixed — Result 2"] },
   { file: "Recerts.sql", kpi: "recertifications", resultNames: ["Recerts — Result 1", "Recerts — Result 2"] },
   { file: "Census and ADC by Service Line and Branch.sql", kpi: "current_census_by_service_line_branch", resultNames: ["Census and ADC by Service Line and Branch"] },
+  { file: "Current Census By Service Line and Branch.sql", kpi: "current_census_by_service_line_branch", resultNames: ["Current Census By Service Line and Branch — Current Census"] },
+  { file: "14 Rolling Days ADC with Patient Days and Current Census vs ADC.sql", kpi: "average_daily_census", resultNames: ["Current Census By Service Line and Branch + 14 Rolling Days ADC with Patient Days and Current Census vs ADC — 14-Day ADC and Patient Days"] },
+  { file: "Daily Census.sql", kpi: "current_census_by_service_line_branch", resultNames: ["Daily Census"] },
+  { file: "Current Census and ADC.sql", kpi: "average_daily_census", resultNames: ["Census and ADC"] },
+  { file: "Current Census and ADC Month to Date.sql", kpi: "average_daily_census", resultNames: ["Current Census and ADC Month to Date"] },
   { file: "Unbilled and AR.sql", kpi: "ar_aging", resultNames: ["Unbilled and AR — Result 1", "Unbilled and AR — Result 2", "Unbilled and AR — Result 3"] },
   { file: "Revenue and RPD.sql", kpi: "revenue", resultNames: ["Revenue and RPD — Result 1", "Revenue and RPD — Result 2"] },
   { file: "Patient Days.sql", kpi: "patient_days", resultNames: ["Patient Days"] },
@@ -43,6 +48,7 @@ const SOURCES: SourceDefinition[] = [
 function normalizeSource(source: string): string {
   return source
     .replace(/^\s*USE\s+HCHB_AcaciaHealth\s*;?\s*$/gim, "")
+    .replace(/^\s*GO\s*;?\s*$/gim, "")
     .replace(/^\s*DECLARE\s+@StartDate\b[^\r\n]*\r?\n?/gim, "")
     .replace(/^\s*DECLARE\s+@EndDate\b[^\r\n]*\r?\n?/gim, "")
     .replace(/^\s*DECLARE\s+@AsOfDate\b[^\r\n]*\r?\n?/gim, "")
@@ -70,10 +76,25 @@ function splitResultSets(source: string, file: string): string[] {
   return parts.map((part) => part.trim()).filter(Boolean);
 }
 
+function assertCanonicalSql(sql: string, file: string, resultSet: number): void {
+  const auditTarget = `${file} result set ${resultSet}`;
+  if (/\bSELECT[ \t]+(?:[A-Za-z_][A-Za-z0-9_]*\.)?\*/i.test(sql)) {
+    throw new Error(`${auditTarget}: wildcard SELECT projections are not allowed`);
+  }
+  if (/^\s*(?:USE|GO)\b/im.test(sql)) {
+    throw new Error(`${auditTarget}: database context and batch directives are not allowed`);
+  }
+  if (/\bDECLARE\s+@(StartDate|EndDate|EndOfDate|AsOfDate)\b/i.test(sql)) {
+    throw new Error(`${auditTarget}: Report Studio date parameters must not be redeclared`);
+  }
+}
+
 function loadSource(definition: SourceDefinition): CanonicalReport[] {
   const path = join(process.cwd(), "lib", "config", "report-sql", definition.file);
   const source = normalizeSource(readFileSync(path, "utf8"));
   const statements = splitResultSets(source, definition.file);
+
+  statements.forEach((sql, index) => assertCanonicalSql(sql, definition.file, index + 1));
 
   if (statements.length !== definition.resultNames.length) {
     throw new Error(

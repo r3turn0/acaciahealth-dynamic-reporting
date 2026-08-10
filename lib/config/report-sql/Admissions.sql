@@ -3,7 +3,7 @@ DECLARE @AsOfDate  date = CAST(GETDATE() AS date)
 DECLARE @StartDate date = DATEADD(day, -14, @AsOfDate)
 DECLARE @EndDate date = @AsOfDate
 ;WITH bucket_map AS (
-    SELECT * FROM (VALUES
+    SELECT m.sl_name, m.sl_id, m.branch_code, m.bucket FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
         ('HOSPICE', 2, 'XO1', 'ACACIA HOSPICE AND PALLIATIVE SERVICES OC'),
@@ -53,7 +53,7 @@ GROUP BY bucket
 ORDER BY service_line, service_line_id;
 
 ;WITH bucket_map AS (
-    SELECT * FROM (VALUES
+    SELECT m.sl_name, m.sl_id, m.branch_code, m.bucket FROM (VALUES
         ('HOME HEALTH', 1, 'PO1', 'ACACIA HOME HEALTH AND PALLIATIVE'),
         ('HOME HEALTH', 1, 'HL1', 'ACACIA HOME HEALTH SERVICES'),
         ('HOSPICE', 2, 'XO1', 'ACACIA HOSPICE AND PALLIATIVE SERVICES OC'),

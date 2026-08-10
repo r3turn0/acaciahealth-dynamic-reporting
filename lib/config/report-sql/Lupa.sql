@@ -25,7 +25,7 @@ DECLARE @StartDate date = DATEADD(DAY, -14, @EndDate);   -- last 14 days
 ),
 lupa_codes AS
 (
-    SELECT * FROM (VALUES
+    SELECT c.code FROM (VALUES
         ('LUPA'),
         ('L')
     ) AS c(code)

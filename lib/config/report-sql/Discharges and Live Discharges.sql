@@ -24,7 +24,7 @@ DECLARE @StartDate date = DATEADD(DAY, -14, @EndDate);   -- last 14 days
     ) AS v(service_line, epi_slid, epi_branchcode, branch_name)
 ),
 dc_class AS (
-    SELECT * FROM (VALUES
+    SELECT c.dr_code, c.dc_class FROM (VALUES
         ('DTH', 'Death'),
         ('EXP', 'Death'),
         ('REV', 'LiveDC-PatientInitiated'),
@@ -86,7 +86,7 @@ ORDER BY bucket_sort, bucket;
     ) AS v(service_line, epi_slid, epi_branchcode, branch_name)
 ),
 dc_class AS (
-    SELECT * FROM (VALUES
+    SELECT c.dr_code, c.dc_class FROM (VALUES
         ('DTH','Death'),('EXP','Death'),
         ('REV','LiveDC-PatientInitiated'),('TRH','LiveDC-PatientInitiated'),
         ('EXT','LiveDC-HospiceInitiated'),('NLT','LiveDC-HospiceInitiated'),
@@ -148,7 +148,7 @@ ORDER BY bucket_sort, dc_class;
     ) AS v(service_line, epi_slid, epi_branchcode, branch_name)
 ),
 dc_class AS (
-    SELECT * FROM (VALUES
+    SELECT c.dr_code, c.dc_class FROM (VALUES
         ('DTH','Death'),('EXP','Death'),
         ('REV','LiveDC-PatientInitiated'),('TRH','LiveDC-PatientInitiated'),
         ('EXT','LiveDC-HospiceInitiated'),('NLT','LiveDC-HospiceInitiated'),
