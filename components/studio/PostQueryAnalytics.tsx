@@ -13,6 +13,10 @@ import {
   ChevronDown,
   ChevronUp,
   RotateCcw,
+  AlertTriangle,
+  TrendingUp,
+  ShieldCheck,
+  Activity,
 } from "lucide-react";
 import {
   BarChart,
@@ -183,6 +187,35 @@ function ChartResult({ response }: { response: AnalyticsResponse["response"] }) 
   );
 }
 
+function EvidencePanel({ intelligence }: { intelligence: NonNullable<AnalyticsResponse["intelligence"]> }) {
+  const [showTrace, setShowTrace] = useState(false);
+  const notableFindings = intelligence.findings.filter((finding) => finding.type !== "KPI").slice(0, 4);
+
+  return (
+    <section className="flex flex-col gap-3 rounded-lg border border-border bg-muted/20 p-3" aria-label="Analytical evidence">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="rounded-md border border-border bg-background p-2.5"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Confidence</p><p className="mt-1 text-lg font-semibold capitalize text-foreground">{intelligence.confidence.level}</p><p className="text-[10px] text-muted-foreground">{Math.round(intelligence.confidence.score * 100)}% evidence score</p></div>
+        <div className="rounded-md border border-border bg-background p-2.5"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Quality</p><p className="mt-1 text-lg font-semibold text-foreground">{Math.round(intelligence.quality.score * 100)}%</p><p className="text-[10px] text-muted-foreground">{intelligence.quality.completeness * 100}% complete</p></div>
+        <div className="rounded-md border border-border bg-background p-2.5"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Evidence</p><p className="mt-1 text-lg font-semibold text-foreground">{intelligence.findings.length}</p><p className="text-[10px] text-muted-foreground">validated findings</p></div>
+        <div className="rounded-md border border-border bg-background p-2.5"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Rows</p><p className="mt-1 text-lg font-semibold text-foreground tabular-nums">{intelligence.quality.rowCount.toLocaleString()}</p><p className="text-[10px] text-muted-foreground">analyzed locally</p></div>
+      </div>
+
+      {intelligence.quality.warnings.length > 0 && (
+        <div className="flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/5 p-2.5 text-xs text-foreground"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" /><div><p className="font-medium">Decision-use warning</p><ul className="mt-1 list-disc pl-4 text-muted-foreground">{intelligence.quality.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div></div>
+      )}
+
+      {notableFindings.length > 0 && <div className="flex flex-col gap-2"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Executive findings</p>{notableFindings.map((finding) => <article key={finding.id} className="rounded-md border border-border bg-background p-3"><div className="flex items-start gap-2">{finding.type === "TREND" ? <TrendingUp className="mt-0.5 size-4 shrink-0 text-primary" /> : finding.type === "ANOMALY" ? <AlertTriangle className="mt-0.5 size-4 shrink-0 text-primary" /> : <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />}<div><h4 className="text-xs font-semibold text-foreground">{finding.title}</h4><p className="mt-1 text-xs leading-relaxed text-muted-foreground">{finding.summary}</p><p className="mt-1 text-[10px] text-muted-foreground">Evidence: {finding.evidence.join(" · ")}</p></div></div></article>)}</div>}
+
+      {intelligence.forecast && <div className="rounded-md border border-border bg-background p-3"><div className="flex items-center gap-2"><TrendingUp className="size-4 text-primary" /><p className="text-xs font-semibold text-foreground">Conservative forecast</p><span className="rounded-full border border-border px-2 py-0.5 text-[10px] capitalize text-muted-foreground">{intelligence.forecast.reliability} reliability</span></div><p className="mt-1 text-xs text-muted-foreground">{intelligence.forecast.metric.replace(/_/g, " ")} is projected {intelligence.forecast.direction} to {intelligence.forecast.projectedValue.toLocaleString()} for the {intelligence.forecast.horizon} using a linear trend.</p></div>}
+
+      <div className="flex flex-col gap-2"><p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Recommended actions</p><ul className="list-disc pl-4 text-xs leading-relaxed text-muted-foreground">{intelligence.recommendations.map((recommendation) => <li key={recommendation}>{recommendation}</li>)}</ul></div>
+
+      <button type="button" onClick={() => setShowTrace((value) => !value)} className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-foreground" aria-expanded={showTrace}><span className="flex items-center gap-2"><Activity className="size-4 text-primary" />Analysis trace</span>{showTrace ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}</button>
+      {showTrace && <ol className="flex flex-col gap-2 border-l border-border pl-3">{intelligence.trace.map((step) => <li key={step.stage} className="text-xs"><span className="font-medium text-foreground">{step.stage}</span><span className="ml-2 text-muted-foreground">{step.detail}</span></li>)}</ol>}
+    </section>
+  );
+}
+
 function KpiResult({ data, columns }: { data: Record<string, unknown>[]; columns?: string[] }) {
   const cols = columns ?? (data.length ? Object.keys(data[0]) : []);
   return (
@@ -207,7 +240,7 @@ function KpiResult({ data, columns }: { data: Record<string, unknown>[]; columns
   );
 }
 
-// ── Message bubble ───────────────────────────────────────────���─────────�����──────
+// ── Message bubble ───────────────────────────────────────────����─────────�����──────
 
 interface Message {
   role: "user" | "assistant";
@@ -285,6 +318,8 @@ function AssistantBubble({ msg, onClarify }: { msg: Message; onClarify: (opt: st
       {response.type === "KPI" && (response.data?.length ?? 0) > 0 && (
         <KpiResult data={response.data!} columns={response.columns} />
       )}
+
+      {analytics.intelligence && <EvidencePanel intelligence={analytics.intelligence} />}
 
       {response.type === "CLARIFICATION" && analytics.clarification && (
         <div className="flex flex-col gap-2">

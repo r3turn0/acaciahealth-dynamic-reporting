@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateText } from "ai";
 import { getModel, isAiConfigured } from "@/lib/ai/gateway";
+import { buildAnalyticsEvidence, summarizeAnalyticsEvidence } from "@/lib/analytics/evidenceEngine";
 import {
   isAnalyticsResponse,
   type AnalyticsDataset,
@@ -23,7 +24,8 @@ const SYSTEM_PROMPT = `You are a Post-Query Analytics Engine that operates on an
 
 CORE RESPONSIBILITY:
 - You DO NOT generate SQL queries.
-- You ONLY analyze the provided dataset, answer follow-up questions, and perform in-memory transformations (grouping, filtering, ranking, summarizing).
+- You receive deterministic analytical evidence, never raw database rows.
+- You synthesize only the supplied evidence and must not invent causes, benchmarks, fields, or forecasts.
 
 ALLOWED OPERATIONS:
 - FILTER (subset rows)
@@ -78,6 +80,7 @@ No free-form text outside JSON. No markdown code fences.`;
 // Used when AI is not configured.
 
 function runFallback(dataset: AnalyticsDataset, question: string): AnalyticsResponse {
+  const evidence = buildAnalyticsEvidence(dataset);
   const q = question.toLowerCase();
   const { columns, rows } = dataset;
 
@@ -122,7 +125,8 @@ function runFallback(dataset: AnalyticsDataset, question: string): AnalyticsResp
             limit: topN,
           },
         },
-        metadata: { source: "in_memory_dataset", confidence: 0.75, fallback: true },
+        metadata: { source: "in_memory_dataset", confidence: evidence.confidence.score, fallback: true },
+        intelligence: evidence,
       };
     }
   }
@@ -143,7 +147,8 @@ function runFallback(dataset: AnalyticsDataset, question: string): AnalyticsResp
       type: "SUMMARY_TEXT",
       text: `Dataset summary (${rows.length} rows): ${summaryParts.join(", ")}.`,
     },
-    metadata: { source: "in_memory_dataset", confidence: 0.6, fallback: true },
+    metadata: { source: "in_memory_dataset", confidence: evidence.confidence.score, fallback: true },
+    intelligence: evidence,
   };
 }
 
@@ -161,27 +166,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "question is required" }, { status: 400 });
     }
 
-    // Cap dataset rows sent to AI to avoid token blowout
-    const MAX_ROWS_AI = 200;
-    const cappedDataset: AnalyticsDataset = {
-      columns: dataset.columns,
-      rows: dataset.rows.slice(0, MAX_ROWS_AI),
-    };
+    const evidence = buildAnalyticsEvidence(dataset);
+    const deterministic = runFallback(dataset, question);
 
     if (!isAiConfigured()) {
-      const fallback = runFallback(cappedDataset, question);
-      return NextResponse.json(fallback);
+      return NextResponse.json(deterministic);
     }
 
-    // Build conversation messages
+    // Privacy boundary: only compact deterministic evidence reaches the model.
+    // Raw result rows remain inside the application process.
     const messages: { role: "user" | "assistant"; content: string }[] = [
-      ...history.slice(-6), // keep last 6 turns for context
+      ...history.slice(-6),
       {
         role: "user",
-        content: [
-          `Dataset (${cappedDataset.rows.length} rows${dataset.rows.length > MAX_ROWS_AI ? ` of ${dataset.rows.length} total, capped for analysis` : ""}):\n${JSON.stringify(cappedDataset)}`,
-          `\nQuestion: ${question}`,
-        ].join(""),
+        content: `Analytical evidence:\n${summarizeAnalyticsEvidence(evidence)}\n\nQuestion: ${question}`,
       },
     ];
 
@@ -198,7 +196,7 @@ export async function POST(req: NextRequest) {
     } catch {
       // Analytics remains available when the AI provider is unavailable,
       // misconfigured, or rate limited.
-      return NextResponse.json(runFallback(cappedDataset, question));
+      return NextResponse.json(deterministic);
     }
 
     // Strip any accidental markdown fences
@@ -207,22 +205,24 @@ export async function POST(req: NextRequest) {
     try {
       parsed = JSON.parse(clean);
     } catch {
-      // Preserve useful model prose when the model returns non-JSON content.
-      return NextResponse.json({
-        intent: { type: "SUMMARY" },
-        response: { type: "SUMMARY_TEXT", text: text.slice(0, 1000) },
-        metadata: { source: "in_memory_dataset", confidence: 0.4 },
-      } satisfies AnalyticsResponse);
+      return NextResponse.json(deterministic);
     }
 
     // Valid JSON is not necessarily a valid analytics response. AI providers can
     // return error envelopes or incomplete objects with HTTP 200, so fall back to
     // the deterministic engine instead of forwarding an unsafe shape to the UI.
     if (!isAnalyticsResponse(parsed)) {
-      return NextResponse.json(runFallback(cappedDataset, question));
+      return NextResponse.json(deterministic);
     }
 
-    return NextResponse.json(parsed);
+    return NextResponse.json({
+      ...parsed,
+      metadata: {
+        ...parsed.metadata,
+        confidence: Math.min(parsed.metadata.confidence, evidence.confidence.score),
+      },
+      intelligence: evidence,
+    } satisfies AnalyticsResponse);
   } catch (err) {
     console.error("[v0] /api/analytics/query error:", err);
     return NextResponse.json(

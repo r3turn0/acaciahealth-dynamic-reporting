@@ -9,6 +9,46 @@ export interface AnalyticsRequest {
   history?: { role: "user" | "assistant"; content: string }[];
 }
 
+export interface AnalyticsEvidence {
+  quality: {
+    score: number;
+    rowCount: number;
+    columnCount: number;
+    completeness: number;
+    duplicateRows: number;
+    warnings: string[];
+  };
+  findings: Array<{
+    id: string;
+    type: "KPI" | "TREND" | "ANOMALY" | "DRIVER" | "QUALITY";
+    title: string;
+    summary: string;
+    metric?: string;
+    value?: number;
+    severity: "info" | "warning" | "critical";
+    evidence: string[];
+  }>;
+  forecast?: {
+    metric: string;
+    direction: "up" | "down" | "stable";
+    projectedValue: number;
+    horizon: string;
+    method: "linear_trend";
+    reliability: "low" | "moderate";
+  };
+  recommendations: string[];
+  confidence: {
+    score: number;
+    level: "low" | "moderate" | "high";
+    factors: string[];
+  };
+  trace: Array<{
+    stage: "PROFILE" | "ANALYZE" | "VALIDATE" | "SYNTHESIZE";
+    status: "complete" | "limited";
+    detail: string;
+  }>;
+}
+
 export interface AnalyticsResponse {
   intent: {
     type: "FILTER" | "GROUP_BY" | "SUMMARY" | "TOP_N" | "SORT" | "CLARIFICATION";
@@ -39,6 +79,7 @@ export interface AnalyticsResponse {
     confidence: number;
     fallback?: boolean;
   };
+  intelligence?: AnalyticsEvidence;
 }
 
 const RESPONSE_TYPES = new Set<AnalyticsResponse["response"]["type"]>([
@@ -106,6 +147,22 @@ export function isAnalyticsResponse(value: unknown): value is AnalyticsResponse 
       !isRecord(value.clarification) ||
       typeof value.clarification.question !== "string" ||
       !isStringArray(value.clarification.options)
+    ) return false;
+  }
+
+  if (value.intelligence !== undefined) {
+    const intelligence = value.intelligence;
+    if (
+      !isRecord(intelligence) ||
+      !isRecord(intelligence.quality) ||
+      !isRecord(intelligence.confidence) ||
+      !Array.isArray(intelligence.findings) ||
+      !intelligence.findings.every(isRecord) ||
+      !isStringArray(intelligence.recommendations) ||
+      !Array.isArray(intelligence.trace) ||
+      !intelligence.trace.every(isRecord) ||
+      typeof intelligence.quality.score !== "number" ||
+      typeof intelligence.confidence.score !== "number"
     ) return false;
   }
 
