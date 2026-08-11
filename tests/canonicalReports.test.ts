@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { CANONICAL_REPORTS } from "@/lib/config/canonicalReports";
 
 const IMPORTED_REPORT_NAMES = [
-  "Raw Current Census By Service Line and Branch — Current Census",
-  "Raw Current Census By Service Line and Branch + 14 Rolling Days ADC with Patient Days and Current Census vs ADC — 14-Day ADC and Patient Days",
-  "Raw Daily Census",
-  "Raw Census and ADC",
-  "Raw Current Census and ADC Month to Date",
+  "Operational (episode based) Current Census By Service Line and Branch — Current Census",
+  "Operational (episode based) Current Census By Service Line and Branch + 14 Rolling Days ADC with Patient Days and Current Census vs ADC — 14-Day ADC and Patient Days",
+  "Operational (episode based) Daily Census",
+  "Operational (episode based) Census and ADC",
+  "Operational (episode based) Current Census and ADC Month to Date",
 ];
 
 describe("canonical Saved Reports audit", () => {
