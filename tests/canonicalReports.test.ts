@@ -7,6 +7,7 @@ const IMPORTED_REPORT_NAMES = [
   "Operational (episode based) Daily Census",
   "Operational (episode based) Census and ADC",
   "Operational (episode based) Current Census and ADC Month to Date",
+  "Operational Ending Census and ADC",
 ];
 
 describe("canonical Saved Reports audit", () => {
@@ -29,5 +30,15 @@ describe("canonical Saved Reports audit", () => {
     for (const report of CANONICAL_REPORTS) {
       expect(report.sql, report.name).not.toMatch(/\bSELECT[ \t]+(?:[A-Za-z_][A-Za-z0-9_]*\.)?\*/i);
     }
+  });
+
+  it("adds deterministic semantic tags to every canonical report", () => {
+    for (const report of CANONICAL_REPORTS) {
+      expect(report.tags).toContain("read-only");
+      expect(report.tags.length).toBeGreaterThanOrEqual(5);
+    }
+    const report = CANONICAL_REPORTS.find((item) => item.name === "Operational Ending Census and ADC");
+    expect(report?.sourceFile).toBe("Operational Ending Census and ADC.sql");
+    expect(report?.tags).toEqual(expect.arrayContaining(["census", "average-daily-census", "episode-based", "service-line", "branch", "region"]));
   });
 });

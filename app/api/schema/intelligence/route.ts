@@ -273,10 +273,10 @@ const DERIVED_CATALOG: RegistryTable[] = governanceCatalog.tables.map((table) =>
   domain: table.domain === "Workforce" ? "HR" : table.domain,
   entityType: table.entityType === "view" ? "View" : "Table",
   columnCount: table.columns.length,
-  pkColumns: table.columns.filter((column) => column.identity && column.name).map((column) => column.name as string),
-  fkCount: table.columns.filter((column) => !column.identity && /(^|_)id$/i.test(column.name ?? "")).length,
-  description: `Metadata-derived ${table.domain.toLowerCase()} asset from the governed SQL Server catalog.`,
-  tags: [table.domain.toLowerCase(), "metadata-derived", "read-only"],
+  pkColumns: table.columns.filter((column) => (column.primaryKey || column.identity) && column.name).map((column) => column.name as string),
+  fkCount: table.columns.filter((column) => column.foreignKey).length,
+  description: `Metadata-derived ${table.domain.toLowerCase()} asset from the governed SQL Server catalog with audited columns and key relationships.`,
+  tags: [...new Set([table.domain.toLowerCase(), "metadata-derived", "read-only", ...(table.semanticKeywords ?? []), ...(table.relationshipKeywords ?? [])])],
   version: "source-2026.06",
   rowEstimate: 0,
   lastSyncAt: governanceCatalog.sourceGeneratedAt,
@@ -290,9 +290,9 @@ const DERIVED_CATALOG: RegistryTable[] = governanceCatalog.tables.map((table) =>
     return [{
       name: column.name,
       type: column.dataType,
-      role: inferColumnRole(column.name, column.identity),
+      role: column.primaryKey ? "primary_key" : column.foreignKey ? "foreign_key" : inferColumnRole(column.name, column.identity),
       nullable: column.nullable,
-      description: column.description ?? `${column.name} (${column.dataType})`,
+      description: column.description ?? `${column.name} (${column.dataType})${column.primaryKey ? "; primary key" : column.foreignKey ? "; foreign key" : ""}`,
     }];
   }),
 }));

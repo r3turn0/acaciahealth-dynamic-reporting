@@ -81,6 +81,20 @@ function tokenizeSqlIdentifiers(sql: string): string[] {
   return [...new Set(identifiers.map((match) => match.replace(/^\s*(?:from|join)\s+/i, "").replace(/[\[\]]/g, "")).filter(Boolean))].slice(0, 40);
 }
 
+function semanticKeywords(...values: string[]): string[] {
+  const text = values.join(" ").toLowerCase();
+  const vocabulary: Array<[string, RegExp]> = [
+    ["census", /census/], ["average-daily-census", /\badc\b|average.daily.census/],
+    ["patient-days", /patient.days/], ["episode", /episode|epi_/], ["admission", /admission|socdate/],
+    ["discharge", /discharge/], ["visit", /visit|cev_/], ["referral", /referral|ntuc|nonadmit/],
+    ["service-line", /service.line|slid/], ["branch", /branch/], ["region", /region|county|state/],
+    ["finance", /revenue|invoice|billing|claim|receivable|payor/], ["workforce", /worker|employee|staff|productivity/],
+    ["quality", /quality|compliance|audit|incident|note/], ["trend", /daily|rolling|trend|month.to.date/],
+    ["primary-key", /primary.key|\bpk\b/], ["foreign-key", /foreign.key|relationship.key|\bfk\b/],
+  ];
+  return vocabulary.filter(([, pattern]) => pattern.test(text)).map(([keyword]) => keyword);
+}
+
 function physicalAssets(): CatalogAsset[] {
   const assets: CatalogAsset[] = [];
   for (const table of buildStaticCatalog().values()) {
@@ -91,7 +105,7 @@ function physicalAssets(): CatalogAsset[] {
       kind: "physical",
       name: table.name,
       description: `Governed read-only ${table.schema}.${table.name} table with ${table.columns.length} registered column(s).`,
-      tags: [table.schema, table.name, ...table.sources],
+      tags: [table.schema, table.name, ...table.sources, ...semanticKeywords(table.id, ...table.columns.map((column) => column.name))],
       location: table.id,
       related: table.columns.map((column) => `${tableId}-column-${column.name.toLowerCase()}`),
       owner: "Source Data Governance",
@@ -112,7 +126,7 @@ function physicalAssets(): CatalogAsset[] {
         kind: "physical",
         name: column.name,
         description: `${column.type} column on ${table.id}${column.isPk ? "; primary key" : ""}${column.isFk ? "; relationship key" : ""}.`,
-        tags: [column.type, column.isPk ? "primary key" : "", column.isFk ? "foreign key" : ""].filter(Boolean),
+        tags: [column.type, column.isPk ? "primary key" : "", column.isFk ? "foreign key" : "", ...semanticKeywords(table.id, column.name)].filter(Boolean),
         location: `${table.id}.${column.name}`,
         related: [tableId],
         owner: "Source Data Governance",
@@ -139,7 +153,7 @@ export async function buildCatalog(): Promise<CatalogAsset[]> {
     kind: "virtual",
     name: report.name,
     description: report.description || report.prompt,
-    tags: [...report.tags, report.kpi, ...tokenizeSqlIdentifiers(report.sql)],
+    tags: [...new Set([...report.tags, report.kpi, ...tokenizeSqlIdentifiers(report.sql), ...semanticKeywords(report.name, report.description, report.prompt, report.sql)])],
     location: "Saved Reports",
     related: tokenizeSqlIdentifiers(report.sql),
     owner: report.created_by,
@@ -199,7 +213,7 @@ export async function buildCatalog(): Promise<CatalogAsset[]> {
     kind: "virtual",
     name: kpi.name,
     description: kpi.description,
-    tags: [...kpi.aliases, kpi.businessCategory, ...kpi.formula.split(/[^a-zA-Z0-9_]+/).filter((term) => term.length > 2)],
+    tags: [...new Set([...kpi.aliases, kpi.businessCategory, ...kpi.formula.split(/[^a-zA-Z0-9_]+/).filter((term) => term.length > 2), ...semanticKeywords(kpi.name, kpi.description, kpi.businessCategory, kpi.formula, ...kpi.lineage)])],
     location: `KPI Catalog / ${kpi.businessCategory}`,
     related: [...kpi.lineage],
     owner: "KPI Governance",

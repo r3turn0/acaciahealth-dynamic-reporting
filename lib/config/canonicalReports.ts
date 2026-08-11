@@ -39,6 +39,7 @@ const SOURCES: SourceDefinition[] = [
   { file: "Daily Census.sql", kpi: "current_census_by_service_line_branch", resultNames: ["Operational (episode based) Daily Census"] },
   { file: "Current Census and ADC.sql", kpi: "average_daily_census", resultNames: ["Operational (episode based) Census and ADC"] },
   { file: "Current Census and ADC Month to Date.sql", kpi: "average_daily_census", resultNames: ["Operational (episode based) Current Census and ADC Month to Date"] },
+  { file: "Operational Ending Census and ADC.sql", kpi: "average_daily_census", resultNames: ["Operational Ending Census and ADC"] },
   { file: "Unbilled and AR.sql", kpi: "ar_aging", resultNames: ["Unbilled and AR — Result 1", "Unbilled and AR — Result 2", "Unbilled and AR — Result 3"] },
   { file: "Revenue and RPD.sql", kpi: "revenue", resultNames: ["Revenue and RPD — Result 1", "Revenue and RPD — Result 2"] },
   { file: "Patient Days.sql", kpi: "patient_days", resultNames: ["Patient Days"] },
@@ -89,6 +90,35 @@ function assertCanonicalSql(sql: string, file: string, resultSet: number): void 
   }
 }
 
+function semanticTags(definition: SourceDefinition, sql: string): string[] {
+  const text = `${definition.file} ${definition.kpi} ${sql}`.toLowerCase();
+  const tags = new Set<string>([definition.kpi, "canonical", "uploaded-sql", "read-only"]);
+  const vocabulary: Array<[string, RegExp]> = [
+    ["census", /\bcensus\b|daily_census|ending_census/],
+    ["average-daily-census", /\badc\b|average.daily.census|adc_waar/],
+    ["patient-days", /patient.days/],
+    ["episode-based", /client_episodes|epi_/],
+    ["service-line", /service.line|service_lines|epi_slid/],
+    ["branch", /branch|epi_branchcode/],
+    ["region", /region/],
+    ["admissions", /admission|socdate/],
+    ["discharges", /discharge/],
+    ["referrals", /referral|ntuc|nonadmit/],
+    ["revenue-cycle", /revenue|billing|invoice|accounts.receivable|\bar\b/],
+    ["quality-compliance", /quality|compliance|\bqa\b|bp1/],
+    ["hospice", /hospice/],
+    ["home-health", /home.health/],
+    ["visits", /visit/],
+    ["workforce", /worker|productivity/],
+    ["trend", /daily|rolling|month.to.date/],
+  ];
+  for (const [tag, pattern] of vocabulary) if (pattern.test(text)) tags.add(tag);
+  for (const match of sql.matchAll(/\b(?:FROM|JOIN)\s+([\[\]A-Za-z0-9_.]+)/gi)) {
+    tags.add(match[1].replace(/[\[\]]/g, "").toLowerCase());
+  }
+  return [...tags].slice(0, 40);
+}
+
 function loadSource(definition: SourceDefinition): CanonicalReport[] {
   const path = join(process.cwd(), "lib", "config", "report-sql", definition.file);
   const source = normalizeSource(readFileSync(path, "utf8"));
@@ -114,7 +144,7 @@ function loadSource(definition: SourceDefinition): CanonicalReport[] {
     prompt: `Run ${baseName}${statements.length > 1 ? ` result set ${index + 1}` : ""}`,
     sql,
     kpi: definition.kpi,
-    tags: [definition.kpi, "canonical", "uploaded-sql", `result-set-${index + 1}`],
+    tags: [...semanticTags(definition, sql), `result-set-${index + 1}`],
   }));
 }
 
