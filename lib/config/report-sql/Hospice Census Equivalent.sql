@@ -2,8 +2,6 @@
    02_hospice_census_equivalent.sql (REFACTORED)
 ============================================================================= */
 
-USE HCHB_AcaciaHealth;
-
 DECLARE @AsOfDate  date         = CAST(GETDATE() AS date);
 DECLARE @HceFactor decimal(5,3) = 0.40;
 
