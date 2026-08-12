@@ -584,13 +584,21 @@ function KpiDependenciesTab({ tables }: { tables: RegistryTable[] }) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  useEffect(() => {
-    fetch("/api/kpi-admin")
-      .then((r) => r.json())
-      .then((json: { kpis: KpiDef[] }) => setKpis(json.kpis ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const loadKpis = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/kpi-admin", { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const json = await response.json() as { kpis: KpiDef[] };
+      setKpis(json.kpis ?? []);
+    } catch {
+      setKpis([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { void loadKpis(); }, [loadKpis]);
 
   // Map KPI → tables that contain it in kpiDependencies
   const kpiTableMap = useMemo(() => {
@@ -623,14 +631,25 @@ function KpiDependenciesTab({ tables }: { tables: RegistryTable[] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search KPI definitions…"
-          className="w-full pl-9 pr-3 py-2 text-sm bg-muted/20 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground"
-        />
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search KPI definitions…"
+            className="w-full pl-9 pr-3 py-2 text-sm bg-muted/20 border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary/50 text-foreground placeholder:text-muted-foreground"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => void loadKpis()}
+          disabled={loading}
+          className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+          Refresh
+        </button>
       </div>
 
       {loading ? (

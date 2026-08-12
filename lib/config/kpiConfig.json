@@ -33,20 +33,30 @@
     },
 
     "dischargeClassMap": {
-      "DTH": "Death",
-      "EXP": "Death",
-      "REV": "LiveDC-PatientInitiated",
-      "TRH": "LiveDC-PatientInitiated",
-      "EXT": "LiveDC-HospiceInitiated",
-      "NLT": "LiveDC-HospiceInitiated",
-      "OOA": "LiveDC-HospiceInitiated",
-      "DFC": "LiveDC-HospiceInitiated",
-      "TXI": "Other"
+      "20": "Death",
+      "40": "Death",
+      "41": "Death",
+      "42": "Death",
+      "7": "LiveDC-PatientInitiated",
+      "50": "Transfer-To-Hospice",
+      "51": "Transfer-To-Hospice",
+      "1": "Home-Or-Self-Care",
+      "2": "Acute-Hospital",
+      "3": "Skilled-Nursing-Facility",
+      "4": "Intermediate-Care-Facility",
+      "6": "Home-Health-Transfer",
+      "63": "Long-Term-Care",
+      "70": "Other-Healthcare-Institution"
     },
 
     "arBuckets": ["AR 0-30", "AR 31-60", "AR 61-90", "AR Over 90", "AR Total"],
 
     "serviceLines": ["HOME HEALTH", "HOSPICE", "PRIVATE DUTY"],
+    "serviceLineIds": { "HOME HEALTH": 1, "HOSPICE": 2, "PRIVATE DUTY": 3, "PALLIATIVE_INACTIVE": 25000 },
+    "careTypeIds": { "HOME HEALTH": 1, "HOSPICE": 25002, "PALLIATIVE": 25008, "PAL_LEVEL_1": 25011, "PAL_LEVEL_2": 25012, "UCI_ORTHO": 25015, "UCI_SPINE": 25016 },
+    "nonAdmitCodes": { "REFUSED_SERVICES": "8", "EXPIRED": "10", "OUT_OF_SERVICE_AREA": "17", "SELECTED_ACACIA_HH_PAL": "26", "NOT_READY_FOR_HOSPICE": "28" },
+    "recertFlags": { "RECERT": "R", "FOLLOW_UP": "F" },
+    "traditionalMedicarePayorIds": [28007, 28031],
 
     "branchMap": [
       { "serviceLine": "HOME HEALTH", "epi_slid": 1, "branchCode": "PO1", "branchName": "Acacia Home Health and Palliative" },
@@ -431,7 +441,7 @@
       "status": "Published",
       "source": "CLIENT_EPISODES_ALL",
       "aggregation": "SUM",
-      "formula": "SUM(patient_days_in_window * 0.40) WHERE epi_slid IN (1, 25001) GROUP BY epi_branchcode",
+      "formula": "SUM(patient_days_in_window * 0.40) WHERE epi_slid = 1 OR epi_CareType IN (25008, 25011, 25012) GROUP BY epi_branchcode",
       "location_key": "epi_branchcode",
       "service_line_field": "epi_slid",
       "active_service_lines": ["HOME HEALTH"],

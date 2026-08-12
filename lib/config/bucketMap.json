@@ -1,10 +1,18 @@
 [
-  { "sl_id": 1, "branch_code": "HH", "bucket_name": "Home Health" },
-  { "sl_id": 2, "branch_code": "OC", "bucket_name": "Hospice OC" },
-  { "sl_id": 3, "branch_code": "HC", "bucket_name": "Hospice Continuous" },
-  { "sl_id": 4, "branch_code": "GI", "bucket_name": "Hospice GI" },
-  { "sl_id": 5, "branch_code": "IR", "bucket_name": "Hospice IRC" },
-  { "sl_id": 6, "branch_code": "PD", "bucket_name": "Pediatrics" },
-  { "sl_id": 7, "branch_code": "PC", "bucket_name": "Palliative Care" },
-  { "sl_id": 8, "branch_code": "PT", "bucket_name": "Private Duty" }
+  { "sl_id": 1, "branch_code": "PO1", "bucket_name": "Acacia Home Health and Palliative" },
+  { "sl_id": 1, "branch_code": "HL1", "bucket_name": "Acacia Home Health Services" },
+  { "sl_id": 2, "branch_code": "XO1", "bucket_name": "Acacia Hospice and Palliative Services OC" },
+  { "sl_id": 2, "branch_code": "XD1", "bucket_name": "Acacia Hospice of the Desert D" },
+  { "sl_id": 2, "branch_code": "ZI1", "bucket_name": "Acacia Hospice and Palliative Services IE" },
+  { "sl_id": 2, "branch_code": "ZD1", "bucket_name": "Acacia Hospice and Palliative Services D" },
+  { "sl_id": 2, "branch_code": "ZS1", "bucket_name": "Acacia Hospice and Palliative Services SGV" },
+  { "sl_id": 2, "branch_code": "SO1", "bucket_name": "Acacia Hospice of Los Angeles OC" },
+  { "sl_id": 2, "branch_code": "XS1", "bucket_name": "Acacia Hospice of Los Angeles" },
+  { "sl_id": 2, "branch_code": "SD1", "bucket_name": "Acacia Hospice of Los Angeles LD" },
+  { "sl_id": 2, "branch_code": "SI1", "bucket_name": "Acacia Hospice of Los Angeles IE" },
+  { "sl_id": 2, "branch_code": "LI1", "bucket_name": "Acacia Hospice of the Desert IE" },
+  { "sl_id": 2, "branch_code": "LS1", "bucket_name": "Acacia Hospice of the Desert SGV" },
+  { "sl_id": 2, "branch_code": "LO1", "bucket_name": "Acacia Hospice of the Desert OC" },
+  { "sl_id": 2, "branch_code": "SO2", "bucket_name": "Acacia Hospice and Palliative of LA - OC" },
+  { "sl_id": 2, "branch_code": "XS2", "bucket_name": "Acacia Hospice and Palliative of Los Angeles" }
 ]

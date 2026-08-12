@@ -364,7 +364,7 @@ function AddMappingForm({ onAdded }: { onAdded: () => void }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main component
-// ─────────────────────────────────────────────────────────────────────────────
+// ───────────────��─────────────────────────────────────────────────────────────
 
 type PanelTab = "history" | "mappings";
 
@@ -383,6 +383,7 @@ export function QueryHistoryPanel() {
   const [mappings, setMappings] = useState<LearnedMapping[]>([]);
   const [loadingMappings, setLoadingMappings] = useState(true);
   const [mappingsError, setMappingsError] = useState<string | null>(null);
+  const [mappingsLoaded, setMappingsLoaded] = useState(false);
 
   // Load history
   const loadHistory = useCallback(async () => {
@@ -413,6 +414,7 @@ export function QueryHistoryPanel() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json() as { mappings: LearnedMapping[] };
       setMappings(data.mappings);
+      setMappingsLoaded(true);
     } catch (err) {
       setMappingsError((err as Error).message);
     } finally {
@@ -420,8 +422,10 @@ export function QueryHistoryPanel() {
     }
   }, []);
 
-  useEffect(() => { loadHistory(); }, [loadHistory]);
-  useEffect(() => { if (activeTab === "mappings") loadMappings(); }, [activeTab, loadMappings]);
+  useEffect(() => { void loadHistory(); }, [loadHistory]);
+  useEffect(() => {
+    if (activeTab === "mappings" && !mappingsLoaded) void loadMappings();
+  }, [activeTab, mappingsLoaded, loadMappings]);
 
   async function handleDeleteMapping(term: string) {
     try {

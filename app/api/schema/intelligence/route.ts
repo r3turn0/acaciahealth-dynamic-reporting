@@ -13,6 +13,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import governanceCatalog from "@/lib/config/governanceCatalog.json";
 import businessGlossary from "@/lib/config/businessGlossary.json";
+import bucketMap from "@/lib/config/bucketMap.json";
+import { CANONICAL_REPORTS } from "@/lib/config/canonicalReports";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -62,21 +64,22 @@ const CATALOG: RegistryTable[] = [
     domain: "Clinical", entityType: "Fact", columnCount: 47,
     pkColumns: ["epi_id"], fkCount: 6,
     description: "Core patient episode table. One row per active care episode across all service lines. Foundation of admissions, census, discharge, and PDGM KPIs.",
-    tags: ["episodes", "census", "admissions", "care_types", "kpi"],
-    version: "3.1.2", rowEstimate: 284_512, lastSyncAt: new Date().toISOString(),
+    tags: ["episodes", "census", "admissions", "care-types", "discharge-reasons", "non-admit-reasons", "discovery-2026-08-12", "kpi"],
+    version: "3.2.0", rowEstimate: 284_512, lastSyncAt: "2026-08-12T00:00:00.000Z",
     owner: "Clinical Ops", usageCount: 187,
-    kpiDependencies: ["ADC", "Census", "Admissions", "Discharge Rate", "LUPA %", "Live Discharge %"],
-    upstreamTables: [],
-    downstreamTables: ["CLIENT_EPISODE_VISITS_ALL", "PDGM_PERIOD", "Billing.LINE_ITEMS", "CLIENT_EPISODE_RECERT_HISTORY"],
+    kpiDependencies: ["Average Daily Census", "Daily Census Trend", "Current Census", "Admissions", "Discharges", "LUPA Rate", "Live Discharge Rate", "Patient Episode of Care"],
+    upstreamTables: ["BRANCHES", "SERVICE_LINES", "CARE_TYPES", "DISCHARGE_REASONS", "NONADMIT_REASONS", "PAYOR_SOURCES"],
+    downstreamTables: ["CLIENT_EPISODE_VISITS", "CLIENT_EPISODE_VISITS_ALL", "PDGM.PDGM_PERIOD", "Billing.LINE_ITEMS", "CLIENT_EPISODE_RECERT_HISTORY"],
     columnSummary: [
       { name: "epi_id",            type: "int",     role: "primary_key",    nullable: false, description: "Unique episode identifier" },
-      { name: "epi_branchcode",    type: "varchar", role: "foreign_key",    nullable: false, description: "FK → BRANCHES" },
-      { name: "epi_slid",          type: "int",     role: "foreign_key",    nullable: false, description: "FK → SERVICE_LINES" },
-      { name: "epi_caretypeid",    type: "int",     role: "foreign_key",    nullable: true,  description: "FK → CARE_TYPES" },
+      { name: "epi_branchcode",    type: "varchar", role: "foreign_key",    nullable: false, description: `FK → BRANCHES.branch_code; ${bucketMap.length} governed reporting buckets discovered 2026-08-12` },
+      { name: "epi_slid",          type: "int",     role: "foreign_key",    nullable: false, description: "FK → SERVICE_LINES.sl_id; active IDs: 1 HOME HEALTH, 2 HOSPICE, 3 PRIVATE DUTY" },
+      { name: "epi_CareType",      type: "int",     role: "foreign_key",    nullable: true,  description: "FK → CARE_TYPES.ctype_id; governed values include 1 Home Health, 25002 Hospice, 25008 Palliative, 25011/25012 PAL levels" },
+      { name: "epi_DcCode",        type: "char(2)", role: "foreign_key",    nullable: true,  description: "FK → DISCHARGE_REASONS.dr_code; discovered death codes include 20, 40, 41, and 42" },
+      { name: "epi_RecertFlag",    type: "char(1)", role: "dimension",      nullable: true,  description: "Observed values: R, F, and NULL" },
       { name: "epi_SocDate",       type: "date",    role: "time_dimension", nullable: false, description: "Start of Care date" },
       { name: "epi_DischargeDate", type: "date",    role: "time_dimension", nullable: true,  description: "Discharge date (NULL = active)" },
-      { name: "epi_payor",         type: "varchar", role: "dimension",      nullable: true,  description: "Primary payor" },
-      { name: "epi_recertDate",    type: "date",    role: "time_dimension", nullable: true,  description: "Most recent recertification date" },
+      { name: "epi_payor",         type: "varchar", role: "dimension",      nullable: true,  description: "Primary payor; Medicare source IDs discovered in PAYOR_SOURCES" },
     ],
   },
   {
@@ -159,9 +162,9 @@ const CATALOG: RegistryTable[] = [
     id: "dbo.BRANCHES", name: "BRANCHES", schema: "dbo",
     domain: "Reference", entityType: "Dimension", columnCount: 12,
     pkColumns: ["branch_code"], fkCount: 0,
-    description: "Branch dimension — maps 16 active branches to names, regions, counties, and states. Used in nearly every query for geographic slicing.",
-    tags: ["branches", "service_lines", "reference"],
-    version: "1.4.1", rowEstimate: 16, lastSyncAt: new Date().toISOString(),
+    description: "Branch dimension — 23 active branch codes discovered from the read-only source; 16 currently carry active episodes and form the governed reporting grain.",
+    tags: ["branches", "service-lines", "reference", "reporting-grain", "discovery-2026-08-12"],
+    version: "1.5.0", rowEstimate: 23, lastSyncAt: "2026-08-12T00:00:00.000Z",
     owner: "Analytics Team", usageCount: 264,
     kpiDependencies: ["Branch ADC", "Branch Revenue", "Branch Census"],
     upstreamTables: [],
@@ -233,11 +236,11 @@ const CATALOG: RegistryTable[] = [
       { name: "epi_id",         type: "int",     role: "foreign_key", nullable: false, description: "FK → CLIENT_EPISODES_ALL" },
       { name: "invoice_date",   type: "date",    role: "time_dimension", nullable: false, description: "Invoice date" },
       { name: "invoice_total",  type: "decimal", role: "measure",     nullable: false, description: "Total billed" },
-      { name: "invoice_status", type: "varchar", role: "dimension",   nullable: false, description: "Status" },
+      { name: "i_status",       type: "varchar", role: "dimension",   nullable: true,  description: "Observed values are NULL and D; NULL represents the dominant open invoice population in the discovery extract" },
     ],
   },
   {
-    id: "dbo.PDGM_PERIOD", name: "PDGM_PERIOD", schema: "dbo",
+    id: "PDGM.PDGM_PERIOD", name: "PDGM_PERIOD", schema: "PDGM",
     domain: "Clinical", entityType: "Fact", columnCount: 22,
     pkColumns: ["period_id"], fkCount: 1,
     description: "PDGM 30-day period records — HIPPS codes, LUPA status, and reimbursement type. Required for CMS payment model analytics.",
@@ -248,12 +251,10 @@ const CATALOG: RegistryTable[] = [
     upstreamTables: ["CLIENT_EPISODES_ALL"],
     downstreamTables: [],
     columnSummary: [
-      { name: "period_id",          type: "int",     role: "primary_key", nullable: false, description: "Unique period" },
-      { name: "epi_id",             type: "int",     role: "foreign_key", nullable: false, description: "FK → CLIENT_EPISODES_ALL" },
-      { name: "period_number",      type: "int",     role: "dimension",   nullable: false, description: "Period # within episode" },
-      { name: "hipps_code",         type: "varchar", role: "dimension",   nullable: true,  description: "HIPPS code" },
-      { name: "is_lupa",            type: "bit",     role: "measure",     nullable: false, description: "LUPA flag" },
-      { name: "reimbursement_type", type: "varchar", role: "dimension",   nullable: true,  description: "Early/Late, Community/Institutional" },
+      { name: "pp_id",                type: "int",     role: "primary_key", nullable: false, description: "Unique PDGM period" },
+      { name: "pp_epiid",             type: "int",     role: "foreign_key", nullable: false, description: "FK → CLIENT_EPISODES_ALL.epi_id" },
+      { name: "pp_reimbursementType", type: "varchar", role: "dimension",   nullable: true,  description: "Observed codes: S (standard), O (other), L (LUPA)" },
+      { name: "pp_deleted",           type: "bit",     role: "audit",       nullable: false, description: "Soft-delete flag; governed reporting uses 0" },
     ],
   },
 ];
@@ -314,6 +315,32 @@ function buildDynamicLineage(): LineageNode[] {
   const connect = (parent: LineageNode, child: LineageNode) => {
     if (!parent.children.includes(child.id)) parent.children.push(child.id);
   };
+
+  for (const report of CANONICAL_REPORTS) {
+    const reportNode = ensureNode({
+      id: lineageId("report", `${report.sourceFile}-${report.resultSet}`),
+      label: `Report: ${report.name}`,
+      type: "target",
+      depth: 2,
+    });
+    const kpiNode = ensureNode({
+      id: lineageId("kpi", report.kpi),
+      label: `KPI: ${report.kpi.replaceAll("_", " ")}`,
+      type: "kpi",
+      depth: 3,
+    });
+    connect(reportNode, kpiNode);
+    for (const match of report.sql.matchAll(/\b(?:FROM|JOIN)\s+([\[\]A-Za-z0-9_.]+)/gi)) {
+      const sourceName = match[1].replace(/[\[\]]/g, "");
+      const sourceNode = ensureNode({
+        id: lineageId("table", sourceName),
+        label: sourceName,
+        type: "source",
+        depth: 1,
+      });
+      connect(sourceNode, reportNode);
+    }
+  }
 
   for (const glossaryTerm of businessGlossary.terms) {
     const metricId = lineageId("metric", glossaryTerm.term);

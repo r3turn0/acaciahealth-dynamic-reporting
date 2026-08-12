@@ -26,6 +26,7 @@ import {
   History,
   FileCode2,
   ShieldCheck,
+  RefreshCw,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -192,8 +193,7 @@ export function KpiSchemaAdmin({ userRole = "Admin" }: { userRole?: "Admin" | "A
     setDiffData(json);
   }, []);
 
-  useEffect(() => { fetchCatalog(); }, [fetchCatalog]);
-  useEffect(() => { if (tab === "diff") fetchDiff(); }, [tab, fetchDiff]);
+  useEffect(() => { void fetchCatalog(); }, [fetchCatalog]);
 
   // ── Actions ──────────────────────────────────────────────────────────────────
 
@@ -809,13 +809,21 @@ export function KpiSchemaAdmin({ userRole = "Admin" }: { userRole?: "Admin" | "A
       {tab === "diff" && (
         <div className="flex flex-col gap-3">
           <div className="bg-card border border-border rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <GitBranch className="w-4 h-4 text-primary" />
-              <h3 className="text-xs font-semibold text-foreground">Schema Diff</h3>
-              {diffData && (
-                <span className="text-[11px] text-muted-foreground">v{diffData.from} → v{diffData.to}</span>
-              )}
-            </div>
+  <div className="flex items-center gap-2 mb-3">
+  <GitBranch className="w-4 h-4 text-primary" />
+  <h3 className="text-xs font-semibold text-foreground">Schema Diff</h3>
+  {diffData && (
+  <span className="text-[11px] text-muted-foreground">v{diffData.from} → v{diffData.to}</span>
+  )}
+  <button
+  type="button"
+  onClick={() => void fetchDiff()}
+  className="ml-auto inline-flex items-center gap-1.5 rounded border border-border px-2.5 py-1.5 text-[11px] font-medium text-foreground hover:bg-muted"
+  >
+  <RefreshCw className="h-3 w-3" />
+  {diffData ? "Refresh" : "Load diff"}
+  </button>
+  </div>
             {diffData ? (
               <div className="flex flex-col gap-1">
                 <div className="text-[11px] text-teal font-medium mb-1">+ {diffData.added.length} KPIs in catalog</div>
@@ -829,7 +837,7 @@ export function KpiSchemaAdmin({ userRole = "Admin" }: { userRole?: "Admin" | "A
                 ))}
               </div>
             ) : (
-              <div className="text-xs text-muted-foreground">Loading diff...</div>
+              <div className="text-xs text-muted-foreground">Select Load diff to retrieve the initial result set.</div>
             )}
           </div>
         </div>

@@ -40,6 +40,8 @@ const SOURCES: SourceDefinition[] = [
   { file: "Current Census and ADC.sql", kpi: "average_daily_census", resultNames: ["Operational (episode based) Census and ADC"] },
   { file: "Current Census and ADC Month to Date.sql", kpi: "average_daily_census", resultNames: ["Operational (episode based) Current Census and ADC Month to Date"] },
   { file: "Operational Ending Census and ADC.sql", kpi: "average_daily_census", resultNames: ["Operational Ending Census and ADC"] },
+  { file: "Daily Current Census with Variance.sql", kpi: "daily_census_trend", resultNames: ["Daily Current Census with Variance — Result 1", "Daily Current Census with Variance — Result 2"] },
+  { file: "Patient Episode of Care Report.sql", kpi: "visit_notes", resultNames: ["Patient Episode of Care Report"] },
   { file: "Unbilled and AR.sql", kpi: "ar_aging", resultNames: ["Unbilled and AR — Result 1", "Unbilled and AR — Result 2", "Unbilled and AR — Result 3"] },
   { file: "Revenue and RPD.sql", kpi: "revenue", resultNames: ["Revenue and RPD — Result 1", "Revenue and RPD — Result 2"] },
   { file: "Patient Days.sql", kpi: "patient_days", resultNames: ["Patient Days"] },
@@ -69,6 +71,13 @@ function splitResultSets(source: string, file: string): string[] {
 
   if (file === "New Admissions BP1 - Fixed.sql" && parts.length === 1) {
     const starts = [...source.matchAll(/^WITH admissions AS\s*$/gim)].map((match) => match.index ?? 0);
+    if (starts.length > 1) {
+      parts = [source.slice(0, starts[1]), source.slice(starts[1])];
+    }
+  }
+
+  if (file === "Daily Current Census with Variance.sql") {
+    const starts = [...source.matchAll(/^;WITH Dates AS\s*$/gim)].map((match) => match.index ?? 0);
     if (starts.length > 1) {
       parts = [source.slice(0, starts[1]), source.slice(starts[1])];
     }
