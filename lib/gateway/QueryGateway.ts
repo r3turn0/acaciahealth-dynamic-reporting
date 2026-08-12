@@ -1342,8 +1342,9 @@ export async function runQueryGateway(req: GatewayRequest): Promise<GatewayResul
   const { validation, stageResult: s5 } = await runSQLValidationAgent(normalizedSql, semantic);
   pipeline.push(s5);
 
-  // Block execution if validation fails
-  if (!validation.valid && req.source !== "sql_editor") {
+  // Block every invalid statement before execution. SQL editor input is untrusted
+  // user input and must obey the same read-only, projection, and scope policies.
+  if (!validation.valid) {
     const auditId = logAudit({
       source: req.source, role: req.role ?? "analyst", sql: normalizedSql,
       confidence: sqlConfidence, executionMs: 0, rowCount: 0, approved: false,

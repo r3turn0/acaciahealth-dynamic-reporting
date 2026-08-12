@@ -111,36 +111,38 @@ function poolSettings() {
 
 /** Build an mssql config from env, or return null if nothing usable is set. */
 function buildConfig(): sql.config | string | null {
-  // 1. DATABASE_URL (unless it's an unfilled placeholder)
-  const databaseUrl = process.env.DATABASE_URL;
-  if (databaseUrl) {
+  // 1. DATABASE_URL variants. v0 may suffix duplicate integration variables;
+  // select the first usable SQL Server URL instead of falling through to stale DB_* values.
+  const databaseUrls = [
+    process.env.DATABASE_URL,
+    process.env.DATABASE_URL_2,
+    process.env.DATABASE_URL_3,
+    process.env.DATABASE_URL_4,
+  ].filter((value): value is string => Boolean(value));
+  for (const databaseUrl of databaseUrls) {
     try {
       const url = new URL(databaseUrl);
       const host = url.hostname.toLowerCase();
       const dbName = url.pathname.replace(/^\//, "");
-      if (!PLACEHOLDER_HOSTS.has(host) && !PLACEHOLDER_DBS.has(dbName.toLowerCase())) {
-        return {
-          server: url.hostname,
-          port: url.port ? parseInt(url.port, 10) : 1433,
-          database: dbName,
-          user: decodeURIComponent(url.username),
-          password: decodeURIComponent(url.password),
-          options: {
-            ...commonOptions(),
-            trustServerCertificate:
-              url.searchParams.get("trustServerCertificate") === "true" ||
-              process.env.DB_TRUST_CERT !== "false",
-          },
-          pool: poolSettings(),
-          requestTimeout: 30_000,
-          connectionTimeout: CONNECT_TIMEOUT_MS,
-        };
-      }
-      console.warn(
-        `[db] Ignoring DATABASE_URL placeholder (host="${url.hostname}", db="${dbName}"). Using DB_* vars.`
-      );
+      if (PLACEHOLDER_HOSTS.has(host) || PLACEHOLDER_DBS.has(dbName.toLowerCase())) continue;
+      return {
+        server: url.hostname,
+        port: url.port ? parseInt(url.port, 10) : 1433,
+        database: dbName,
+        user: decodeURIComponent(url.username),
+        password: decodeURIComponent(url.password),
+        options: {
+          ...commonOptions(),
+          trustServerCertificate:
+            url.searchParams.get("trustServerCertificate") === "true" ||
+            process.env.DB_TRUST_CERT !== "false",
+        },
+        pool: poolSettings(),
+        requestTimeout: 30_000,
+        connectionTimeout: CONNECT_TIMEOUT_MS,
+      };
     } catch (e) {
-      console.error("[db] Failed to parse DATABASE_URL:", (e as Error).message);
+      console.error("[db] Failed to parse a DATABASE_URL candidate:", (e as Error).message);
     }
   }
 

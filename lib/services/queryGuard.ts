@@ -95,7 +95,9 @@ export function validateQuery(sql: string): ValidationResult {
     errors.push("Query must reference at least one allowed table (e.g. CLIENT_EPISODES_ALL, BRANCHES)");
   }
 
-  if (/\bSELECT\s+\*/i.test(upper)) errors.push("SELECT * is not allowed — specify explicit column names");
+  if (/\bSELECT\s+(?:DISTINCT\s+)?(?:TOP\s*(?:\(\s*\d+\s*\)|\d+)\s*(?:PERCENT\s+)?(?:WITH\s+TIES\s+)?)*\*/i.test(upper)) {
+    errors.push("SELECT * is not allowed — specify explicit column names");
+  }
   if (/\bCROSS\s+JOIN\b/i.test(upper)) errors.push("CROSS JOINs are not allowed — they can produce cartesian products");
 
   return { valid: errors.length === 0, errors: [...new Set(errors)] };

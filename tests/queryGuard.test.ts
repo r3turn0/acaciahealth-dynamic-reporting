@@ -30,10 +30,12 @@ describe("validateQuery", () => {
     expect(r.errors.join(" ")).toMatch(/@EndDate/);
   });
 
-  it("blocks SELECT *", () => {
-    const r = validateQuery(
-      "SELECT * FROM CLIENT_EPISODES_ALL epi WHERE epi.d BETWEEN @StartDate AND @EndDate"
-    );
+  it.each([
+    "SELECT * FROM CLIENT_EPISODES_ALL epi WHERE epi.d BETWEEN @StartDate AND @EndDate",
+    "SELECT TOP 10000 * FROM CLIENT_EPISODES_ALL epi WHERE epi.d BETWEEN @StartDate AND @EndDate",
+    "SELECT DISTINCT TOP (10000) * FROM CLIENT_EPISODES_ALL epi WHERE epi.d BETWEEN @StartDate AND @EndDate",
+  ])("blocks wildcard projections: %s", (query) => {
+    const r = validateQuery(query);
     expect(r.valid).toBe(false);
     expect(r.errors.join(" ")).toMatch(/SELECT \*/);
   });
