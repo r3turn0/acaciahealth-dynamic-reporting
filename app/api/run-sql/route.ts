@@ -22,9 +22,12 @@ import { parameterizeDates } from "@/lib/services/dateParams";
 import { analyzeSqlGovernance } from "@/lib/services/kpiClassification";
 import { BackendUnreachableError } from "@/lib/services/db";
 import { RunSqlBodySchema } from "@/lib/validation/apiSchemas";
+import { acquireQuerySlot, QueryCapacityError } from "@/lib/server/queryConcurrency";
 
 export async function POST(req: NextRequest) {
   const start = Date.now();
+  let releaseSlot: (() => void) | undefined;
+  let queueMs = 0;
 
   try {
     const raw = await req.json();
@@ -36,6 +39,9 @@ export async function POST(req: NextRequest) {
       );
     }
     const { sql, start_date, end_date, report_name, report_id, original_prompt } = parsed.data;
+    const queueStartedAt = Date.now();
+    releaseSlot = await acquireQuerySlot(req.signal);
+    queueMs = Date.now() - queueStartedAt;
 
     // Normalize date params before passing to gateway
     const { sql: normalizedSql, replaced: dateParamsApplied } = parameterizeDates(sql);
@@ -97,6 +103,8 @@ export async function POST(req: NextRequest) {
       resultSetCount: governedResultSets.length,
       cache_hit: false,
       execution_ms: execution?.executionMs ?? Date.now() - start,
+      queue_ms: queueMs,
+      total_ms: Date.now() - start,
       report_id: report_id ?? null,
       date_params_applied: dateParamsApplied,
       executed_sql: result.sql,
@@ -118,6 +126,12 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
+    if (err instanceof QueryCapacityError) {
+      return NextResponse.json(
+        { error: "Reporting capacity is busy. Wait briefly and retry.", code: "QUERY_CAPACITY_FULL", retry_after_ms: 1500 },
+        { status: 429, headers: { "Retry-After": "2" } }
+      );
+    }
     console.error("[Gateway→run-sql] error:", err);
     if (err instanceof QueryGatewayTimeoutError) {
       return NextResponse.json(
@@ -141,5 +155,7 @@ export async function POST(req: NextRequest) {
       { error: "Query execution failed. Please review the SQL and retry.", code: "EXECUTION_FAILED" },
       { status: 500 }
     );
+  } finally {
+    releaseSlot?.();
   }
 }

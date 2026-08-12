@@ -66,7 +66,7 @@ export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportSt
   const [result, setResult] = useState<ReportResult | null>(null);
   const [execError, setExecError] = useState<string | null>(null);
   const [autoFixing, setAutoFixing] = useState(false);
-  const executionRequestRef = useRef<{ controller: AbortController; id: number } | null>(null);
+  const executionRequestRef = useRef<{ controller: AbortController; id: number; key: string } | null>(null);
   const executionRequestIdRef = useRef(0);
   const autoFixRequestRef = useRef<{ controller: AbortController; id: number } | null>(null);
   const autoFixRequestIdRef = useRef(0);
@@ -165,10 +165,15 @@ export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportSt
     const runSql = (overrideSql ?? sql).trim();
     if (!runSql) return;
 
-    executionRequestRef.current?.controller.abort();
+    const effectiveStartDate = sd ?? startDate;
+    const effectiveEndDate = ed ?? endDate;
+    const requestKey = JSON.stringify([runSql, effectiveStartDate, effectiveEndDate]);
+    if (executionRequestRef.current?.key === requestKey) return;
+
+    executionRequestRef.current?.controller.abort(new DOMException("Superseded by newer query", "AbortError"));
     const controller = new AbortController();
     const requestId = ++executionRequestIdRef.current;
-    executionRequestRef.current = { controller, id: requestId };
+    executionRequestRef.current = { controller, id: requestId, key: requestKey };
     setExecuting(true);
     setExecError(null);
     setResult(null);
@@ -180,8 +185,8 @@ export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportSt
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sql: runSql,
-          start_date: sd ?? startDate,
-          end_date: ed ?? endDate,
+          start_date: effectiveStartDate,
+          end_date: effectiveEndDate,
           report_name: currentPlan?.kpi_detected
             ? `${currentPlan.kpi_detected} Report`
             : "Custom Query",
@@ -258,6 +263,12 @@ export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportSt
         setExecuting(false);
       }
     }
+  }
+
+  function cancelExecution() {
+    executionRequestRef.current?.controller.abort(new DOMException("Cancelled by user", "AbortError"));
+    executionRequestRef.current = null;
+    setExecuting(false);
   }
 
   async function autoFixSQL() {
@@ -452,8 +463,9 @@ export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportSt
               <SQLEditor
                 sql={sql}
                 onChange={handleSqlChange}
-                onRun={() => executeSQL()}
-                loading={executing}
+  onRun={() => executeSQL()}
+  onCancel={cancelExecution}
+  loading={executing}
                 startDate={startDate}
                 endDate={endDate}
                 locked={sqlLocked}

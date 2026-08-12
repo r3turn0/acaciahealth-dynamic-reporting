@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Code2, Play, Loader2, ShieldCheck, ShieldX, Copy, Check, Lock, Unlock, PenLine } from "lucide-react";
+import { Code2, Play, Loader2, ShieldCheck, ShieldX, Copy, Check, Lock, Unlock, PenLine, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { copyToClipboard } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,7 @@ interface SQLEditorProps {
   sql: string;
   onChange: (sql: string) => void;
   onRun: () => void;
+  onCancel?: () => void;
   loading: boolean;
   startDate: string;
   endDate: string;
@@ -31,6 +32,7 @@ export function SQLEditor({
   sql,
   onChange,
   onRun,
+  onCancel,
   loading,
   startDate,
   endDate,
@@ -247,19 +249,23 @@ export function SQLEditor({
         </span>
       </div>
 
-      {/* Run button */}
-      <Button
-        onClick={onRun}
-        disabled={loading || !sql.trim() || (validation ? !validation.valid : false)}
-        className="self-start bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
-      >
-        {loading ? (
-          <Loader2 className="w-4 h-4 animate-spin" />
-        ) : (
-          <Play className="w-4 h-4" />
+      <div className="flex items-center gap-2" aria-live="polite">
+        <Button
+          onClick={onRun}
+          disabled={loading || !sql.trim() || (validation ? !validation.valid : false)}
+          className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
+        >
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+          {loading ? "Executing query..." : "Execute Query"}
+        </Button>
+        {loading && onCancel && (
+          <Button type="button" variant="outline" onClick={onCancel} className="gap-2">
+            <X className="w-4 h-4" />
+            Cancel
+          </Button>
         )}
-        {loading ? "Executing..." : "Execute Query"}
-      </Button>
+        {loading && <span className="text-xs text-muted-foreground">Duplicate clicks are ignored.</span>}
+      </div>
     </div>
   );
 }

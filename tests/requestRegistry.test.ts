@@ -18,6 +18,22 @@ describe("request registry", () => {
     expect(getRequestSummary().savedCalls).toBeGreaterThan(0);
   });
 
+  it("coalesces 100 rapid identical clicks into one request", async () => {
+    let calls = 0;
+    const context = {
+      scope: "report-studio",
+      operation: "execute",
+      params: { sql: "SELECT 1", startDate: "2026-01-01", endDate: "2026-01-31" },
+      policy: "dedupe" as const,
+    };
+    const task = async () => { calls += 1; await wait(10); return "complete"; };
+
+    const results = await Promise.all(Array.from({ length: 100 }, () => orchestrate(context, task)));
+
+    expect(new Set(results)).toEqual(new Set(["complete"]));
+    expect(calls).toBe(1);
+  });
+
   it("cancels an older request when newer intent arrives", async () => {
     const context = { scope: "test-latest", operation: "search", policy: "latest" as const };
     const older = orchestrate(context, async (signal) => { await wait(30, signal); return "old"; });
