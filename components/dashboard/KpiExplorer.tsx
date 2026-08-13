@@ -13,13 +13,11 @@ import {
   Pin,
   PinOff,
   Search,
-  Sparkles,
   Tag,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import kpiConfig from "@/lib/config/kpiConfig.json";
-import { KpiInterpreter } from "./KpiInterpreter";
 import { KpiIntelligence } from "./KpiIntelligence";
 import {
   useDashboardPins,
@@ -32,13 +30,12 @@ import { orchestratedJson } from "@/lib/orchestration/requestRegistry";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type KpiKey = keyof typeof kpiConfig.kpis;
-type Tab = "definitions" | "scorecard" | "interpreter" | "intelligence";
+type Tab = "definitions" | "scorecard" | "intelligence";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "definitions",  label: "KPI Definitions",   icon: BarChart3  },
   { id: "scorecard",    label: "Scorecard Catalog",  icon: Layers     },
   { id: "intelligence", label: "KPI Intelligence",   icon: Brain      },
-  { id: "interpreter",  label: "KPI Interpreter",    icon: Sparkles   },
 ];
 
 // ── Workbook Scorecard Catalog ────────────────────────────────────────────────
@@ -276,9 +273,6 @@ export function KpiExplorer() {
   const [search, setSearch]       = useState("");
   const [filterCat, setFilterCat] = useState<string>("all");
 
-  // KPI key selected in Definitions/Scorecard tabs, forwarded to KpiInterpreter
-  const [interpreterKpi, setInterpreterKpi] = useState<string | null>(null);
-
   // Subscribe so pin/unpin re-renders
   useDashboardPins();
 
@@ -328,9 +322,8 @@ export function KpiExplorer() {
   // ── Actions ───────────────────────────────────────────────────────────────
 
   async function fetchKpi(kpi: KpiKey) {
-    setSelected(kpi);
-    setInterpreterKpi(kpi);
-    setLoading(true);
+  setSelected(kpi);
+  setLoading(true);
     try {
       const { ok, data: json } = await orchestratedJson<Record<string, unknown>>({
         scope: "kpi-explorer",
@@ -666,8 +659,6 @@ export function KpiExplorer() {
       {/* Intelligence tab */}
       {tab === "intelligence" && <KpiIntelligence />}
 
-      {/* Interpreter tab */}
-      {tab === "interpreter" && <KpiInterpreter preselectedKpi={interpreterKpi} />}
     </div>
   );
 }

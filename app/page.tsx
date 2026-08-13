@@ -231,7 +231,7 @@ export default function Home() {
       const kpiName = raw.slice("kpi:interpret:".length);
       setPreselectedKpi(kpiName || null);
       setPreselectedReportName(null);
-      setView("kpi");
+      setView("kpi-interpreter");
       setSidebarOpen(false);
       return;
     }
@@ -240,7 +240,7 @@ export default function Home() {
       const reportName = raw.slice("kpi:report:".length);
       setPreselectedReportName(reportName || null);
       setPreselectedKpi(null);
-      setView("kpi");
+      setView("kpi-interpreter");
       setSidebarOpen(false);
       return;
     }
@@ -330,7 +330,7 @@ export default function Home() {
 
   // Resolve KPI sub-tab string → KpiIntelligenceHub tab ID
   function resolveKpiTab(raw: string | undefined): "interpreter" | "registry" | "governance" | undefined {
-    if (!raw) return undefined;
+    if (!raw) return "registry";
     if (raw === "admin") return "governance";         // legacy alias
     if (raw === "governance") return "governance";
     if (raw === "interpreter") return "interpreter";

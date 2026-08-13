@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "registryVersion": "1.0.0",
+  "audience": "AI development agents only",
+  "purpose": "Canonical application topology and feature dependency registry. Consult before adding or changing features so navigation, ownership, contracts, and dependent surfaces remain synchronized.",
+  "constraints": {
+    "databaseMode": "read-only",
+    "allowedSql": ["SELECT", "CTE", "aggregation", "analytics", "metadata inspection"],
+    "prohibitedSql": ["INSERT", "UPDATE", "DELETE", "MERGE", "TRUNCATE", "CREATE", "ALTER", "DROP"],
+    "maxNavigationDepth": 3,
+    "canonicalDatasetFlow": ["build", "relationships", "semantics", "published"],
+    "publishedRevisionPolicy": "immutable",
+    "publishedEditBehavior": "create-draft-revision"
+  },
+  "primaryNavigation": [
+    { "id": "home", "component": "components/dashboard/DashboardHome.tsx", "owns": ["platform overview", "quick actions"] },
+    { "id": "discover", "component": "components/data/DataExplorer.tsx", "subtabs": ["table-explorer", "semantic-search"], "dependsOn": ["schema-hub", "dataset-studio", "reports"] },
+    { "id": "dataset-studio", "component": "components/dataset/DatasetStudioHub.tsx", "subtabs": ["build", "relationships", "semantics", "published"], "owns": ["source selection", "relationship definitions", "semantic dataset drafts", "publication workflow"], "publishesTo": ["schema-hub.schema-registry", "reports", "kpi-intelligence"] },
+    { "id": "reports", "component": "components/studio/ReportStudio.tsx", "subtabs": ["report-studio", "report-catalog", "bi-studio"], "dependsOn": ["dataset-studio.published", "schema-hub", "query-gateway"] },
+    { "id": "kpi-intelligence", "component": "components/kpi/KpiIntelligenceHub.tsx", "subtabs": ["registry", "interpreter", "governance"], "dependsOn": ["reports.report-catalog", "dataset-studio.published", "schema-hub.business-glossary"] },
+    { "id": "intelligence-center", "component": "components/intelligence/IntelligenceCenter.tsx", "dependsOn": ["kpi-intelligence", "administration.audit", "query-gateway"] },
+    { "id": "schema-hub", "component": "components/schema/SchemaHub.tsx", "subtabs": ["schema-explorer", "metadata-engine", "schema-registry"], "owns": ["metadata authority", "table registry", "published dataset registry", "lineage", "business glossary", "KPI dependencies"] },
+    { "id": "administration", "component": "components/admin/AdministrationHub.tsx", "subtabs": ["audit", "security", "sessions", "agents", "pipeline", "retry-intelligence", "settings"], "owns": ["platform governance", "operational controls"] }
+  ],
+  "featureContracts": {
+    "datasetPublication": {
+      "source": "lib/datasets/virtualDatasetRegistry.ts",
+      "api": "app/api/designer/datasets/route.ts",
+      "consumers": ["components/dataset/DatasetDesigner.tsx", "components/registry/SchemaIntelligenceRegistry.tsx", "lib/discovery/catalog.ts"],
+      "requiredSynchronization": ["published revision metadata", "source lineage", "relationship IDs", "publication targets", "version"]
+    },
+    "queryExecution": {
+      "gateway": "lib/gateway/QueryGateway.ts",
+      "api": "app/api/run-sql/route.ts",
+      "security": ["read-only validation", "parameter validation", "timeouts", "capacity control"],
+      "consumers": ["report studio", "published dataset preview", "pipeline builder"]
+    },
+    "kpiDefinition": {
+      "registry": "lib/config/kpiConfig.json",
+      "api": "app/api/kpi-admin/route.ts",
+      "consumers": ["KPI Registry", "KPI Interpreter", "KPI Governance", "Schema Registry KPI Dependencies"]
+    }
+  },
+  "changeRules": [
+    "Update this registry when a feature adds, removes, or renames a primary tab, subtab, API, owner, publication target, or cross-feature dependency.",
+    "Do not create a duplicate feature surface when a canonical owner already exists.",
+    "Published datasets must be visible in Schema Hub without changing source database schema or data.",
+    "Any feature that executes SQL must route through the governed read-only query gateway.",
+    "User-facing application code must not import or render this registry."
+  ]
+}

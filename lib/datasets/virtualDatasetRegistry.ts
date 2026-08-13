@@ -58,6 +58,7 @@ export interface SemanticDataset {
 interface RegistryState {
   datasets: Map<string, SemanticDataset>;
   relationships: Map<string, Relationship>;
+  draftParents: Map<string, string>;
   datasetSequence: number;
   relationshipSequence: number;
 }
@@ -87,7 +88,7 @@ function seededState(): RegistryState {
     base({ datasetId: "DS-003", datasetName: "Worker Productivity Dataset", description: "Visit and point productivity semantic definition for clinician performance reporting.", tables: ["WORKER_BASE", "CLIENT_EPISODE_VISITS_ALL", "BRANCHES"], relationships: ["REL-004", "REL-007"], dimensions: ["Worker", "Branch", "Discipline", "Visit Type"], measures: ["Total Points", "Achievement %", "Visits per Day"], glossaryMappings: ["Productivity", "Visit Points"], businessRules: [], owner: "Operations", version: "1.0.3", status: "Draft", createdDate: "2026-05-20", updatedDate: "2026-07-20", createdBy: "analyst", health: 82, publicationTargets: [], sourceTraceability: ["Governed MSSQL metadata"], virtual: true, authoritative: false, cacheScope: "process", rehydrationSource: "static-seed" }),
   ]) datasets.set(dataset.datasetId, dataset);
 
-  return { datasets, relationships, datasetSequence: 4, relationshipSequence: 9 };
+  return { datasets, relationships, draftParents: new Map(), datasetSequence: 4, relationshipSequence: 9 };
 }
 
 const globalRegistry = globalThis as typeof globalThis & { __virtualDatasetRegistry?: RegistryState };
@@ -163,6 +164,30 @@ export function createSemanticDataset(input: Partial<SemanticDataset>) {
 export function updateSemanticDataset(id: string, patch: Partial<SemanticDataset>, actor = "analyst") {
   const dataset = state.datasets.get(id);
   if (!dataset) return null;
+  if (dataset.status === "Published") {
+    const existingDraftId = state.draftParents.get(id);
+    const existingDraft = existingDraftId ? state.datasets.get(existingDraftId) : null;
+    if (existingDraft) return clone(existingDraft);
+    const draftId = nextId("dataset");
+    const now = isoNow();
+    const draft = clone(dataset);
+    draft.datasetId = draftId;
+    draft.datasetName = String(patch.datasetName ?? dataset.datasetName);
+    draft.status = "Draft";
+    draft.version = bumpVersion(dataset.version, "patch");
+    draft.updatedDate = now;
+    draft.publishedDate = undefined;
+    draft.publicationTargets = [];
+    draft.rehydrationSource = "session-definition";
+    draft.history = [snapshot(dataset, `Draft revision created from ${dataset.datasetId}`, actor)];
+    for (const key of ["description", "tables", "relationships", "dimensions", "measures", "glossaryMappings", "businessRules", "owner", "sourceTraceability"] as const) {
+      const value = patch[key];
+      if (value !== undefined) Object.assign(draft, { [key]: clone(value) });
+    }
+    state.datasets.set(draftId, draft);
+    state.draftParents.set(id, draftId);
+    return clone(draft);
+  }
   dataset.history = [...dataset.history, snapshot(dataset, "Definition updated", actor)].slice(-25);
   for (const key of ["datasetName", "description", "tables", "relationships", "dimensions", "measures", "glossaryMappings", "businessRules", "owner", "sourceTraceability"] as const) {
     const value = patch[key];

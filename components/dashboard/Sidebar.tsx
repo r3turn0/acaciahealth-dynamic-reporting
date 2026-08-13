@@ -104,8 +104,8 @@ const PRIMARY_NAV: NavItem[] = [
     step:  4,
     badge: "Registry",
     subItems: [
-      { id: "kpi",              label: "KPI Interpreter"  },
       { id: "kpi-registry",     label: "KPI Registry"     },
+      { id: "kpi-interpreter",  label: "KPI Interpreter"  },
       { id: "kpi-governance",   label: "KPI Governance"   },
     ],
   },

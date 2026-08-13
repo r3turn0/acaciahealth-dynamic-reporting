@@ -36,16 +36,16 @@ const TABS: {
   description: string;
 }[] = [
   {
-    id:          "interpreter",
-    label:       "KPI Interpreter",
-    icon:        Sparkles,
-    description: "Select a saved report and get AI-powered business interpretation — trends, alerts, root cause, and follow-up Q&A",
-  },
-  {
     id:          "registry",
     label:       "KPI Registry",
     icon:        BookOpen,
     description: "Single source of truth — all KPI definitions, formulas, ownership, lineage, and Power BI measures",
+  },
+  {
+    id:          "interpreter",
+    label:       "KPI Interpreter",
+    icon:        Sparkles,
+    description: "Select a saved report and get AI-powered business interpretation — trends, alerts, root cause, and follow-up Q&A",
   },
   {
     id:          "governance",
@@ -65,7 +65,7 @@ interface KpiIntelligenceHubProps {
 }
 
 export function KpiIntelligenceHub({
-  initialTab          = "interpreter",
+  initialTab          = "registry",
   preselectedKpi,
   preselectedReportName,
   userRole            = "Analyst",
@@ -86,10 +86,8 @@ export function KpiIntelligenceHub({
     }
   }, [preselectedKpi]);
 
-  const visibleTabs = tab === "interpreter"
-    ? TABS.filter((item) => item.id === "interpreter")
-    : TABS.filter((item) => item.id === "registry" || item.id === "governance");
-  const activeTab = visibleTabs.find((item) => item.id === tab) ?? visibleTabs[0];
+  const visibleTabs = TABS;
+  const activeTab = TABS.find((item) => item.id === tab) ?? TABS[0];
 
   return (
     <div className="flex flex-col gap-0 bg-card border border-border rounded-xl overflow-hidden">

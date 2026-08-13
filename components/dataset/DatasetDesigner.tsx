@@ -49,6 +49,7 @@ type RelType    = "OneToOne" | "OneToMany" | "ManyToOne" | "ManyToMany";
 type RelStatus  = "Suggested" | "Accepted" | "Rejected";
 type DSStatus   = "Draft" | "Pending Approval" | "Published" | "Deprecated";
 type DesignerTab = "discovery" | "canvas" | "relationships" | "datasets" | "validation" | "lineage";
+type DatasetStudioMode = "build" | "relationships" | "semantics" | "published";
 
 interface ColumnDef {
   name:        string;
@@ -595,11 +596,15 @@ function DiscoveryPanel({
 
 function CanvasPanel({
   canvasTables,
+  availableTables,
   onAddToCanvas,
+  onToggleTable,
   onCreateRelationship,
 }: {
   canvasTables: TableDef[];
+  availableTables: TableDef[];
   onAddToCanvas: () => void;
+  onToggleTable: (table: TableDef, selected: boolean) => void;
   onCreateRelationship: (src: DragColumn, tgt: DragColumn) => void;
 }) {
   const [dragColumn, setDragColumn] = useState<DragColumn | null>(null);
@@ -621,6 +626,22 @@ function CanvasPanel({
 
   return (
     <div className="flex flex-col gap-4">
+      <fieldset className="rounded-lg border border-border bg-muted/10 p-4">
+        <legend className="px-1 text-xs font-semibold text-foreground">Governed source tables</legend>
+        <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">Select multiple sources for this draft. Selection stays in Build and never advances the workflow automatically.</p>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3" aria-label="Available source tables">
+          {availableTables.map((table) => {
+            const selected = canvasTables.some((item) => item.name === table.name);
+            return (
+              <label key={`${table.schema}.${table.name}`} className={cn("flex cursor-pointer items-start gap-2 rounded-lg border p-3 transition-colors", selected ? "border-primary/40 bg-primary/5" : "border-border bg-card hover:border-primary/30")}>
+                <input type="checkbox" checked={selected} onChange={(event) => onToggleTable(table, event.target.checked)} className="mt-0.5 size-4 accent-primary" />
+                <span className="min-w-0"><span className="block truncate font-mono text-[11px] font-semibold text-foreground">{table.name}</span><span className="block text-[10px] text-muted-foreground">{table.schema} · {table.columnCount} columns</span></span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+
       {/* Instructions */}
       <div className="flex items-start gap-2.5 bg-primary/5 border border-primary/20 rounded-lg px-4 py-3">
         <Info className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
@@ -845,6 +866,8 @@ function RelationshipsPanel({
 function DatasetsPanel({
   datasets,
   relationships,
+  availableTables,
+  mode,
   loading,
   onPublish,
   onRequestApproval,
@@ -854,6 +877,8 @@ function DatasetsPanel({
   }: {
   datasets:      SemanticDataset[];
   relationships: Relationship[];
+  availableTables: TableDef[];
+  mode: "semantics" | "published";
   loading:       boolean;
   onPublish:     (id: string) => void;
   onRequestApproval: (id: string) => void;
@@ -866,8 +891,56 @@ function DatasetsPanel({
   const emptyForm = { datasetName: "", description: "", owner: "Analytics Team", tables: "", dimensions: "", measures: "", glossaryMappings: "", businessRules: "", relationships: [] as string[] };
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [previewRows, setPreviewRows] = useState<Record<string, unknown>[]>([]);
+  const [previewColumns, setPreviewColumns] = useState<string[]>([]);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const acceptedRels = relationships.filter((r) => r.status === "Accepted");
+  const visibleDatasets = mode === "published" ? datasets.filter((dataset) => dataset.status === "Published") : datasets.filter((dataset) => dataset.status !== "Published");
+
+  function quoteIdentifier(identifier: string) {
+    return identifier.split(".").map((part) => `[${part.replaceAll("]", "]]")}]`).join(".");
+  }
+
+  function generateReadOnlySql(dataset: SemanticDataset) {
+    const [baseTable, ...remainingTables] = dataset.tables;
+    if (!baseTable) return "-- No source tables are selected for this dataset.";
+    const selectedRelationships = dataset.relationships.map((id) => acceptedRels.find((relationship) => relationship.id === id)).filter((relationship): relationship is Relationship => Boolean(relationship));
+    const joinedTables = new Set([baseTable]);
+    const joins: string[] = [];
+    for (const relationship of selectedRelationships) {
+      const sourceJoined = joinedTables.has(relationship.sourceTable);
+      const targetJoined = joinedTables.has(relationship.targetTable);
+      if (sourceJoined === targetJoined) continue;
+      const nextTable = sourceJoined ? relationship.targetTable : relationship.sourceTable;
+      joins.push(`LEFT JOIN ${quoteIdentifier(nextTable)} ON ${quoteIdentifier(relationship.sourceTable)}.${quoteIdentifier(relationship.sourceColumn)} = ${quoteIdentifier(relationship.targetTable)}.${quoteIdentifier(relationship.targetColumn)}`);
+      joinedTables.add(nextTable);
+    }
+    for (const table of remainingTables) {
+      if (!joinedTables.has(table)) joins.push(`-- Relationship required before joining ${quoteIdentifier(table)}`);
+    }
+    return [`SELECT TOP (100)`, `  *`, `FROM ${quoteIdentifier(baseTable)}`, ...joins].join("\n");
+  }
+
+  async function runPreview(dataset: SemanticDataset) {
+    setPreviewingId(dataset.datasetId);
+    setPreviewRows([]);
+    setPreviewColumns([]);
+    setPreviewError(null);
+    try {
+      const response = await fetch("/api/run-sql", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sql: generateReadOnlySql(dataset), report_name: `${dataset.datasetName} preview` }) });
+      const payload = await response.json() as { rows?: Record<string, unknown>[]; columns?: Array<string | { name?: string }>; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
+      const rows = payload.rows ?? [];
+      setPreviewRows(rows);
+      setPreviewColumns((payload.columns ?? []).map((column) => typeof column === "string" ? column : column.name ?? "column"));
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : "Preview execution failed");
+    } finally {
+      setPreviewingId(null);
+    }
+  }
 
   async function handleSave() {
   if (!form.datasetName.trim()) return;
@@ -913,19 +986,19 @@ function DatasetsPanel({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Layers className="w-4 h-4 text-primary" />
-          <h3 className="text-sm font-semibold text-foreground">Semantic Datasets</h3>
-          <span className="text-[11px] text-muted-foreground">({datasets.length})</span>
+          <h3 className="text-sm font-semibold text-foreground">{mode === "published" ? "Published Datasets" : "Semantic Drafts"}</h3>
+          <span className="text-[11px] text-muted-foreground">({visibleDatasets.length})</span>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={onRefresh} disabled={loading} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-50">
             {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
           </button>
-          <button
+          {mode === "semantics" && <button
             onClick={() => setShowCreate(true)}
             className="flex items-center gap-1.5 text-xs text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg px-3 py-1.5 transition-colors font-medium"
           >
-            <Plus className="w-3 h-3" />New Dataset
-          </button>
+            <Plus className="w-3 h-3" />New Draft
+          </button>}
         </div>
       </div>
 
@@ -940,7 +1013,6 @@ function DatasetsPanel({
             {[
               { label: "Dataset Name *", field: "datasetName", placeholder: "e.g. Clinical Operations" },
               { label: "Owner", field: "owner", placeholder: "e.g. Analytics Team" },
-              { label: "Tables (comma separated)", field: "tables", placeholder: "CLIENT_EPISODES_ALL, BRANCHES" },
               { label: "Dimensions (comma separated)", field: "dimensions", placeholder: "Branch, Service Line, Region" },
   { label: "Description", field: "description", placeholder: "Purpose and scope…" },
   { label: "Measures (comma separated)", field: "measures", placeholder: "Census, Revenue, Admissions" },
@@ -961,8 +1033,18 @@ function DatasetsPanel({
               </div>
               );
             })}
-  </div>
-  {editingId && acceptedRels.length > 0 && <fieldset className="flex flex-col gap-2 rounded-lg border border-border p-3"><legend className="px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Accepted relationships</legend>{acceptedRels.map((relationship) => <label key={relationship.id} className="flex items-center gap-2 text-xs text-foreground"><input type="checkbox" checked={form.relationships.includes(relationship.id)} onChange={(event) => setForm((current) => ({ ...current, relationships: event.target.checked ? [...current.relationships, relationship.id] : current.relationships.filter((id) => id !== relationship.id) }))} className="h-3.5 w-3.5 accent-primary" /><span className="font-mono text-[10px]">{relationship.sourceTable}.{relationship.sourceColumn} → {relationship.targetTable}.{relationship.targetColumn}</span></label>)}</fieldset>}
+	  </div>
+      <fieldset className="rounded-lg border border-border p-3">
+        <legend className="px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Source tables</legend>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {availableTables.map((table) => {
+            const selectedTables = form.tables.split(",").map((item) => item.trim()).filter(Boolean);
+            const selected = selectedTables.includes(table.name);
+            return <label key={`${table.schema}.${table.name}`} className="flex items-center gap-2 text-xs text-foreground"><input type="checkbox" checked={selected} onChange={(event) => setForm((current) => ({ ...current, tables: (event.target.checked ? [...new Set([...selectedTables, table.name])] : selectedTables.filter((name) => name !== table.name)).join(", ") }))} className="size-4 accent-primary" /><span className="truncate font-mono text-[10px]">{table.schema}.{table.name}</span></label>;
+          })}
+        </div>
+      </fieldset>
+	  {acceptedRels.length > 0 && <fieldset className="flex flex-col gap-2 rounded-lg border border-border p-3"><legend className="px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Accepted relationships</legend>{acceptedRels.map((relationship) => <label key={relationship.id} className="flex items-center gap-2 text-xs text-foreground"><input type="checkbox" checked={form.relationships.includes(relationship.id)} onChange={(event) => setForm((current) => ({ ...current, relationships: event.target.checked ? [...current.relationships, relationship.id] : current.relationships.filter((id) => id !== relationship.id) }))} className="h-3.5 w-3.5 accent-primary" /><span className="font-mono text-[10px]">{relationship.sourceTable}.{relationship.sourceColumn} → {relationship.targetTable}.{relationship.targetColumn}</span></label>)}</fieldset>}
   <div className="flex items-center gap-2 pt-1 border-t border-border/50">
   <p className="text-[10px] text-muted-foreground flex-1">{editingId ? "Saving creates a revision and returns pending definitions to Draft." : `${acceptedRels.length} accepted relationships will be auto-linked.`}</p>
   <button onClick={() => { setShowCreate(false); setEditingId(null); setForm(emptyForm); }} className="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-muted/30 transition-colors">Cancel</button>
@@ -979,11 +1061,11 @@ function DatasetsPanel({
       )}
 
       {/* Dataset cards */}
-      {datasets.length === 0 ? (
-        <div className="py-10 text-center text-muted-foreground text-sm">No datasets yet. Create your first semantic dataset above.</div>
+      {visibleDatasets.length === 0 ? (
+        <div className="py-10 text-center text-muted-foreground text-sm">{mode === "published" ? "No published datasets are available." : "No semantic drafts yet. Create a draft above."}</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {datasets.map((ds) => (
+          {visibleDatasets.map((ds) => (
             <div key={ds.datasetId} className="border border-border rounded-xl p-4 flex flex-col gap-3 bg-card hover:border-primary/30 transition-colors">
               {/* Header */}
               <div className="flex items-start justify-between gap-2">
@@ -1026,21 +1108,27 @@ function DatasetsPanel({
 
               {/* Footer actions */}
               {(ds.status === "Draft" || ds.status === "Pending Approval") && (
-  <div className="flex gap-2 pt-2 border-t border-border/50 mt-auto">
-  <button onClick={() => beginEdit(ds)} className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted/30"><Edit3 className="h-3 w-3" />Edit</button>
-  <button
-  onClick={() => ds.status === "Draft" ? onRequestApproval(ds.datasetId) : onPublish(ds.datasetId)}
-  className="flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg bg-chart-3/15 text-chart-3 border border-chart-3/30 hover:bg-chart-3/25 transition-colors font-medium"
-  >
-  <ShieldCheck className="w-3 h-3" />
-  {ds.status === "Draft" ? "Request Approval" : "Certify & Publish"}
-  </button>
-  </div>
+	  <div className="flex gap-2 pt-2 border-t border-border/50 mt-auto">
+	  <button onClick={() => beginEdit(ds)} className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted/30"><Edit3 className="h-3 w-3" />Edit Draft</button>
+	  <button
+	  onClick={() => ds.status === "Draft" ? onRequestApproval(ds.datasetId) : onPublish(ds.datasetId)}
+	  className="flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg bg-chart-3/15 text-chart-3 border border-chart-3/30 hover:bg-chart-3/25 transition-colors font-medium"
+	  >
+	  <ShieldCheck className="w-3 h-3" />
+	  {ds.status === "Draft" ? "Request Approval" : "Certify & Publish"}
+	  </button>
+	  </div>
               )}
+              {ds.status === "Published" && <div className="mt-auto flex flex-col gap-2 border-t border-border/50 pt-3">
+                <pre className="max-h-48 overflow-auto rounded-lg border border-border bg-muted/20 p-3 font-mono text-[10px] leading-relaxed text-foreground">{generateReadOnlySql(ds)}</pre>
+                <div className="flex gap-2"><button type="button" onClick={() => beginEdit(ds)} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted/30"><Edit3 className="size-3" />Create Draft Revision</button><button type="button" onClick={() => void runPreview(ds)} disabled={previewingId === ds.datasetId || generateReadOnlySql(ds).includes("Relationship required")} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50">{previewingId === ds.datasetId ? <Loader2 className="size-3 animate-spin" /> : <Zap className="size-3" />}Run Preview</button></div>
+              </div>}
             </div>
           ))}
         </div>
       )}
+      {mode === "published" && previewError && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">{previewError}</div>}
+      {mode === "published" && previewRows.length > 0 && <div className="overflow-auto rounded-lg border border-border" aria-label="Published dataset preview results"><table className="w-full min-w-max text-left text-xs"><thead className="bg-muted/30"><tr>{(previewColumns.length ? previewColumns : Object.keys(previewRows[0])).map((column) => <th key={column} className="border-b border-border px-3 py-2 font-semibold text-foreground">{column}</th>)}</tr></thead><tbody>{previewRows.slice(0, 25).map((row, index) => <tr key={index} className="border-b border-border/50 last:border-0">{(previewColumns.length ? previewColumns : Object.keys(previewRows[0])).map((column) => <td key={column} className="max-w-64 truncate px-3 py-2 text-muted-foreground">{String(row[column] ?? "—")}</td>)}</tr>)}</tbody></table></div>}
     </div>
   );
 }
@@ -1085,11 +1173,12 @@ export interface DatasetWorkflowState {
 interface DatasetDesignerProps {
   onNavigate?: (view: string) => void;
   initialTab?: DesignerTab;
+  studioMode?: DatasetStudioMode;
   showStageTabs?: boolean;
   onWorkflowStateChange?: (state: DatasetWorkflowState) => void;
 }
 
-export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStageTabs = true, onWorkflowStateChange }: DatasetDesignerProps) {
+export function DatasetDesigner({ onNavigate, initialTab = "discovery", studioMode, showStageTabs = true, onWorkflowStateChange }: DatasetDesignerProps) {
   const [tab, setTab] = useState<DesignerTab>(initialTab);
   const [canvasTables, setCanvasTables] = useState<TableDef[]>([
     SOURCE_TABLES.find((t) => t.name === "CLIENT_EPISODES_ALL")!,
@@ -1203,7 +1292,13 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
   // continue discovering sources, then open Build explicitly when ready.
   function handleAddToCanvas(t: TableDef) {
     setCanvasTables((prev) => prev.find((x) => x.name === t.name) ? prev : [...prev, t]);
-    showToast(`${t.name} added to Build. Open the Build tab when ready.`);
+    showToast(`${t.name} added to Build.`);
+  }
+
+  function handleToggleCanvasTable(table: TableDef, selected: boolean) {
+    setCanvasTables((current) => selected
+      ? current.some((item) => item.name === table.name) ? current : [...current, table]
+      : current.filter((item) => item.name !== table.name));
   }
 
   // Canvas: create relationship (from drag-drop)
@@ -1280,8 +1375,7 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
           const exists = prev.find((r) => r.id === json.relationship.id);
           return exists ? prev.map((r) => r.id === json.relationship.id ? json.relationship : r) : [json.relationship, ...prev];
         });
-        showToast(`Relationship ${json.relationship.id} accepted`);
-        setTab("relationships");
+        showToast(`Relationship ${json.relationship.id} accepted. Open Relationships to review it.`);
       }
     } catch (err) {
       showToast(`Failed to save relationship${err instanceof Error ? `: ${err.message}` : ""}`, false);
@@ -1378,9 +1472,11 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
       });
       const json = await res.json() as { success?: boolean; dataset?: SemanticDataset; error?: string };
       if (!res.ok || !json.success || !json.dataset) throw new Error(json.error ?? `HTTP ${res.status}`);
-      setDatasets((current) => current.map((dataset) => dataset.datasetId === datasetId ? json.dataset! : dataset));
-      setSelectedDatasetId(datasetId);
-      showToast(`${json.dataset.datasetName} saved as v${json.dataset.version} · ${json.dataset.history?.length ?? 0} revision(s)`);
+      setDatasets((current) => current.some((dataset) => dataset.datasetId === json.dataset!.datasetId)
+        ? current.map((dataset) => dataset.datasetId === json.dataset!.datasetId ? json.dataset! : dataset)
+        : [...current, json.dataset!]);
+      setSelectedDatasetId(json.dataset.datasetId);
+      showToast(`${json.dataset.datasetName} saved as draft v${json.dataset.version} · published revision preserved`);
     } catch (err) { showToast(`Failed to update dataset${err instanceof Error ? `: ${err.message}` : ""}`, false); throw err; }
   }
 
@@ -1460,7 +1556,9 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
             {tab === "canvas" && (
               <CanvasPanel
                 canvasTables={canvasTables}
+                availableTables={discoveryTables}
                 onAddToCanvas={() => setTab("discovery")}
+                onToggleTable={handleToggleCanvasTable}
                 onCreateRelationship={handleCreateRelationship}
               />
             )}
@@ -1474,10 +1572,12 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", showStag
               />
             )}
             {tab === "datasets" && (
-  <DatasetsPanel
-  datasets={datasets}
-  relationships={relationships}
-  loading={loading}
+	  <DatasetsPanel
+	  datasets={datasets}
+	  relationships={relationships}
+      availableTables={discoveryTables}
+      mode={studioMode === "published" ? "published" : "semantics"}
+	  loading={loading}
   onPublish={handlePublish}
   onRequestApproval={handleRequestApproval}
   onCreate={handleCreateDataset}

@@ -1,20 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, BookOpen, CheckCircle2, Database, GitMerge, Layers, Network, Send } from "lucide-react";
+import { BookOpen, CheckCircle2, GitMerge, Layers, Network, Send } from "lucide-react";
 import { DatasetDesigner, type DatasetWorkflowState } from "@/components/dataset/DatasetDesigner";
 import { cn } from "@/lib/utils";
 
 type DatasetTab = "discover" | "build" | "relationships" | "semantics" | "validate" | "publish" | "history";
+type CanonicalDatasetTab = "build" | "relationships" | "semantics" | "publish";
 type DesignerStage = "discovery" | "canvas" | "relationships" | "datasets" | "validation" | "lineage";
 
-const TABS: Array<{ id: Exclude<DatasetTab, "history">; label: string; icon: React.ElementType; description: string; designerStage: DesignerStage }> = [
-  { id: "discover", label: "Discover", icon: Database, description: "Find governed source tables and inspect columns before adding them to the canvas.", designerStage: "discovery" },
-  { id: "build", label: "Build", icon: Layers, description: "Assemble source tables and create join paths on the relationship canvas.", designerStage: "canvas" },
-  { id: "relationships", label: "Relationships", icon: GitMerge, description: "Review inferred relationships, confidence signals, and accepted join paths.", designerStage: "relationships" },
-  { id: "semantics", label: "Semantics", icon: BookOpen, description: "Define reusable datasets, dimensions, measures, ownership, and business meaning.", designerStage: "datasets" },
-  { id: "validate", label: "Validate", icon: CheckCircle2, description: "Automatically check schema, mappings, relationships, KPI readiness, and data quality.", designerStage: "validation" },
-  { id: "publish", label: "Publish", icon: Send, description: "Publish only validated semantic datasets and expose them to reporting surfaces.", designerStage: "datasets" },
+const TABS: Array<{ id: CanonicalDatasetTab; label: string; icon: React.ElementType; description: string; designerStage: DesignerStage }> = [
+  { id: "build", label: "Build", icon: Layers, description: "Discover governed source tables, select them, and assemble the dataset canvas without leaving this stage.", designerStage: "canvas" },
+  { id: "relationships", label: "Relationships", icon: GitMerge, description: "Define and validate explicit join paths across selected source tables.", designerStage: "relationships" },
+  { id: "semantics", label: "Semantics", icon: BookOpen, description: "Define dimensions, measures, ownership, glossary mappings, and business rules.", designerStage: "datasets" },
+  { id: "publish", label: "Published", icon: Send, description: "Review immutable published revisions, inspect generated read-only SQL, and run previews explicitly.", designerStage: "datasets" },
 ];
 
 interface DatasetStudioHubProps {
@@ -22,13 +21,14 @@ interface DatasetStudioHubProps {
   onNavigate?: (view: string) => void;
 }
 
-function normalizeTab(tab: DatasetTab): Exclude<DatasetTab, "history"> {
-  if (tab === "history") return "publish";
+function normalizeTab(tab: DatasetTab): CanonicalDatasetTab {
+  if (tab === "discover") return "build";
+  if (tab === "validate" || tab === "history") return "publish";
   return tab;
 }
 
-export function DatasetStudioHub({ initialTab = "discover", onNavigate }: DatasetStudioHubProps) {
-  const [tab, setTab] = useState<Exclude<DatasetTab, "history">>(normalizeTab(initialTab));
+export function DatasetStudioHub({ initialTab = "build", onNavigate }: DatasetStudioHubProps) {
+  const [tab, setTab] = useState<CanonicalDatasetTab>(normalizeTab(initialTab));
   const [workflow, setWorkflow] = useState<DatasetWorkflowState>({ tableCount: 0, acceptedRelationshipCount: 0, datasetCount: 0, selectedDatasetId: null, selectedDatasetStatus: null });
   const [guardMessage, setGuardMessage] = useState<string | null>(null);
 
@@ -38,14 +38,12 @@ export function DatasetStudioHub({ initialTab = "discover", onNavigate }: Datase
   const activeIndex = TABS.findIndex((item) => item.id === tab);
   const handleWorkflowStateChange = useCallback((state: DatasetWorkflowState) => setWorkflow(state), []);
 
-  function guardFor(target: Exclude<DatasetTab, "history">): string | null {
-    if (["relationships", "semantics", "validate", "publish"].includes(target) && workflow.tableCount === 0) return "Add at least one governed source table before continuing.";
-    if (["validate", "publish"].includes(target) && workflow.datasetCount === 0) return "Create a semantic dataset before validation or publication.";
-    if (target === "publish" && workflow.selectedDatasetStatus === "Draft") return "Run validation, then request approval before opening Publish.";
+  function guardFor(target: CanonicalDatasetTab): string | null {
+    if (["relationships", "semantics"].includes(target) && workflow.tableCount === 0) return "Select at least one governed source table in Build before continuing.";
     return null;
   }
 
-  function moveTo(target: Exclude<DatasetTab, "history">) {
+  function moveTo(target: CanonicalDatasetTab) {
     const message = guardFor(target);
     if (message) { setGuardMessage(message); return; }
     setGuardMessage(null);
@@ -84,16 +82,16 @@ export function DatasetStudioHub({ initialTab = "discover", onNavigate }: Datase
       <div className="p-5">
         <DatasetDesigner
           initialTab={active.designerStage}
+          studioMode={tab === "publish" ? "published" : tab}
           showStageTabs={false}
           onWorkflowStateChange={handleWorkflowStateChange}
           onNavigate={(id) => onNavigate?.(id === "registry" ? "schema" : id)}
         />
       </div>
 
-      <footer className="flex items-center justify-between gap-3 border-t border-border bg-muted/10 px-5 py-3">
-        <button type="button" disabled={activeIndex === 0} onClick={() => moveTo(TABS[Math.max(0, activeIndex - 1)].id)} className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground transition hover:text-foreground disabled:opacity-40">Previous stage</button>
-        <div className="flex items-center gap-2 text-[10px] text-muted-foreground"><span>Stage {activeIndex + 1} of {TABS.length}</span><span className="hidden md:inline">{workflow.tableCount} tables · {workflow.datasetCount} datasets · {workflow.acceptedRelationshipCount} accepted relationships</span></div>
-        <button type="button" disabled={activeIndex === TABS.length - 1} onClick={() => moveTo(TABS[Math.min(TABS.length - 1, activeIndex + 1)].id)} className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-40">Next stage<ArrowRight className="size-3" /></button>
+      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-muted/10 px-5 py-3 text-[10px] text-muted-foreground">
+        <span>{workflow.tableCount} selected tables · {workflow.acceptedRelationshipCount} accepted relationships</span>
+        <span>{workflow.datasetCount} semantic definitions · explicit navigation only</span>
       </footer>
     </section>
   );

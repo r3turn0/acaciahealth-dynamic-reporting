@@ -137,7 +137,22 @@ interface KpiDef {
   source:   string;
 }
 
-type RegistryTab = "registry" | "lineage" | "glossary" | "kpis";
+interface PublishedDataset {
+  datasetId: string;
+  datasetName: string;
+  description: string;
+  version: string;
+  owner: string;
+  tables: string[];
+  relationships: string[];
+  dimensions: string[];
+  measures: string[];
+  publishedDate?: string;
+  publicationTargets: string[];
+  status: string;
+}
+
+type RegistryTab = "registry" | "datasets" | "lineage" | "glossary" | "kpis";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -724,6 +739,7 @@ export function SchemaIntelligenceRegistry({ onNavigate }: SchemaIntelligenceReg
   const [domains, setDomains] = useState<string[]>([]);
   const [provenance, setProvenance] = useState<CatalogProvenance | null>(null);
   const [glossary, setGlossary] = useState<BusinessGlossary | null>(null);
+  const [publishedDatasets, setPublishedDatasets] = useState<PublishedDataset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -739,8 +755,12 @@ export function SchemaIntelligenceRegistry({ onNavigate }: SchemaIntelligenceReg
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/schema/intelligence");
+      const [res, datasetsResponse] = await Promise.all([
+        fetch("/api/schema/intelligence", { cache: "no-store" }),
+        fetch("/api/designer/datasets?status=Published", { cache: "no-store" }),
+      ]);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!datasetsResponse.ok) throw new Error(`Dataset registry HTTP ${datasetsResponse.status}`);
       const json = await res.json() as {
         tables:      RegistryTable[];
         scope:       ScopeData;
@@ -749,8 +769,11 @@ export function SchemaIntelligenceRegistry({ onNavigate }: SchemaIntelligenceReg
         provenance?: CatalogProvenance;
         glossary?: BusinessGlossary;
       };
+      const datasetJson = await datasetsResponse.json() as { datasets?: PublishedDataset[] };
+      const published = (datasetJson.datasets ?? []).filter((dataset) => dataset.status === "Published");
       setTables(json.tables ?? []);
-      setScope(json.scope ?? null);
+      setScope(json.scope ? { ...json.scope, datasets: published.length } : null);
+      setPublishedDatasets(published);
       setLineage(json.lineage ?? []);
       setDomains(["All", ...(json.domains ?? [])]);
       setProvenance(json.provenance ?? null);
@@ -781,6 +804,7 @@ export function SchemaIntelligenceRegistry({ onNavigate }: SchemaIntelligenceReg
 
   const TABS: { id: RegistryTab; label: string; icon: React.ElementType }[] = [
     { id: "registry", label: "Table Registry",    icon: Database  },
+    { id: "datasets", label: "Published Datasets", icon: Layers },
     { id: "lineage",  label: "Lineage Map",        icon: Network   },
     { id: "glossary", label: "Business Glossary",   icon: BookOpen  },
     { id: "kpis",     label: "KPI Dependencies",   icon: BarChart3 },
@@ -917,6 +941,18 @@ export function SchemaIntelligenceRegistry({ onNavigate }: SchemaIntelligenceReg
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {tab === "datasets" && (
+          <div className="flex flex-col gap-3">
+            <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-xs leading-relaxed text-muted-foreground">Published revisions are read-only registry assets. Editing in Dataset Studio creates a separate Draft revision and preserves the version shown here.</div>
+            {publishedDatasets.length === 0 ? <div className="py-10 text-center text-sm text-muted-foreground">No published dataset revisions are registered.</div> : publishedDatasets.map((dataset) => <article key={dataset.datasetId} className="flex flex-col gap-3 rounded-lg border border-border p-4">
+              <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="text-sm font-semibold text-foreground">{dataset.datasetName}</h3><p className="text-[10px] text-muted-foreground">{dataset.datasetId} · v{dataset.version} · {dataset.owner}</p></div><span className="rounded border border-chart-3/30 bg-chart-3/10 px-2 py-1 text-[10px] font-medium text-chart-3">Published {dataset.publishedDate ?? "—"}</span></div>
+              <p className="text-xs leading-relaxed text-muted-foreground">{dataset.description}</p>
+              <div className="grid gap-3 md:grid-cols-2"><div><p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Source lineage</p><div className="flex flex-wrap gap-1">{dataset.tables.map((table) => <span key={table} className="rounded border border-border bg-muted/20 px-2 py-1 font-mono text-[10px] text-foreground">{table}</span>)}</div></div><div><p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Semantic contract</p><p className="text-[11px] text-muted-foreground">{dataset.relationships.length} relationships · {dataset.dimensions.length} dimensions · {dataset.measures.length} measures</p></div></div>
+              <p className="text-[10px] text-muted-foreground">Published to: {dataset.publicationTargets.join(", ") || "Registry only"}</p>
+            </article>)}
           </div>
         )}
 
