@@ -14,6 +14,7 @@ import { ResultRecoveryPanel } from "./ResultRecoveryPanel";
 import type { QueryPlan } from "./AskAI";
 import type { ReportResult } from "./ResultsTable";
 import { fetchWithTimeout, requestErrorMessage } from "@/lib/client/fetchWithTimeout";
+import { SqlCompatibilityIndicator } from "@/components/shared/SqlCompatibilityIndicator";
 
 type StudioTab = "ask" | "semantic" | "builder" | "saved";
 
@@ -460,6 +461,7 @@ export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportSt
                   </div>
                 </div>
               )}
+              <SqlCompatibilityIndicator sql={sql} />
               <SQLEditor
                 sql={sql}
                 onChange={handleSqlChange}

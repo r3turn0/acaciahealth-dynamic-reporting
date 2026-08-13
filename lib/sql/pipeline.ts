@@ -13,6 +13,7 @@
 import schemaConfig from "@/lib/config/schemaConfig.json";
 import kpiConfig    from "@/lib/config/kpiConfig.json";
 import semanticLayer from "@/lib/config/semanticLayer.json";
+import { validateReadOnlySql } from "@/lib/services/queryGuard";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -34,35 +35,11 @@ export interface PipelineChange {
 
 // ── Tier 1: Validation ────────────────────────────────────────────────────────
 
-const BLOCKED = [
-  { re: /drop\s+table/i,               msg: "DROP TABLE is not allowed" },
-  { re: /truncate\s+table/i,           msg: "TRUNCATE TABLE is not allowed" },
-  { re: /delete\s+from/i,              msg: "DELETE is not allowed" },
-  { re: /insert\s+into/i,              msg: "INSERT is not allowed" },
-  { re: /update\s+\w/i,               msg: "UPDATE is not allowed" },
-  { re: /create\s+(table|view|procedure|index)/i, msg: "DDL is not allowed" },
-  { re: /exec(\s|\()/i,               msg: "EXEC is not allowed" },
-  { re: /xp_cmdshell/i,               msg: "xp_cmdshell is not allowed" },
-  { re: /openrowset/i,                msg: "OPENROWSET is not allowed" },
-];
-
 export function validateSQL(sql: string): { valid: boolean; errors: string[] } {
-  const errors: string[] = [];
-  const up = sql.toUpperCase().trim();
-
-  if (!up.startsWith("SELECT") && !up.startsWith("WITH") && !up.startsWith("--")) {
-    errors.push("Only SELECT queries are allowed");
-  }
-  if (up.includes("SELECT *")) {
-    errors.push("SELECT * is not allowed — specify explicit columns");
-  }
-  for (const { re, msg } of BLOCKED) {
-    if (re.test(sql)) errors.push(msg);
-  }
-  if (sql.length > 8000) {
-    errors.push("Query exceeds maximum length of 8000 characters");
-  }
-  return { valid: errors.length === 0, errors };
+  const result = validateReadOnlySql(sql);
+  const errors = [...result.errors];
+  if (sql.length > 50_000) errors.push("Query exceeds maximum length of 50000 characters");
+  return { valid: errors.length === 0, errors: [...new Set(errors)] };
 }
 
 // ── Tier 2: Deterministic Fix Engine ─────────────────────────────────────────

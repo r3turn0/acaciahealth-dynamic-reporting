@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { validateQuery, validateReadOnlySql } from "@/lib/services/queryGuard";
 import { assertReadOnly, ReadOnlyViolationError } from "@/lib/db/readOnlyClient";
+import { analyzeSqlCompatibility, bindUnresolvedParameters } from "@/lib/services/sqlCompatibility";
 
 const VALID = `SELECT b.branch_name, COUNT(*) AS admissions
 FROM CLIENT_EPISODES_ALL epi
@@ -81,6 +82,18 @@ describe("validateReadOnlySql", () => {
     expect(validateReadOnlySql(sql)).toEqual({ valid: true, errors: [] });
   });
 
+  it("allows leading DECLARE statements when the executable body remains read-only", () => {
+    const sql = `DECLARE @ReportStart date = '2026-01-01';
+DECLARE @ReportEnd date = '2026-01-31';
+WITH episodes AS (SELECT epi_id, epi_SocDate FROM CLIENT_EPISODES_ALL WHERE epi_SocDate BETWEEN @ReportStart AND @ReportEnd)
+SELECT epi_id FROM episodes`;
+    expect(validateReadOnlySql(sql)).toEqual({ valid: true, errors: [] });
+  });
+
+  it("still blocks write operations following declarations", () => {
+    expect(validateReadOnlySql("DECLARE @id int = 1; UPDATE x SET value = @id").valid).toBe(false);
+  });
+
   it("allows multiple independently read-only result statements", () => {
     const sql = [
       "SELECT epi_id FROM CLIENT_EPISODES_ALL WHERE epi_SocDate BETWEEN @StartDate AND @EndDate",
@@ -115,5 +128,30 @@ describe("validateReadOnlySql", () => {
 
   it("uses the same policy at the data-client boundary", () => {
     expect(() => assertReadOnly("select 1; update x set y = 2")).toThrow(ReadOnlyViolationError);
+  });
+});
+
+describe("SQL compatibility", () => {
+  const candidates = [
+    { name: "StartDate", value: "2026-01-01", type: "date" as const },
+    { name: "EndDate", value: "2026-01-31", type: "date" as const },
+  ];
+
+  it("does not bind values already declared inside saved SQL", () => {
+    const sql = "DECLARE @StartDate date = '2020-01-01'; SELECT epi_id FROM CLIENT_EPISODES_ALL WHERE epi_SocDate >= @StartDate";
+    expect(bindUnresolvedParameters(sql, candidates)).toEqual([]);
+  });
+
+  it("binds only unresolved external values without rewriting SQL", () => {
+    const sql = "SELECT epi_id FROM CLIENT_EPISODES_ALL WHERE epi_SocDate BETWEEN @StartDate AND @EndDate";
+    expect(bindUnresolvedParameters(sql, candidates).map((item) => item.name)).toEqual(["StartDate", "EndDate"]);
+    expect(sql).toContain("@StartDate");
+  });
+
+  it("reports advanced read-only features and missing parameters", () => {
+    const report = analyzeSqlCompatibility("WITH x AS (SELECT ROW_NUMBER() OVER (ORDER BY epi_id) AS n FROM CLIENT_EPISODES_ALL WHERE epi_SocDate >= @StartDate) SELECT n FROM x", ["EndDate"]);
+    expect(report.features).toEqual(expect.arrayContaining(["CTEs", "Window functions"]));
+    expect(report.unresolvedParameters).toEqual(["startdate"]);
+    expect(report.compatible).toBe(false);
   });
 });

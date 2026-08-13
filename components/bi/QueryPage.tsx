@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { FeedbackModal, type FixResult } from "./FeedbackModal";
 import { AiFixPanel } from "./AiFixPanel";
 import { useQueryFeedbackLog } from "@/lib/hooks/useQueryFeedbackLog";
+import { SqlCompatibilityIndicator } from "@/components/shared/SqlCompatibilityIndicator";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -301,9 +302,10 @@ export function QueryPage() {
               spellCheck={false}
               className="w-full px-3 py-2.5 rounded-lg bg-muted/60 border border-border font-mono text-[12px] text-foreground resize-y focus:outline-none focus:border-primary transition-colors leading-relaxed"
             />
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => runSQL(generatedSQL)}
+  <SqlCompatibilityIndicator sql={generatedSQL} availableParameters={[]} />
+  <div className="flex items-center gap-2">
+  <button
+  onClick={() => runSQL(generatedSQL)}
                 disabled={running || retrying || !generatedSQL.trim()}
                 className="flex items-center gap-2 px-5 py-2 rounded-lg bg-chart-3 text-white text-sm font-medium hover:bg-chart-3/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >

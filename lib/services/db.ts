@@ -19,6 +19,7 @@
  */
 
 import sql from "mssql";
+import { bindUnresolvedParameters } from "./sqlCompatibility";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -379,14 +380,14 @@ export async function executeQuery(
   query: string,
   params: QueryParams
 ): Promise<Record<string, unknown>[]> {
-  const named: NamedParam[] = [
+  const candidates: NamedParam[] = [
     { name: "StartDate", value: params.StartDate, type: "date" },
     { name: "EndDate", value: params.EndDate, type: "date" },
   ];
   if (params.BranchCode !== undefined) {
-    named.push({ name: "BranchCode", value: params.BranchCode, type: "nvarchar" });
+    candidates.push({ name: "BranchCode", value: params.BranchCode, type: "nvarchar" });
   }
-  return runQuery(query, named);
+  return runQuery(query, bindUnresolvedParameters(query, candidates) as NamedParam[]);
 }
 
 /**
@@ -398,7 +399,7 @@ export async function executeQueryWithParams(
   inputs: NamedParam[],
   signal?: AbortSignal,
 ): Promise<Record<string, unknown>[]> {
-  return (await runMultiQuery(query, inputs, signal)).rows;
+  return (await runMultiQuery(query, bindUnresolvedParameters(query, inputs) as NamedParam[], signal)).rows;
 }
 
 /** Execute one parameterized SQL command and consume every returned result set. */
@@ -407,7 +408,7 @@ export async function executeMultiQueryWithParams(
   inputs: NamedParam[],
   signal?: AbortSignal,
 ): Promise<MultiQueryResult> {
-  return runMultiQuery(query, inputs, signal);
+  return runMultiQuery(query, bindUnresolvedParameters(query, inputs) as NamedParam[], signal);
 }
 
 /** Execute one standard date-range command and consume every result set. */
@@ -416,14 +417,14 @@ export async function executeMultiQuery(
   params: QueryParams,
   signal?: AbortSignal,
 ): Promise<MultiQueryResult> {
-  const named: NamedParam[] = [
+  const candidates: NamedParam[] = [
     { name: "StartDate", value: params.StartDate, type: "date" },
     { name: "EndDate", value: params.EndDate, type: "date" },
   ];
   if (params.BranchCode !== undefined) {
-    named.push({ name: "BranchCode", value: params.BranchCode, type: "nvarchar" });
+    candidates.push({ name: "BranchCode", value: params.BranchCode, type: "nvarchar" });
   }
-  return runMultiQuery(query, named, signal);
+  return runMultiQuery(query, bindUnresolvedParameters(query, candidates) as NamedParam[], signal);
 }
 
 /**

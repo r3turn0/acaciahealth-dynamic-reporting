@@ -1,3 +1,5 @@
+import { stripLeadingDeclareBlock } from "./sqlCompatibility";
+
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
@@ -58,7 +60,7 @@ export function validateReadOnlySql(sql: string): ValidationResult {
   // Comments and literals are removed above, so semicolons now represent
   // statement boundaries. Every statement is independently constrained to a
   // SELECT or read-only CTE; this safely supports governed multi-result reports.
-  const statements = executable
+  const statements = stripLeadingDeclareBlock(executable)
     .split(";")
     .map((statement) => statement.trim())
     .filter(Boolean);
@@ -82,7 +84,7 @@ export function validateReadOnlySql(sql: string): ValidationResult {
  */
 export function validateQuery(sql: string): ValidationResult {
   const errors = [...validateReadOnlySql(sql).errors];
-  const upper = executableSql(sql).toUpperCase();
+  const upper = stripLeadingDeclareBlock(executableSql(sql)).toUpperCase();
 
   if (!upper.includes("WHERE")) errors.push("Query must include a WHERE clause");
   if (!sql.includes("@StartDate")) errors.push("Query must reference @StartDate parameter");
