@@ -43,7 +43,7 @@ import {
   Eye,
   GitCompare,
   RotateCcw,
-  SlidersHorizontal,
+  Clock3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DatasetLineagePanel, DatasetValidationHub } from "./DatasetValidationHub";
@@ -943,9 +943,10 @@ function DatasetsPanel({
     return [`SELECT TOP (100)`, projected.join(",\n"), `FROM ${quoteIdentifier(baseTable)}`, ...joins].join("\n");
   }
 
-  async function runPreview(dataset: SemanticDataset) {
-    setPreviewingId(dataset.datasetId);
-    setPreviewRows([]);
+ async function runPreview(dataset: SemanticDataset) {
+ setPreviewingId(dataset.datasetId);
+ setPreviewDataset(dataset);
+ setPreviewRows([]);
     setPreviewColumns([]);
     setPreviewError(null);
     try {
@@ -1155,29 +1156,30 @@ function DatasetsPanel({
               {Boolean(ds.publicationTargets?.length) && <p className="text-[10px] leading-relaxed text-muted-foreground">Available in {ds.publicationTargets!.join(", ")}</p>}
               {Boolean(ds.sourceTraceability?.length) && <p className="text-[10px] leading-relaxed text-muted-foreground">Source: {ds.sourceTraceability!.join(" · ")}</p>}
 
-              {/* Footer actions */}
-              {(ds.status === "Draft" || ds.status === "Pending Approval") && (
-	  <div className="flex gap-2 pt-2 border-t border-border/50 mt-auto">
-	  <button onClick={() => beginEdit(ds)} className="flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted/30"><Edit3 className="h-3 w-3" />Edit Draft</button>
-	  <button
-	  onClick={() => ds.status === "Draft" ? onRequestApproval(ds.datasetId) : onPublish(ds.datasetId)}
-	  className="flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg bg-chart-3/15 text-chart-3 border border-chart-3/30 hover:bg-chart-3/25 transition-colors font-medium"
-	  >
-	  <ShieldCheck className="w-3 h-3" />
-	  {ds.status === "Draft" ? "Request Approval" : "Certify & Publish"}
-	  </button>
-	  </div>
-              )}
-              {ds.status === "Published" && <div className="mt-auto flex flex-col gap-2 border-t border-border/50 pt-3">
-                <pre className="max-h-48 overflow-auto rounded-lg border border-border bg-muted/20 p-3 font-mono text-[10px] leading-relaxed text-foreground">{generateReadOnlySql(ds)}</pre>
-                <div className="flex gap-2"><button type="button" onClick={() => beginEdit(ds)} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-foreground hover:bg-muted/30"><Edit3 className="size-3" />Create Draft Revision</button><button type="button" onClick={() => void runPreview(ds)} disabled={previewingId === ds.datasetId || generateReadOnlySql(ds).includes("Relationship required")} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50">{previewingId === ds.datasetId ? <Loader2 className="size-3 animate-spin" /> : <Zap className="size-3" />}Run Preview</button></div>
+              <div className="mt-auto flex flex-wrap gap-2 border-t border-border/50 pt-3">
+                <button type="button" onClick={() => setPreviewDataset((current) => current?.datasetId === ds.datasetId ? null : ds)} className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-muted/30"><Eye className="size-3" />{previewDataset?.datasetId === ds.datasetId ? "Hide details" : "Preview"}</button>
+                <button type="button" onClick={() => setHistoryDatasetId((current) => current === ds.datasetId ? null : ds.datasetId)} className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-muted/30"><Clock3 className="size-3" />History</button>
+                {(ds.status === "Draft" || ds.status === "Pending Approval") && <><button onClick={() => beginEdit(ds)} className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-muted/30"><Edit3 className="size-3" />Edit Draft</button><button onClick={() => ds.status === "Draft" ? onRequestApproval(ds.datasetId) : onPublish(ds.datasetId)} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-chart-3/30 bg-chart-3/15 px-3 py-1.5 text-xs font-medium text-chart-3 hover:bg-chart-3/25"><ShieldCheck className="size-3" />{ds.status === "Draft" ? "Request Approval" : "Certify & Publish"}</button></>}
+                {ds.status === "Published" && <><button type="button" onClick={() => beginEdit(ds)} className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground hover:bg-muted/30"><Edit3 className="size-3" />Draft Revision</button><button type="button" onClick={() => void runPreview(ds)} disabled={previewingId === ds.datasetId || generateReadOnlySql(ds).startsWith("--")} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50">{previewingId === ds.datasetId ? <Loader2 className="size-3 animate-spin" /> : <Zap className="size-3" />}Run Preview</button></>}
+              </div>
+              {previewDataset?.datasetId === ds.datasetId && <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/10 p-3">
+                <div className="grid grid-cols-2 gap-2 text-[10px] sm:grid-cols-4"><span><strong className="block text-foreground">{ds.selectedTables?.reduce((sum, table) => sum + table.columns.length, 0) ?? 0}</strong>Selected fields</span><span><strong className="block text-foreground">{ds.health ?? 0}%</strong>Health score</span><span><strong className="block text-foreground">{ds.relationships.length}</strong>Join edges</span><span><strong className="block text-foreground">{ds.version}</strong>Version</span></div>
+                {ds.healthBreakdown && <div className="grid grid-cols-2 gap-2 text-[10px]">{Object.entries(ds.healthBreakdown).map(([label, score]) => <div key={label}><div className="flex justify-between"><span className="capitalize text-muted-foreground">{label}</span><span className="font-mono text-foreground">{score}%</span></div><div className="mt-1 h-1 overflow-hidden rounded bg-muted"><div className="h-full bg-primary" style={{ width: `${score}%` }} /></div></div>)}</div>}
+                <div className="max-h-40 overflow-auto rounded border border-border bg-background p-2">{(ds.selectedTables ?? []).map((table) => <div key={table.name} className="border-b border-border/50 py-1.5 last:border-0"><p className="font-mono text-[10px] font-semibold text-foreground">{table.schema}.{table.name}</p><p className="text-[10px] text-muted-foreground">{table.columns.map((column) => column.name).join(", ") || "No fields selected"}</p></div>)}</div>
+                <pre className="max-h-48 overflow-auto rounded border border-border bg-background p-2 font-mono text-[10px] leading-relaxed text-foreground">{generateReadOnlySql(ds)}</pre>
+                <div className="flex flex-wrap gap-2"><span className="flex items-center gap-1 text-[10px] text-muted-foreground"><Download className="size-3" />Export</span>{(["json", "yaml", "dictionary", "lineage", "graph"] as const).map((format) => <button type="button" key={format} onClick={() => void exportMetadata(ds, format)} className="rounded border border-border px-2 py-1 text-[10px] uppercase text-foreground hover:bg-muted/30">{format}</button>)}</div>
+              </div>}
+              {historyDatasetId === ds.datasetId && <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/10 p-3">
+                <div className="flex items-center justify-between"><p className="text-xs font-semibold text-foreground">Immutable version history</p><span className="text-[10px] text-muted-foreground">Restore creates a new draft</span></div>
+                {(ds.history?.length ?? 0) === 0 ? <p className="text-[10px] text-muted-foreground">No prior revisions recorded.</p> : ds.history!.slice().reverse().map((entry) => <div key={`${entry.version}-${entry.savedAt}`} className="flex items-center gap-2 rounded border border-border bg-background p-2"><div className="min-w-0 flex-1"><p className="text-[10px] font-semibold text-foreground">v{entry.version} · {entry.reason}</p><p className="text-[9px] text-muted-foreground">{new Date(entry.savedAt).toLocaleString()} {entry.savedBy ? `· ${entry.savedBy}` : ""}</p></div><button type="button" onClick={() => void compareVersion(ds, entry.version)} className="rounded border border-border p-1.5 text-muted-foreground hover:text-foreground" aria-label={`Compare version ${entry.version}`}><GitCompare className="size-3" /></button><button type="button" onClick={() => void restoreVersion(ds, entry.version)} className="rounded border border-border p-1.5 text-muted-foreground hover:text-foreground" aria-label={`Restore version ${entry.version} as new draft`}><RotateCcw className="size-3" /></button></div>)}
+                {versionDiff && <div className="rounded border border-border bg-background p-2 text-[10px]"><p className="font-semibold text-foreground">v{versionDiff.version} compared with current</p><p className="mt-1 text-chart-3">Added: {versionDiff.added.join(", ") || "None"}</p><p className="text-destructive">Removed: {versionDiff.removed.join(", ") || "None"}</p><p className="text-chart-5">Modified: {versionDiff.modified.join(", ") || "None"}</p></div>}
               </div>}
             </div>
           ))}
         </div>
       )}
       {mode === "published" && previewError && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">{previewError}</div>}
-      {mode === "published" && previewRows.length > 0 && <div className="overflow-auto rounded-lg border border-border" aria-label="Published dataset preview results"><table className="w-full min-w-max text-left text-xs"><thead className="bg-muted/30"><tr>{(previewColumns.length ? previewColumns : Object.keys(previewRows[0])).map((column) => <th key={column} className="border-b border-border px-3 py-2 font-semibold text-foreground">{column}</th>)}</tr></thead><tbody>{previewRows.slice(0, 25).map((row, index) => <tr key={index} className="border-b border-border/50 last:border-0">{(previewColumns.length ? previewColumns : Object.keys(previewRows[0])).map((column) => <td key={column} className="max-w-64 truncate px-3 py-2 text-muted-foreground">{String(row[column] ?? "—")}</td>)}</tr>)}</tbody></table></div>}
+      {mode === "published" && previewRows.length > 0 && <div className="overflow-auto rounded-lg border border-border" aria-label="Published dataset preview results"><div className="flex items-center justify-between border-b border-border bg-muted/20 px-3 py-2"><p className="text-xs font-semibold text-foreground">{previewDataset?.datasetName ?? "Dataset"} sample data</p><span className="text-[10px] text-muted-foreground">{Math.min(previewRows.length, 25)} rows shown · read-only</span></div><table className="w-full min-w-max text-left text-xs"><thead className="bg-muted/30"><tr>{(previewColumns.length ? previewColumns : Object.keys(previewRows[0])).map((column) => <th key={column} className="border-b border-border px-3 py-2 font-semibold text-foreground">{column}</th>)}</tr></thead><tbody>{previewRows.slice(0, 25).map((row, index) => <tr key={index} className="border-b border-border/50 last:border-0">{(previewColumns.length ? previewColumns : Object.keys(previewRows[0])).map((column) => <td key={column} className="max-w-64 truncate px-3 py-2 text-muted-foreground">{String(row[column] ?? "—")}</td>)}</tr>)}</tbody></table></div>}
     </div>
   );
 }
@@ -1546,9 +1548,10 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", studioMo
   const validationTables = selectedDataset?.tables.length
     ? selectedDataset.tables.map((tableName) => discoveryTables.find((table) => table.name === tableName) ?? { name: tableName, schema: "unknown", recordCount: 0, columnCount: 0, primaryKeys: [], foreignKeys: [], businessDescription: "Referenced by the selected semantic dataset.", columns: [] })
     : canvasTables;
-  const validationRelationshipCount = selectedDataset
-    ? selectedDataset.relationships.filter((relationshipId) => relationships.some((relationship) => relationship.id === relationshipId && relationship.status === "Accepted")).length
-    : relationships.filter((relationship) => relationship.status === "Accepted").length;
+ const validationRelationships = selectedDataset
+ ? selectedDataset.relationships.map((relationshipId) => relationships.find((relationship) => relationship.id === relationshipId)).filter((relationship): relationship is Relationship => relationship !== undefined).filter((relationship) => relationship.status === "Accepted")
+ : relationships.filter((relationship) => relationship.status === "Accepted");
+ const validationRelationshipCount = validationRelationships.length;
 
   useEffect(() => {
     onWorkflowStateChange?.({
@@ -1653,7 +1656,7 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", studioMo
             {tab === "validation" && (
               <div className="flex flex-col gap-4">
                 {datasets.length > 0 && <label className="flex flex-col gap-1.5 text-xs text-muted-foreground"><span>Semantic dataset to validate</span><select value={selectedDatasetId ?? ""} onChange={(event) => setSelectedDatasetId(event.target.value)} className="max-w-md rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary">{datasets.map((dataset) => <option key={dataset.datasetId} value={dataset.datasetId}>{dataset.datasetName} · {dataset.status}</option>)}</select></label>}
-                {selectedDataset && selectedDataset.tables.length === 0 && canvasTables.length === 0 ? <div role="status" className="rounded-xl border border-chart-5/30 bg-chart-5/10 p-5"><h3 className="text-sm font-semibold text-foreground">This semantic dataset has no selected source tables</h3><p className="mt-2 text-xs leading-relaxed text-muted-foreground">Return to Build, add governed source tables to the canvas, then update or recreate the semantic dataset before validation. Publication remains blocked until source traceability is complete.</p><button type="button" onClick={() => setTab("canvas")} className="mt-4 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">Go to Build</button></div> : <DatasetValidationHub datasetId={selectedDataset?.datasetId ?? "dataset-draft"} tables={validationTables} relationshipCount={validationRelationshipCount} />}
+                {selectedDataset && selectedDataset.tables.length === 0 && canvasTables.length === 0 ? <div role="status" className="rounded-xl border border-chart-5/30 bg-chart-5/10 p-5"><h3 className="text-sm font-semibold text-foreground">This semantic dataset has no selected source tables</h3><p className="mt-2 text-xs leading-relaxed text-muted-foreground">Return to Build, add governed source tables to the canvas, then update or recreate the semantic dataset before validation. Publication remains blocked until source traceability is complete.</p><button type="button" onClick={() => setTab("canvas")} className="mt-4 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">Go to Build</button></div> : <DatasetValidationHub datasetId={selectedDataset?.datasetId ?? "dataset-draft"} tables={validationTables} relationships={validationRelationships} />}
               </div>
             )}
             {tab === "lineage" && (

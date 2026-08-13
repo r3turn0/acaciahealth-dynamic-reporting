@@ -5,22 +5,25 @@ import type { DatasetValidation } from "@/lib/validation/datasetValidation";
 import { cn } from "@/lib/utils";
 import { cancelScope, orchestrate } from "@/lib/orchestration/requestRegistry";
 
-type TableInput = { name: string; columns: Array<{ name: string; type: string; nullable: boolean; isPk: boolean }> };
-export function DatasetValidationHub({ datasetId, tables, relationshipCount }: { datasetId: string; tables: TableInput[]; relationshipCount: number }) {
+type TableInput = { name: string; columns: Array<{ name: string; type: string; nullable: boolean; isPk: boolean; isFk?: boolean }> };
+type RelationshipInput = { sourceTable: string; targetTable: string; sourceColumn?: string; targetColumn?: string; relationshipType?: "OneToOne" | "OneToMany" | "ManyToOne" | "ManyToMany"; status?: string };
+export function DatasetValidationHub({ datasetId, tables, relationships }: { datasetId: string; tables: TableInput[]; relationships: RelationshipInput[] }) {
+  const relationshipCount = relationships.length;
   const [result, setResult] = useState<DatasetValidation | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastValidatedAt, setLastValidatedAt] = useState<number | null>(null);
   const [cacheHit, setCacheHit] = useState(false);
   const intentRef = useRef(0);
-  const tableSignature = useMemo(() => JSON.stringify(tables.map((table) => ({ name: table.name, columns: table.columns.map((column) => [column.name, column.type, column.nullable, column.isPk]) }))), [tables]);
+  const tableSignature = useMemo(() => JSON.stringify(tables.map((table) => ({ name: table.name, columns: table.columns.map((column) => [column.name, column.type, column.nullable, column.isPk, column.isFk]) }))), [tables]);
+  const relationshipSignature = useMemo(() => JSON.stringify(relationships), [relationships]);
   async function run(force = false) {
     const intent = ++intentRef.current;
     setLoading(true);
     setError(null);
     try {
-      const data = await orchestrate({ scope: `dataset-validation:${datasetId}`, operation: "validate", resource: datasetId, params: { tables, relationshipCount }, policy: "latest", timeoutMs: 30_000 }, async (signal) => {
-        const response = await fetch("/api/datasets/validate", { method: "POST", headers: { "Content-Type": "application/json" }, signal, body: JSON.stringify({ datasetId, tables, relationshipCount, force }) });
+      const data = await orchestrate({ scope: `dataset-validation:${datasetId}`, operation: "validate", resource: datasetId, params: { tables, relationships }, policy: "latest", timeoutMs: 30_000 }, async (signal) => {
+        const response = await fetch("/api/datasets/validate", { method: "POST", headers: { "Content-Type": "application/json" }, signal, body: JSON.stringify({ datasetId, tables, relationships, relationshipCount, force }) });
         const payload = await response.json() as { validation?: DatasetValidation; error?: string; cache?: { hit?: boolean } };
         if (!response.ok || !payload.validation) throw new Error(payload.error ?? "Validation did not return a result");
         return { validation: payload.validation, cacheHit: Boolean(payload.cache?.hit) };
@@ -33,7 +36,7 @@ export function DatasetValidationHub({ datasetId, tables, relationshipCount }: {
       if (intent === intentRef.current) setLoading(false);
     }
   }
-  useEffect(() => { void run(); }, [datasetId, relationshipCount, tableSignature]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void run(); }, [datasetId, relationshipCount, relationshipSignature, tableSignature]); // eslint-disable-line react-hooks/exhaustive-deps
   const categoryScores = result ? [...new Set(result.checks.map((check) => check.category))].map((category) => { const checks = result.checks.filter((check) => check.category === category); return { category, score: Math.round(checks.reduce((sum, check) => sum + check.score, 0) / checks.length) }; }) : [];
   return <div className="flex flex-col gap-5">
     <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center"><div><h3 className="text-base font-semibold text-foreground">Dataset Validation Hub</h3><p className="mt-1 text-xs text-muted-foreground">Validate schema, mappings, relationships, KPI readiness, and data quality before publishing.</p>{lastValidatedAt && <p className="mt-2 text-[10px] text-muted-foreground">Fresh as of {new Date(lastValidatedAt).toLocaleTimeString()} · {cacheHit ? "reused matching validation snapshot" : "computed from current schema fingerprint"}</p>}</div><div className="flex items-center gap-2">{loading && <button type="button" onClick={() => cancelScope(`dataset-validation:${datasetId}`)} className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground">Cancel</button>}<button type="button" onClick={() => void run(true)} disabled={loading} className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50">{loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}{result ? "Run again" : "Run validation"}</button></div></div>
