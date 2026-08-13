@@ -169,6 +169,16 @@ export async function POST(req: NextRequest) {
     role?:       string;
   };
 
+  if (pipelineId !== undefined && typeof pipelineId !== "string") {
+    return NextResponse.json({ error: "pipelineId must be a string" }, { status: 400 });
+  }
+  if (typeof role !== "string") {
+    return NextResponse.json({ error: "role must be a string" }, { status: 400 });
+  }
+  if (ctx === null || Array.isArray(ctx) || typeof ctx !== "object") {
+    return NextResponse.json({ error: "ctx must be an object" }, { status: 400 });
+  }
+
   // Resolve pipeline
   const def = pipelineId
     ? pipelineEngine.getPipeline(pipelineId)

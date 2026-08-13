@@ -8,16 +8,10 @@ import {
   Key,
   AlertTriangle,
   ChevronRight,
-  Plus,
-  Edit3,
-  Trash2,
   CheckCircle2,
   XCircle,
   Lock,
-  Unlock,
-  RefreshCw,
   Loader2,
-  Eye,
   FlameKindling,
   Database,
 } from "lucide-react";
@@ -143,24 +137,18 @@ function RbacPanel({ roles, users }: { roles: Role[]; users: User[] }) {
                 <p className="text-xs text-muted-foreground mt-1">{r.users} user{r.users !== 1 ? "s" : ""} · {r.mfa_required}</p>
               </button>
             ))}
-            <button className="flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors">
-              <Plus className="w-3.5 h-3.5" />
-              New Role
-            </button>
+            <div className="rounded-xl border border-dashed border-border p-3 text-center text-xs text-muted-foreground">
+              Role configuration is read-only in this environment.
+            </div>
           </div>
 
           {activeRole && (
             <div className="lg:col-span-3 bg-card border border-border rounded-xl p-4 flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-foreground">{activeRole.name}</h3>
-                <div className="flex items-center gap-2">
-                  <button className="p-1.5 rounded border border-border hover:border-primary/40 text-muted-foreground hover:text-foreground transition-colors">
-                    <Edit3 className="w-3.5 h-3.5" />
-                  </button>
-                  <button className="p-1.5 rounded border border-border hover:border-destructive/40 text-muted-foreground hover:text-destructive transition-colors">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                <span className="rounded border border-border bg-muted px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Read only
+                </span>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">{activeRole.description}</p>
 
@@ -245,39 +233,30 @@ function RbacPanel({ roles, users }: { roles: Role[]; users: User[] }) {
 // ── CA Policies panel ─────────────────────────────────────────────────────────
 
 function PoliciesPanel({ policies }: { policies: CaPolicy[] }) {
-  const [items, setItems] = useState(policies);
-
-  function toggle(id: string) {
-    setItems((prev) => prev.map((p) => p.id === id ? { ...p, enabled: !p.enabled } : p));
-  }
-
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <p className="text-xs text-muted-foreground leading-relaxed max-w-xl">
-          Conditional Access Policies enforce Zero Trust principles. Changes are logged immutably and take effect within 60 seconds.
+          Conditional Access Policies enforce Zero Trust principles. This console reports configured policy state without modifying the identity provider.
         </p>
-        <button className="flex items-center gap-1.5 text-xs text-primary border border-primary/30 px-3 py-1.5 rounded-lg hover:bg-primary/5 transition-colors">
-          <Plus className="w-3.5 h-3.5" />
-          New Policy
-        </button>
+        <span className="shrink-0 rounded border border-border bg-muted px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Read only</span>
       </div>
 
-      {items.map((p) => (
+      {policies.map((p) => (
         <div key={p.id} className="bg-card border border-border rounded-xl p-4 flex items-start gap-4">
           <div className="mt-0.5">
-            <button
-              onClick={() => toggle(p.id)}
+            <div
+              aria-label={`${p.name} is ${p.enabled ? "enabled" : "disabled"}`}
               className={cn(
-                "w-10 h-6 rounded-full border-2 transition-colors relative shrink-0",
+                "w-10 h-6 rounded-full border-2 relative shrink-0 opacity-80",
                 p.enabled ? "bg-primary border-primary" : "bg-muted border-border"
               )}
             >
               <div className={cn(
-                "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform",
+                "absolute top-0.5 w-4 h-4 rounded-full bg-background shadow transition-transform",
                 p.enabled ? "left-4" : "left-0.5"
               )} />
-            </button>
+            </div>
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
@@ -295,11 +274,7 @@ function PoliciesPanel({ policies }: { policies: CaPolicy[] }) {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <button className="p-1.5 rounded border border-border hover:border-primary/40 text-muted-foreground hover:text-foreground transition-colors">
-              <Edit3 className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          <span className="shrink-0 text-[10px] text-muted-foreground">{p.last_modified}</span>
         </div>
       ))}
     </div>
@@ -309,18 +284,15 @@ function PoliciesPanel({ policies }: { policies: CaPolicy[] }) {
 // ── IP Allowlist panel ────────────────────────────────────────────────────────
 
 function AllowlistPanel() {
-  const [entries, setEntries] = useState(IP_ALLOWLIST);
+  const entries = IP_ALLOWLIST;
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <p className="text-xs text-muted-foreground leading-relaxed max-w-xl">
-          Only traffic from these CIDR ranges can reach the API gateway. All other IPs are silently dropped at the perimeter.
+          Configured CIDR ranges reported by the perimeter policy inventory. Enforcement changes must be made in the authoritative network control plane.
         </p>
-        <button className="flex items-center gap-1.5 text-xs text-primary border border-primary/30 px-3 py-1.5 rounded-lg hover:bg-primary/5 transition-colors">
-          <Plus className="w-3.5 h-3.5" />
-          Add CIDR
-        </button>
+        <span className="shrink-0 rounded border border-border bg-muted px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Read only</span>
       </div>
 
       <div className="overflow-x-auto">
@@ -346,18 +318,8 @@ function AllowlistPanel() {
                     )}
                   </div>
                 </td>
-                <td className="px-3 py-3">
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setEntries((prev) => prev.map((x) => x.id === e.id ? { ...x, enabled: !x.enabled } : x))}
-                      className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                    >
-                      {e.enabled ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-                    </button>
-                    <button className="p-1 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                <td className="px-3 py-3 text-right">
+                  <span className="text-[10px] text-muted-foreground">Managed externally</span>
                 </td>
               </tr>
             ))}
@@ -368,21 +330,19 @@ function AllowlistPanel() {
   );
 }
 
-// ── PAM panel ─────────────────────────────────────────────────────────────────
+// ── PAM panel ──────────────────────────────────���──────────────────────────────
 
 function PamPanel() {
-  const [requests, setRequests] = useState(PAM_REQUESTS);
-
-  function decide(id: string, decision: "approved" | "denied") {
-    setRequests((prev) => prev.map((r) => r.id === id ? { ...r, status: decision } : r));
-  }
+  const requests = PAM_REQUESTS;
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-xs text-muted-foreground leading-relaxed max-w-xl">
-        Privileged Access Management enforces just-in-time access elevation with dual-approval and automatic expiry.
-        All PAM events are forwarded to Azure Sentinel.
-      </p>
+      <div className="flex items-start justify-between gap-4">
+        <p className="text-xs text-muted-foreground leading-relaxed max-w-xl">
+          Privileged Access Management request status is reported from the configured inventory. Approval decisions must be completed in the authoritative PAM system.
+        </p>
+        <span className="shrink-0 rounded border border-border bg-muted px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Read only</span>
+      </div>
 
       {requests.map((r) => {
         const statusConfig = {
@@ -418,19 +378,8 @@ function PamPanel() {
             </div>
 
             {r.status === "pending" && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => decide(r.id, "approved")}
-                  className="flex-1 py-2 rounded-lg bg-chart-3/15 text-chart-3 border border-chart-3/30 text-xs font-medium hover:bg-chart-3/25 transition-colors"
-                >
-                  Approve
-                </button>
-                <button
-                  onClick={() => decide(r.id, "denied")}
-                  className="flex-1 py-2 rounded-lg bg-destructive/10 text-destructive border border-destructive/30 text-xs font-medium hover:bg-destructive/20 transition-colors"
-                >
-                  Deny
-                </button>
+              <div className="rounded-lg border border-chart-5/30 bg-chart-5/10 px-3 py-2 text-xs text-chart-5">
+                Awaiting decision in the authoritative PAM approval workflow.
               </div>
             )}
           </div>
@@ -443,18 +392,6 @@ function PamPanel() {
 // ── Break-glass panel ─────────────────────────────────────────────────────────
 
 function BreakGlassPanel() {
-  const [invoking, setInvoking] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
-  const [reason, setReason] = useState("");
-
-  async function invoke() {
-    if (!reason.trim()) return;
-    setInvoking(true);
-    await new Promise((r) => setTimeout(r, 1500));
-    setInvoking(false);
-    setConfirmed(true);
-  }
-
   return (
     <div className="flex flex-col gap-5">
       {/* Warning */}
@@ -470,41 +407,15 @@ function BreakGlassPanel() {
         </div>
       </div>
 
-      {/* Invoke form */}
-      {!confirmed ? (
-        <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-4">
-          <h3 className="text-sm font-semibold text-foreground">Invoke Break-Glass Access</h3>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-muted-foreground font-medium">Reason (required for audit log)</label>
-            <textarea
-              rows={3}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Describe the emergency justification..."
-              className="bg-muted border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-destructive resize-none"
-            />
-          </div>
-          <button
-            onClick={invoke}
-            disabled={invoking || !reason.trim()}
-            className="flex items-center justify-center gap-2 py-2.5 rounded-lg bg-destructive text-white text-sm font-medium hover:bg-destructive/80 transition-colors disabled:opacity-50"
-          >
-            {invoking ? <Loader2 className="w-4 h-4 animate-spin" /> : <FlameKindling className="w-4 h-4" />}
-            {invoking ? "Requesting dual approval..." : "Request Break-Glass Access"}
-          </button>
-        </div>
-      ) : (
-        <div className="bg-card border border-chart-5/40 rounded-xl p-4 flex flex-col items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-chart-5/15 flex items-center justify-center">
-            <Eye className="w-6 h-6 text-chart-5" />
-          </div>
-          <p className="text-sm font-semibold text-foreground text-center">Break-Glass Session Active</p>
-          <p className="text-xs text-muted-foreground text-center leading-relaxed">
-            Emergency access granted. All actions are being recorded. Session expires in{" "}
-            <span className="text-chart-5 font-semibold">4 hours</span>.
+      <div className="bg-card border border-border rounded-xl p-4 flex items-start gap-3">
+        <Lock className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Invocation unavailable in reporting console</h3>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Break-glass access must be initiated through the authoritative identity and PAM control plane with dual approval. This surface exposes historical evidence only and cannot grant privileges.
           </p>
         </div>
-      )}
+      </div>
 
       {/* History */}
       <div>
@@ -537,13 +448,29 @@ export function SecurityConsole({ currentUser }: { currentUser?: AuthUser }) {
   const [tab, setTab] = useState<AdminTab>("rbac");
   const [data, setData] = useState<{ roles: Role[]; users: User[]; ca_policies: CaPolicy[] } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/rbac/roles")
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => setData({ roles: [], users: [], ca_policies: [] }))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    async function loadSecurityInventory() {
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await fetch("/api/rbac/roles", { cache: "no-store" });
+        const payload = await response.json() as { roles?: Role[]; users?: User[]; ca_policies?: CaPolicy[]; error?: string };
+        if (!response.ok) throw new Error(payload.error ?? `Security inventory failed with HTTP ${response.status}`);
+        if (!cancelled) setData({ roles: payload.roles ?? [], users: payload.users ?? [], ca_policies: payload.ca_policies ?? [] });
+      } catch (cause) {
+        if (!cancelled) {
+          setData(null);
+          setError(cause instanceof Error ? cause.message : "Security inventory unavailable");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void loadSecurityInventory();
+    return () => { cancelled = true; };
   }, []);
 
   const TABS: { id: AdminTab; label: string; icon: React.ElementType }[] = [
@@ -601,6 +528,10 @@ export function SecurityConsole({ currentUser }: { currentUser?: AuthUser }) {
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : error ? (
+        <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
         </div>
       ) : data ? (
         <div className="bg-card border border-border rounded-xl p-5">

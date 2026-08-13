@@ -497,9 +497,7 @@ function getPath(obj: Record<string, unknown>, path: string): unknown {
 
 // ── Singleton ─────────────────────────────────────────────────────────────────
 
-const _g = globalThis as typeof globalThis & { __pipelineEngine?: PipelineEngine };
-if (!_g.__pipelineEngine) _g.__pipelineEngine = new PipelineEngine();
-export const pipelineEngine: PipelineEngine = _g.__pipelineEngine;
+export const pipelineEngine = new PipelineEngine();
 
 // ── Seed default pipelines ────────────────────────────────────────────────────
 
@@ -561,7 +559,6 @@ if (pipelineEngine.listPipelines().length === 0) {
       makeStep("step-1", "MetadataCatalogAgent",   "Metadata Catalog"),
       makeStep("step-2", "DataQualityAgent",        "Data Quality"),
       makeStep("step-3", "SecurityAuditAgent",      "Security Audit"),
-      makeStep("step-4", "ReportValidationAgent",   "Report Validation"),
     ],
   });
 

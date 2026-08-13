@@ -211,10 +211,10 @@ function SessionCard({
             </button>
           )}
           {session.current && (
-            <button className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-destructive transition-colors px-2 py-1 rounded border border-border">
+            <span className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-[11px] text-muted-foreground">
               <LogOut className="w-3 h-3" />
-              Sign out
-            </button>
+              Current browser session
+            </span>
           )}
         </div>
       </div>
@@ -238,42 +238,49 @@ export function SessionManager({ currentUser }: { currentUser?: AuthUser }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [revoking, setRevoking] = useState<string | null>(null);
-  const [revoked, setRevoked] = useState<Set<string>>(new Set());
   const [showWarning, setShowWarning] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const params = currentUser?.email ? `?email=${encodeURIComponent(currentUser.email)}` : "";
-      const res = await fetch(`/api/auth/sessions${params}`);
-      const data = await res.json();
+      const res = await fetch(`/api/auth/sessions${params}`, { cache: "no-store" });
+      const data = await res.json() as { sessions?: Session[]; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `Session inventory failed with HTTP ${res.status}`);
       setSessions(data.sessions ?? []);
-    } catch {
+    } catch (cause) {
       setSessions([]);
+      setError(cause instanceof Error ? cause.message : "Session inventory unavailable");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentUser?.email]);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
 
   async function handleRevoke(id: string) {
     setRevoking(id);
+    setError(null);
     try {
-      await fetch("/api/auth/sessions", {
+      const response = await fetch("/api/auth/sessions", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: id }),
       });
-      setRevoked((prev) => new Set([...prev, id]));
-      setSessions((prev) => prev.filter((s) => s.id !== id));
+      const payload = await response.json() as { revoked?: string; error?: string };
+      if (!response.ok || payload.revoked !== id) throw new Error(payload.error ?? "Session revocation failed");
+      setSessions((prev) => prev.filter((session) => session.id !== id));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Session revocation failed");
     } finally {
       setRevoking(null);
     }
   }
 
   function handleReauth(id: string) {
-    alert(`Step-up authentication initiated for session ${id}. User will be prompted to re-authenticate via MFA.`);
+    setError(`Step-up authentication for ${id} must be initiated in the authoritative identity provider.`);
   }
 
   const active = sessions.filter((s) => !isExpired(s.expires));
@@ -306,6 +313,13 @@ export function SessionManager({ currentUser }: { currentUser?: AuthUser }) {
           Refresh
         </button>
       </div>
+
+      {error && (
+        <div role="alert" className="flex items-start justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+          <span>{error}</span>
+          <button type="button" onClick={() => setError(null)} className="shrink-0 font-medium underline-offset-2 hover:underline">Dismiss</button>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

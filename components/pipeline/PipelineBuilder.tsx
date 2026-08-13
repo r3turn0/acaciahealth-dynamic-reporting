@@ -762,22 +762,44 @@ export function PipelineBuilder() {
   // ── Execute ─────────────────────────────────────────────────────────────────
 
   async function executePipeline() {
-    if (editSteps.length === 0) { setError("Add at least one step"); return; }
-    setRunning(true);
-    setRunResult(null);
-    try {
-      const res  = await fetch("/api/pipeline/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ pipelineId: editId, input: { query: "demo run" } }),
-      });
-      const json = await res.json();
-      setRunResult(json);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Execution failed");
-    } finally {
-      setRunning(false);
-    }
+  if (editSteps.length === 0) { setError("Add at least one step"); return; }
+  if (!editId.trim()) { setError("Save the pipeline definition before executing it"); return; }
+  setRunning(true);
+  setRunResult(null);
+  setError(null);
+  try {
+  let executionId = editId;
+  const persisted = pipelines.find((pipeline) => pipeline.id === editId);
+  if (!persisted || isDirty) {
+    const saveMethod = persisted ? "PATCH" : "POST";
+    const saveResponse = await fetch("/api/pipeline/definitions", {
+      method: saveMethod,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: editId, name: editName, description: editDesc, steps: editSteps, isDefault: editDefault, enabled: editEnabled, createdBy: "admin" }),
+    });
+    const savePayload = await saveResponse.json() as { pipeline?: PipelineDef; validation?: { valid: boolean; errors: string[] }; error?: string };
+    if (!saveResponse.ok) throw new Error(savePayload.error ?? `Pipeline save failed with HTTP ${saveResponse.status}`);
+    if (!savePayload.validation?.valid) throw new Error(savePayload.validation?.errors.join("; ") || "Pipeline validation failed");
+    executionId = savePayload.pipeline?.id ?? editId;
+    setPipelines((current) => current.some((pipeline) => pipeline.id === executionId) ? current.map((pipeline) => pipeline.id === executionId ? savePayload.pipeline! : pipeline) : [...current, savePayload.pipeline!]);
+    setActivePipelineId(executionId);
+    setIsDirty(false);
+  }
+  const res = await fetch("/api/pipeline/execute", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ pipelineId: executionId, input: { query: "demo run" }, role: "admin" }),
+  });
+  const contentType = res.headers.get("content-type") ?? "";
+  const json = contentType.includes("application/json") ? await res.json() as RunResult & { error?: string } : null;
+  if (!res.ok) throw new Error(json?.error ?? `Pipeline execution failed with HTTP ${res.status}`);
+  if (!json || !Array.isArray(json.steps) || !Array.isArray(json.errors)) throw new Error("Pipeline execution returned an invalid response");
+  setRunResult(json);
+  } catch (e) {
+  setError(e instanceof Error ? e.message : "Execution failed");
+  } finally {
+  setRunning(false);
+  }
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────

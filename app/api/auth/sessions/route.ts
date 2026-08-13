@@ -55,14 +55,24 @@ function buildSessions(email: string) {
 
 export async function GET(req: NextRequest) {
   const email = req.nextUrl.searchParams.get("email") ?? "user@acaciahealth.org";
-  return NextResponse.json({ sessions: buildSessions(email) });
+  if (email.length > 254 || !email.includes("@")) {
+    return NextResponse.json({ error: "A valid email is required" }, { status: 400 });
+  }
+  return NextResponse.json({ sessions: buildSessions(email), authoritative: false });
 }
 
 export async function DELETE(req: NextRequest) {
-  const { session_id } = await req.json().catch(() => ({}));
-  await new Promise((r) => setTimeout(r, 400));
+  const { session_id } = await req.json().catch(() => ({})) as { session_id?: unknown };
+  if (typeof session_id !== "string" || !/^sess_[a-z0-9]+$/i.test(session_id)) {
+    return NextResponse.json({ error: "A valid session_id is required" }, { status: 400 });
+  }
+  const session = buildSessions("user@acaciahealth.org").find((candidate) => candidate.id === session_id);
+  if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  if (session.current) return NextResponse.json({ error: "The current browser session cannot be revoked from this inventory" }, { status: 409 });
+  await new Promise((resolve) => setTimeout(resolve, 400));
   return NextResponse.json({
     revoked: session_id,
-    message: "Session revoked. User will be prompted to re-authenticate.",
+    authoritative: false,
+    message: "Session removed from the reporting inventory. Configure an identity-provider integration for authoritative revocation.",
   });
 }

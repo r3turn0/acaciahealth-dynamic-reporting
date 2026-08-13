@@ -550,7 +550,7 @@ const BUILT_IN_AGENTS: Omit<AgentRegistration, "registeredAt" | "updatedAt" | "s
     description:     "KPI verification, report auditing, visualization accuracy checks.",
     domain:          "Report Validation",
     runtime:         "nodejs",
-    dependencies:    ["BusinessIntelligenceAgent", "DataQualityAgent"],
+    dependencies:    ["BusinessIntelligenceAgent"],
     tags:            ["validation", "audit", "report", "kpi"],
     enabled:         true,
     isActiveVersion: true,
@@ -666,9 +666,8 @@ const BUILT_IN_AGENTS: Omit<AgentRegistration, "registeredAt" | "updatedAt" | "s
   },
 ];
 
-// Seed on first load
-if (agentRegistryStore.list().length === 0) {
-  for (const agent of BUILT_IN_AGENTS) {
-    agentRegistryStore.registerAgent(agent);
-  }
+// Upsert built-ins on module load so code-defined dependency and capability changes
+// replace stale development singleton registrations after Fast Refresh.
+for (const agent of BUILT_IN_AGENTS) {
+agentRegistryStore.registerAgent(agent);
 }

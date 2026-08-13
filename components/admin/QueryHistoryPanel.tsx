@@ -364,7 +364,7 @@ function AddMappingForm({ onAdded }: { onAdded: () => void }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main component
-// ───────────────��─────────────────────────────────────────────────────────────
+// ───────────────���─────────────────────────────────────────────────────────────
 
 type PanelTab = "history" | "mappings";
 
@@ -428,11 +428,14 @@ export function QueryHistoryPanel() {
   }, [activeTab, mappingsLoaded, loadMappings]);
 
   async function handleDeleteMapping(term: string) {
+    setMappingsError(null);
     try {
-      await fetch(`/api/learned-mappings?term=${encodeURIComponent(term)}`, { method: "DELETE" });
-      setMappings((prev) => prev.filter((m) => m.user_term !== term));
-    } catch {
-      // silent
+      const response = await fetch(`/api/learned-mappings?term=${encodeURIComponent(term)}`, { method: "DELETE" });
+      const payload = await response.json() as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "Mapping deletion failed");
+      setMappings((prev) => prev.filter((mapping) => mapping.user_term !== term));
+    } catch (cause) {
+      setMappingsError(cause instanceof Error ? cause.message : "Mapping deletion failed");
     }
   }
 
