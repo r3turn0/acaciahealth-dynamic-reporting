@@ -1,3 +1,5 @@
+import { compareDatasetDefinitions, computeHealth, normalizeSelectedTables, type HealthBreakdown, type SelectedTable } from "./datasetGovernance";
+
 export type RelType = "OneToOne" | "OneToMany" | "ManyToOne" | "ManyToMany";
 export type RelStatus = "Suggested" | "Accepted" | "Rejected";
 export type DatasetStatus = "Draft" | "Pending Approval" | "Published" | "Deprecated";
@@ -33,6 +35,7 @@ export interface SemanticDataset {
   datasetName: string;
   description: string;
   tables: string[];
+  selectedTables: SelectedTable[];
   relationships: string[];
   dimensions: string[];
   measures: string[];
@@ -46,6 +49,9 @@ export interface SemanticDataset {
   publishedDate?: string;
   createdBy: string;
   health?: number;
+  healthBreakdown?: HealthBreakdown;
+  changeSummary?: string;
+  restoredFromVersion?: string;
   publicationTargets: PublicationTarget[];
   sourceTraceability: string[];
   virtual: true;
@@ -80,7 +86,11 @@ function seededState(): RegistryState {
     ["REL-008", { id: "REL-008", sourceTable: "CLIENT_EPISODE_VISIT_NOTES", sourceColumn: "visit_id", targetTable: "CLIENT_EPISODE_VISITS_ALL", targetColumn: "visit_id", relationshipType: "ManyToOne", confidence: 0.97, status: "Suggested", reasons: ["Exact column match", "Child-to-parent pattern"], createdBy: "inference", createdDate: "2026-07-20", kpiCount: 4, reportCount: 6, datasetCount: 1 }],
   ]);
 
-  const base = (dataset: Omit<SemanticDataset, "history">): SemanticDataset => ({ ...dataset, history: [] });
+  const base = (dataset: Omit<SemanticDataset, "history" | "selectedTables"> & { selectedTables?: SelectedTable[] }): SemanticDataset => ({
+    ...dataset,
+    selectedTables: normalizeSelectedTables(dataset.tables, dataset.selectedTables),
+    history: [],
+  });
   const datasets = new Map<string, SemanticDataset>();
   for (const dataset of [
     base({ datasetId: "DS-001", datasetName: "Acacia Enterprise Reporting", description: "Core enterprise semantic definition for episodes, branches, service lines, workers, and billing.", tables: ["CLIENT_EPISODES_ALL", "BRANCHES", "SERVICE_LINES", "WORKER_BASE", "Billing.LINE_ITEMS"], relationships: ["REL-001", "REL-002", "REL-004", "REL-005"], dimensions: ["Branch", "Service Line", "Care Type", "Region", "Payor"], measures: ["Census", "Admissions", "Discharges", "Revenue", "Patient Days"], glossaryMappings: ["Census", "ADC", "Start of Care"], businessRules: ["Active episodes follow governed census semantics"], owner: "Analytics Team", version: "2.4.1", status: "Published", createdDate: "2026-01-15", updatedDate: "2026-07-20", publishedDate: "2026-02-01", createdBy: "admin", health: 98, publicationTargets: allTargets, sourceTraceability: ["Governed MSSQL metadata", "Canonical KPI registry"], virtual: true, authoritative: false, cacheScope: "process", rehydrationSource: "static-seed" }),
@@ -137,6 +147,7 @@ export function createSemanticDataset(input: Partial<SemanticDataset>) {
     datasetName: input.datasetName || "Untitled Dataset",
     description: input.description || "",
     tables: clone(input.tables || []),
+    selectedTables: normalizeSelectedTables(input.tables || [], input.selectedTables),
     relationships: clone(input.relationships || []),
     dimensions: clone(input.dimensions || []),
     measures: clone(input.measures || []),
@@ -157,6 +168,10 @@ export function createSemanticDataset(input: Partial<SemanticDataset>) {
     rehydrationSource: "session-definition",
     history: [],
   };
+  const health = computeHealth(dataset);
+  dataset.health = health.score;
+  dataset.healthBreakdown = health.breakdown;
+  dataset.changeSummary = "Initial governed draft created";
   state.datasets.set(datasetId, dataset);
   return clone(dataset);
 }
@@ -180,19 +195,29 @@ export function updateSemanticDataset(id: string, patch: Partial<SemanticDataset
     draft.publicationTargets = [];
     draft.rehydrationSource = "session-definition";
     draft.history = [snapshot(dataset, `Draft revision created from ${dataset.datasetId}`, actor)];
-    for (const key of ["description", "tables", "relationships", "dimensions", "measures", "glossaryMappings", "businessRules", "owner", "sourceTraceability"] as const) {
+    for (const key of ["description", "tables", "selectedTables", "relationships", "dimensions", "measures", "glossaryMappings", "businessRules", "owner", "sourceTraceability"] as const) {
       const value = patch[key];
       if (value !== undefined) Object.assign(draft, { [key]: clone(value) });
     }
+    draft.selectedTables = normalizeSelectedTables(draft.tables, draft.selectedTables);
+    const health = computeHealth(draft);
+    draft.health = health.score;
+    draft.healthBreakdown = health.breakdown;
+    draft.changeSummary = `Draft revision created from ${dataset.version}`;
     state.datasets.set(draftId, draft);
     state.draftParents.set(id, draftId);
     return clone(draft);
   }
   dataset.history = [...dataset.history, snapshot(dataset, "Definition updated", actor)].slice(-25);
-  for (const key of ["datasetName", "description", "tables", "relationships", "dimensions", "measures", "glossaryMappings", "businessRules", "owner", "sourceTraceability"] as const) {
+  for (const key of ["datasetName", "description", "tables", "selectedTables", "relationships", "dimensions", "measures", "glossaryMappings", "businessRules", "owner", "sourceTraceability"] as const) {
     const value = patch[key];
     if (value !== undefined) Object.assign(dataset, { [key]: clone(value) });
   }
+  dataset.selectedTables = normalizeSelectedTables(dataset.tables, dataset.selectedTables);
+  const health = computeHealth(dataset);
+  dataset.health = health.score;
+  dataset.healthBreakdown = health.breakdown;
+  dataset.changeSummary = patch.changeSummary || "Governed definition updated";
   dataset.status = "Draft";
   dataset.publicationTargets = [];
   dataset.version = bumpVersion(dataset.version, "patch");
@@ -230,6 +255,39 @@ export function deprecateSemanticDataset(id: string, actor = "approver") {
   dataset.publicationTargets = [];
   dataset.updatedDate = isoNow();
   return clone(dataset);
+}
+
+export function compareSemanticDatasetVersion(id: string, version: string) {
+  const dataset = state.datasets.get(id);
+  const historical = dataset?.history.find((entry) => entry.version === version);
+  if (!dataset || !historical) return null;
+  return compareDatasetDefinitions(historical.definition, dataset);
+}
+
+export function restoreSemanticDatasetVersion(id: string, version: string, actor = "analyst") {
+  const dataset = state.datasets.get(id);
+  const historical = dataset?.history.find((entry) => entry.version === version);
+  if (!dataset || !historical) return null;
+  const draftId = nextId("dataset");
+  const restored = clone(historical.definition) as SemanticDataset;
+  restored.datasetId = draftId;
+  restored.datasetName = `${dataset.datasetName} · restored draft`;
+  restored.version = bumpVersion(dataset.version, "patch");
+  restored.status = "Draft";
+  restored.updatedDate = isoNow();
+  restored.publishedDate = undefined;
+  restored.publicationTargets = [];
+  restored.rehydrationSource = "session-definition";
+  restored.restoredFromVersion = version;
+  restored.changeSummary = `Restored from immutable version ${version}`;
+  restored.selectedTables = normalizeSelectedTables(restored.tables, restored.selectedTables);
+  const health = computeHealth(restored);
+  restored.health = health.score;
+  restored.healthBreakdown = health.breakdown;
+  restored.history = [...dataset.history, snapshot(dataset, `Restore requested from ${version}`, actor)].slice(-25);
+  state.datasets.set(draftId, restored);
+  state.draftParents.set(id, draftId);
+  return clone(restored);
 }
 
 export function deleteSemanticDataset(id: string) {

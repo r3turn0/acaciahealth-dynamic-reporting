@@ -15,12 +15,15 @@ import {
   listSemanticDatasets,
   publishSemanticDataset,
   requestApproval,
+  restoreSemanticDatasetVersion,
+  compareSemanticDatasetVersion,
   setRelationshipStatus,
   updateSemanticDataset,
   type PublicationTarget,
   type RelType,
 } from "@/lib/datasets/virtualDatasetRegistry";
 import { canPublishDataset, getDatasetValidation } from "@/lib/validation/datasetValidationRegistry";
+import { buildDatasetExport } from "@/lib/datasets/datasetGovernance";
 
 type InferenceInput = {
   sourceTable: string;
@@ -178,6 +181,32 @@ export async function POST(request: NextRequest) {
     return dataset
       ? NextResponse.json({ success: true, dataset, publication: { virtual: true, targets: dataset.publicationTargets, physicalObjectsCreated: 0 } })
       : NextResponse.json({ error: `Dataset '${datasetId}' cannot be published` }, { status: 422 });
+  }
+
+  if (action === "compare_version") {
+    const datasetId = String(body.datasetId ?? "");
+    const version = String(body.version ?? "");
+    const diff = compareSemanticDatasetVersion(datasetId, version);
+    return diff ? NextResponse.json({ success: true, diff }) : NextResponse.json({ error: "Dataset version not found" }, { status: 404 });
+  }
+
+  if (action === "restore_version") {
+    const datasetId = String(body.datasetId ?? "");
+    const version = String(body.version ?? "");
+    if (!datasetId || !/^\d+\.\d+\.\d+$/.test(version)) return NextResponse.json({ error: "A valid datasetId and semantic version are required" }, { status: 400 });
+    const dataset = restoreSemanticDatasetVersion(datasetId, version, String(body.actor ?? "analyst"));
+    return dataset ? NextResponse.json({ success: true, dataset }, { status: 201 }) : NextResponse.json({ error: "Dataset version not found" }, { status: 404 });
+  }
+
+  if (action === "export_metadata") {
+    const datasetId = String(body.datasetId ?? "");
+    const format = String(body.format ?? "json");
+    if (!["json", "yaml", "dictionary", "lineage", "graph"].includes(format)) return NextResponse.json({ error: "Unsupported export format" }, { status: 400 });
+    const dataset = getSemanticDataset(datasetId);
+    if (!dataset) return NextResponse.json({ error: `Dataset '${datasetId}' not found` }, { status: 404 });
+    const asset = buildDatasetExport(dataset, format as "json" | "yaml" | "dictionary" | "lineage" | "graph");
+    const safeName = dataset.datasetName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || dataset.datasetId.toLowerCase();
+    return NextResponse.json({ success: true, filename: `${safeName}-v${dataset.version}-${format}.${asset.extension}`, ...asset });
   }
 
   if (action === "deprecate_dataset") {

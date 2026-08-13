@@ -30,6 +30,10 @@ export async function POST(request: NextRequest) {
   const fingerprint = createHash("sha256").update(JSON.stringify({
     datasetId: body.datasetId,
     relationshipCount: body.relationshipCount,
+    relationships: body.relationships?.map((relationship) => [relationship.sourceTable, relationship.sourceColumn, relationship.targetTable, relationship.targetColumn, relationship.relationshipType, relationship.status]),
+    dimensions: body.dimensions,
+    measures: body.measures,
+    owner: body.owner,
     tables: body.tables.map((table) => ({
       name: table.name,
       columns: table.columns.map((column) => [column.name, column.type, column.nullable, column.isPk]),

@@ -17,9 +17,9 @@ export type DatasetValidation = {
   authoritative: false;
 };
 
-type Column = { name: string; type: string; nullable: boolean; isPk: boolean; description?: string };
+type Column = { name: string; type: string; nullable: boolean; isPk: boolean; isFk?: boolean; description?: string };
 type Table = { name: string; schema?: string; businessDescription?: string; columns: Column[] };
-type Relationship = { sourceTable: string; targetTable: string; sourceColumn?: string; targetColumn?: string; status?: string };
+type Relationship = { sourceTable: string; targetTable: string; sourceColumn?: string; targetColumn?: string; relationshipType?: "OneToOne" | "OneToMany" | "ManyToOne" | "ManyToMany"; status?: string };
 type Input = {
   datasetId: string;
   tables: Table[];
@@ -63,7 +63,21 @@ export function validateDataset(input: Input): DatasetValidation {
   const relatedTables = new Set(relationships.flatMap((relationship) => [relationship.sourceTable, relationship.targetTable]));
   const orphanTables = relationships.length ? tableNames.filter((table) => tableNames.length > 1 && !relatedTables.has(table)) : (tableNames.length > 1 && input.relationshipCount === 0 ? tableNames : []);
   const circular = hasCycle(relationships);
+  const tableIndex = new Map(input.tables.map((table) => [table.name, new Map(table.columns.map((column) => [column.name, column]))]));
   const invalidRelationships = relationships.filter((relationship) => !tableNames.includes(relationship.sourceTable) || !tableNames.includes(relationship.targetTable));
+  const missingJoinColumns = relationships.filter((relationship) => !relationship.sourceColumn || !relationship.targetColumn || !tableIndex.get(relationship.sourceTable)?.has(relationship.sourceColumn) || !tableIndex.get(relationship.targetTable)?.has(relationship.targetColumn));
+  const relationshipKeys = relationships.map((relationship) => [relationship.sourceTable, relationship.sourceColumn, relationship.targetTable, relationship.targetColumn].join("::").toLowerCase());
+  const duplicateRelationships = [...new Set(relationshipKeys.filter((key, index) => relationshipKeys.indexOf(key) !== index))];
+  const unsupportedCardinality = relationships.filter((relationship) => {
+    if (!relationship.sourceColumn || !relationship.targetColumn) return false;
+    const source = tableIndex.get(relationship.sourceTable)?.get(relationship.sourceColumn);
+    const target = tableIndex.get(relationship.targetTable)?.get(relationship.targetColumn);
+    if (!source || !target) return false;
+    return relationship.relationshipType === "OneToOne" && (!source.isPk || !target.isPk)
+      || relationship.relationshipType === "ManyToOne" && !target.isPk
+      || relationship.relationshipType === "OneToMany" && !source.isPk
+      || relationship.relationshipType === "ManyToMany";
+  });
   const metadataComplete = Boolean(input.owner?.trim()) && input.tables.every((table) => Boolean(table.businessDescription?.trim() || table.columns.some((column) => column.description?.trim())));
   const lineageComplete = (input.sourceTraceability?.length ?? 0) > 0 || input.tables.every((table) => Boolean(table.schema));
   const hasMeasure = (input.measures?.length ?? 0) > 0 || columns.some((column) => /int|decimal|number|float|money/i.test(column.type));
@@ -76,8 +90,11 @@ export function validateDataset(input: Input): DatasetValidation {
     result("primary-keys", "Schema", "Stable keys are present", input.tables.length > 0 && input.tables.every((table) => table.columns.some((column) => column.isPk)) ? "pass" : "warning", input.tables.every((table) => table.columns.some((column) => column.isPk)) ? 100 : 65, "Primary-key metadata checked for every source", "Stable keys prevent ambiguous joins and duplicate result grain.", "Map a governed key for each source table."),
     result("duplicates", "Schema", "Duplicate field names are resolved", duplicateFields.length ? "warning" : "pass", duplicateFields.length ? 60 : 100, duplicateFields.length ? `Duplicate names: ${duplicateFields.join(", ")}` : "No duplicate field names", "Duplicate names can make generated SQL and exported schemas ambiguous.", "Alias duplicate fields with business-safe names."),
     result("relationship-integrity", "Relationships", "Relationships reference selected tables", invalidRelationships.length ? "fail" : "pass", invalidRelationships.length ? 20 : 100, invalidRelationships.length ? `${invalidRelationships.length} invalid relationship(s)` : `${input.relationshipCount} relationship(s) inspected`, "Every join endpoint must belong to this definition.", "Remove or repair relationships with missing endpoints."),
+    result("join-columns", "Relationships", "Join columns are selected", missingJoinColumns.length ? "fail" : "pass", missingJoinColumns.length ? 15 : 100, missingJoinColumns.length ? `${missingJoinColumns.length} relationship(s) reference missing selected columns` : "Every join column is selected", "Join endpoints must remain inside the governed field contract.", "Select both join columns or remove the relationship."),
+    result("duplicate-relationships", "Relationships", "Duplicate relationships are resolved", duplicateRelationships.length ? "fail" : "pass", duplicateRelationships.length ? 20 : 100, duplicateRelationships.length ? `${duplicateRelationships.length} exact duplicate(s)` : "No exact duplicates", "Duplicate join edges create ambiguous query plans.", "Keep one canonical relationship per endpoint pair."),
+    result("cardinality", "Relationships", "Cardinality matches key metadata", unsupportedCardinality.length ? "fail" : "pass", unsupportedCardinality.length ? 25 : 100, unsupportedCardinality.length ? `${unsupportedCardinality.length} unsupported cardinality mapping(s)` : "Cardinality is supported by selected key metadata", "Cardinality must agree with primary-key evidence; many-to-many requires an explicit bridge.", "Correct the relationship type or add a governed bridge table."),
     result("orphan-tables", "Relationships", "All tables have a join path", orphanTables.length ? "fail" : "pass", orphanTables.length ? 35 : 100, orphanTables.length ? `Orphan tables: ${orphanTables.join(", ")}` : "No orphan tables detected", "Disconnected tables can create Cartesian products or unusable fields.", "Add an accepted governed relationship for each orphan."),
-    result("circular-dependencies", "Relationships", "Relationship graph is acyclic", circular ? "warning" : "pass", circular ? 55 : 100, circular ? "A circular dependency was detected" : "No circular dependency detected", "Cycles create multiple competing join paths.", "Choose one canonical path or mark an alternate relationship inactive."),
+    result("circular-dependencies", "Relationships", "Relationship graph is acyclic", circular ? "fail" : "pass", circular ? 20 : 100, circular ? "A circular dependency was detected" : "No circular dependency detected", "Cycles create multiple competing join paths.", "Choose one canonical path or mark an alternate relationship inactive."),
     result("business-mapping", "Business Mapping", "Business terms are mapped", hasBusinessMapping ? "pass" : "warning", hasBusinessMapping ? 100 : 62, `${input.glossaryMappings?.length ?? 0} explicit glossary mapping(s)`, "Business mappings make fields discoverable in natural-language and KPI workflows.", "Map dimensions to governed glossary terms."),
     result("business-rules", "Business Mapping", "Business rules are documented", (input.businessRules?.length ?? 0) > 0 ? "pass" : "warning", (input.businessRules?.length ?? 0) > 0 ? 100 : 70, `${input.businessRules?.length ?? 0} rule(s) documented`, "Rules explain filters, grain, exclusions, and aggregation behavior.", "Document at least one semantic business rule."),
     result("lineage", "Lineage", "Source lineage is traceable", lineageComplete ? "pass" : "warning", lineageComplete ? 100 : 60, lineageComplete ? "Governed source traceability present" : "Source traceability is incomplete", "Consumers must be able to trace virtual fields back to governed physical metadata.", "Add source schema/table lineage and rehydration source."),

@@ -39,6 +39,11 @@ import {
   BarChart3,
   Network,
   AlertCircle,
+  Download,
+  Eye,
+  GitCompare,
+  RotateCcw,
+  SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DatasetLineagePanel, DatasetValidationHub } from "./DatasetValidationHub";
@@ -93,6 +98,7 @@ interface SemanticDataset {
   datasetName:   string;
   description:   string;
   tables:        string[];
+  selectedTables?: Array<{ name: string; schema: string; description?: string; recordCount?: number; columns: ColumnDef[] }>;
   relationships: string[];
   dimensions:    string[];
   measures:      string[];
@@ -105,11 +111,15 @@ interface SemanticDataset {
   publishedDate?: string;
   createdBy:     string;
   health?:       number;
+  healthBreakdown?: Record<string, number>;
+  changeSummary?: string;
+  restoredFromVersion?: string;
+  updatedDate?: string;
   publicationTargets?: string[];
   sourceTraceability?: string[];
   virtual?: boolean;
   authoritative?: boolean;
-  history?: Array<{ version: string; savedAt: string; reason: string }>;
+  history?: Array<{ version: string; savedAt: string; savedBy?: string; reason: string; definition?: SemanticDataset }>;
 }
 
 interface InferenceResult {
@@ -599,16 +609,22 @@ function CanvasPanel({
   availableTables,
   onAddToCanvas,
   onToggleTable,
+  selectedColumns,
+  onToggleColumn,
   onCreateRelationship,
 }: {
   canvasTables: TableDef[];
   availableTables: TableDef[];
   onAddToCanvas: () => void;
   onToggleTable: (table: TableDef, selected: boolean) => void;
+  selectedColumns: Record<string, string[]>;
+  onToggleColumn: (table: TableDef, column: string | "*", selected: boolean) => void;
   onCreateRelationship: (src: DragColumn, tgt: DragColumn) => void;
 }) {
   const [dragColumn, setDragColumn] = useState<DragColumn | null>(null);
   const [hoveredColumn, setHoveredColumn] = useState<string | null>(null);
+  const [columnSearch, setColumnSearch] = useState<Record<string, string>>({});
+  const [typeFilter, setTypeFilter] = useState<Record<string, string>>({});
 
   function handleDragStart(table: string, column: string, type: string) {
     setDragColumn({ table, column, type });
@@ -676,33 +692,30 @@ function CanvasPanel({
                   <p className="text-[9px] text-muted-foreground">{t.schema} · {t.columnCount} cols</p>
                 </div>
               </div>
+              <div className="flex items-center gap-2 border-b border-border bg-muted/10 p-2">
+                <div className="relative flex-1"><Search className="absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" /><input value={columnSearch[t.name] ?? ""} onChange={(event) => setColumnSearch((current) => ({ ...current, [t.name]: event.target.value }))} placeholder="Filter columns" className="w-full rounded border border-border bg-background py-1 pl-7 pr-2 text-[10px] text-foreground" /></div>
+                <select aria-label={`Filter ${t.name} by type`} value={typeFilter[t.name] ?? "all"} onChange={(event) => setTypeFilter((current) => ({ ...current, [t.name]: event.target.value }))} className="rounded border border-border bg-background px-2 py-1 text-[10px] text-foreground"><option value="all">All types</option>{[...new Set(t.columns.map((column) => column.type))].sort().map((type) => <option key={type} value={type}>{type}</option>)}</select>
+              </div>
+              <div className="flex items-center justify-between border-b border-border px-3 py-2 text-[10px] text-muted-foreground"><span>{selectedColumns[t.name]?.length ?? 0} of {t.columns.length} selected</span><span className="flex gap-2"><button type="button" onClick={() => onToggleColumn(t, "*", true)} className="text-primary hover:underline">Select all</button><button type="button" onClick={() => onToggleColumn(t, "*", false)} className="hover:text-foreground hover:underline">Deselect all</button></span></div>
               {/* Column rows */}
-              <div className="flex flex-col divide-y divide-border/30">
-                {t.columns.map((c) => {
+              <div className="max-h-72 overflow-y-auto flex flex-col divide-y divide-border/30">
+                {t.columns.filter((column) => column.name.toLowerCase().includes((columnSearch[t.name] ?? "").toLowerCase()) && ((typeFilter[t.name] ?? "all") === "all" || column.type === typeFilter[t.name])).sort((a, b) => Number(b.isPk) - Number(a.isPk) || a.name.localeCompare(b.name)).map((c) => {
                   const colKey = `${t.name}.${c.name}`;
+                  const selected = selectedColumns[t.name]?.includes(c.name) ?? false;
                   const isDragSource = dragColumn?.table === t.name && dragColumn?.column === c.name;
                   const isHover = hoveredColumn === colKey && dragColumn && dragColumn.table !== t.name;
                   return (
-                    <div
-                      key={`${t.schema}.${t.name}.${c.name}`}
-                      draggable
-                      onDragStart={() => handleDragStart(t.name, c.name, c.type)}
+                    <div key={`${t.schema}.${t.name}.${c.name}`} className={cn("flex items-center gap-2 px-3 py-1.5 transition-colors", selected ? "bg-card" : "bg-muted/20 opacity-65", isDragSource && "border-l-2 border-primary bg-primary/10", isHover && "border-l-2 border-chart-3 bg-chart-3/10")}
+                      draggable={selected}
+                      onDragStart={() => selected && handleDragStart(t.name, c.name, c.type)}
                       onDragEnd={() => setDragColumn(null)}
-                      onDragOver={(e) => { e.preventDefault(); setHoveredColumn(colKey); }}
+                      onDragOver={(e) => { if (selected) { e.preventDefault(); setHoveredColumn(colKey); } }}
                       onDragLeave={() => setHoveredColumn(null)}
-                      onDrop={() => handleDrop(t.name, c.name, c.type)}
-                      className={cn(
-                        "flex items-center gap-2 px-3 py-1.5 cursor-grab active:cursor-grabbing select-none transition-colors",
-                        isDragSource ? "bg-primary/10 border-l-2 border-primary" : "",
-                        isHover ? "bg-chart-3/10 border-l-2 border-chart-3" : "hover:bg-muted/20",
-                      )}
-                      title={`Drag ${t.name}.${c.name} to create a relationship`}
-                    >
-                      <div className="flex items-center gap-1 w-8 shrink-0">
-                        {c.isPk && <span className="text-[8px] font-bold text-chart-5">PK</span>}
-                        {c.isFk && <span className="text-[8px] font-bold text-primary">FK</span>}
-                      </div>
-                      <span className="text-[11px] font-mono text-foreground flex-1 truncate">{c.name}</span>
+                      onDrop={() => selected && handleDrop(t.name, c.name, c.type)}>
+                      <input aria-label={`Include ${t.name}.${c.name}`} type="checkbox" checked={selected} onChange={(event) => onToggleColumn(t, c.name, event.target.checked)} className="size-3.5 accent-primary" />
+                      <div className="flex items-center gap-1 w-8 shrink-0">{c.isPk && <span className="text-[8px] font-bold text-chart-5">PK</span>}{c.isFk && <span className="text-[8px] font-bold text-primary">FK</span>}</div>
+                      <span className="text-[11px] font-mono text-foreground flex-1 truncate" title={c.description}>{c.name}</span>
+                      {!c.nullable && <span className="text-[8px] text-muted-foreground">Required</span>}
                       <span className="text-[9px] text-muted-foreground font-mono bg-muted/30 rounded px-1">{c.type}</span>
                     </div>
                   );
@@ -867,6 +880,7 @@ function DatasetsPanel({
   datasets,
   relationships,
   availableTables,
+  selectedColumns,
   mode,
   loading,
   onPublish,
@@ -878,6 +892,7 @@ function DatasetsPanel({
   datasets:      SemanticDataset[];
   relationships: Relationship[];
   availableTables: TableDef[];
+  selectedColumns: Record<string, string[]>;
   mode: "semantics" | "published";
   loading:       boolean;
   onPublish:     (id: string) => void;
@@ -895,6 +910,9 @@ function DatasetsPanel({
   const [previewRows, setPreviewRows] = useState<Record<string, unknown>[]>([]);
   const [previewColumns, setPreviewColumns] = useState<string[]>([]);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewDataset, setPreviewDataset] = useState<SemanticDataset | null>(null);
+  const [historyDatasetId, setHistoryDatasetId] = useState<string | null>(null);
+  const [versionDiff, setVersionDiff] = useState<{ version: string; added: string[]; removed: string[]; modified: string[] } | null>(null);
 
   const acceptedRels = relationships.filter((r) => r.status === "Accepted");
   const visibleDatasets = mode === "published" ? datasets.filter((dataset) => dataset.status === "Published") : datasets.filter((dataset) => dataset.status !== "Published");
@@ -920,7 +938,9 @@ function DatasetsPanel({
     for (const table of remainingTables) {
       if (!joinedTables.has(table)) joins.push(`-- Relationship required before joining ${quoteIdentifier(table)}`);
     }
-    return [`SELECT TOP (100)`, `  *`, `FROM ${quoteIdentifier(baseTable)}`, ...joins].join("\n");
+    const projected = (dataset.selectedTables ?? []).flatMap((table) => table.columns.map((column) => `  ${quoteIdentifier(table.name)}.${quoteIdentifier(column.name)} AS ${quoteIdentifier(`${table.name.replaceAll(".", "_")}_${column.name}`)}`));
+    if (!projected.length) return "-- Select at least one governed field before previewing this dataset.";
+    return [`SELECT TOP (100)`, projected.join(",\n"), `FROM ${quoteIdentifier(baseTable)}`, ...joins].join("\n");
   }
 
   async function runPreview(dataset: SemanticDataset) {
@@ -942,6 +962,30 @@ function DatasetsPanel({
     }
   }
 
+  async function exportMetadata(dataset: SemanticDataset, format: "json" | "yaml" | "dictionary" | "lineage" | "graph") {
+    const response = await fetch("/api/designer/datasets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "export_metadata", datasetId: dataset.datasetId, format }) });
+    const payload = await response.json() as { filename?: string; mime?: string; content?: string; error?: string };
+    if (!response.ok || !payload.content || !payload.filename) { setPreviewError(payload.error ?? "Export failed"); return; }
+    const url = URL.createObjectURL(new Blob([payload.content], { type: payload.mime ?? "text/plain" }));
+    const link = document.createElement("a"); link.href = url; link.download = payload.filename; link.click(); URL.revokeObjectURL(url);
+  }
+
+  async function compareVersion(dataset: SemanticDataset, version: string) {
+    const response = await fetch("/api/designer/datasets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "compare_version", datasetId: dataset.datasetId, version }) });
+    const payload = await response.json() as { diff?: { added: string[]; removed: string[]; modified: string[] }; error?: string };
+    if (!response.ok || !payload.diff) { setPreviewError(payload.error ?? "Comparison failed"); return; }
+    setVersionDiff({ version, ...payload.diff });
+  }
+
+  async function restoreVersion(dataset: SemanticDataset, version: string) {
+    if (!window.confirm(`Restore immutable version ${version} as a new draft? Existing versions will remain unchanged.`)) return;
+    const response = await fetch("/api/designer/datasets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "restore_version", datasetId: dataset.datasetId, version, actor: "analyst" }) });
+    const payload = await response.json() as { dataset?: SemanticDataset; error?: string };
+    if (!response.ok || !payload.dataset) { setPreviewError(payload.error ?? "Restore failed"); return; }
+    await onRefresh();
+    setHistoryDatasetId(null);
+  }
+
   async function handleSave() {
   if (!form.datasetName.trim()) return;
   setSaving(true);
@@ -950,6 +994,11 @@ function DatasetsPanel({
   description: form.description.trim(),
   owner: form.owner.trim() || "Analytics Team",
   tables: form.tables.split(",").map((s) => s.trim()).filter(Boolean),
+  selectedTables: form.tables.split(",").map((s) => s.trim()).filter(Boolean).map((name) => {
+    const table = availableTables.find((candidate) => candidate.name === name);
+    const selected = selectedColumns[name] ?? table?.columns.map((column) => column.name) ?? [];
+    return { name, schema: table?.schema ?? "dbo", description: table?.businessDescription, recordCount: table?.recordCount, columns: (table?.columns ?? []).filter((column) => selected.includes(column.name)) };
+  }),
   dimensions: form.dimensions.split(",").map((s) => s.trim()).filter(Boolean),
   measures: form.measures.split(",").map((s) => s.trim()).filter(Boolean),
   glossaryMappings: form.glossaryMappings.split(",").map((s) => s.trim()).filter(Boolean),
@@ -1184,6 +1233,7 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", studioMo
     SOURCE_TABLES.find((t) => t.name === "CLIENT_EPISODES_ALL")!,
     SOURCE_TABLES.find((t) => t.name === "BRANCHES")!,
   ]);
+  const [selectedColumns, setSelectedColumns] = useState<Record<string, string[]>>(() => Object.fromEntries(SOURCE_TABLES.slice(0, 1).concat(SOURCE_TABLES.filter((table) => table.name === "BRANCHES")).map((table) => [table.name, table.columns.map((column) => column.name)])));
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [datasets, setDatasets] = useState<SemanticDataset[]>([]);
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
@@ -1292,6 +1342,7 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", studioMo
   // continue discovering sources, then open Build explicitly when ready.
   function handleAddToCanvas(t: TableDef) {
     setCanvasTables((prev) => prev.find((x) => x.name === t.name) ? prev : [...prev, t]);
+    setSelectedColumns((current) => ({ ...current, [t.name]: current[t.name]?.length ? current[t.name] : t.columns.map((column) => column.name) }));
     showToast(`${t.name} added to Build.`);
   }
 
@@ -1299,6 +1350,17 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", studioMo
     setCanvasTables((current) => selected
       ? current.some((item) => item.name === table.name) ? current : [...current, table]
       : current.filter((item) => item.name !== table.name));
+    setSelectedColumns((current) => selected
+      ? { ...current, [table.name]: current[table.name]?.length ? current[table.name] : table.columns.map((column) => column.name) }
+      : Object.fromEntries(Object.entries(current).filter(([name]) => name !== table.name)));
+  }
+
+  function handleToggleColumn(table: TableDef, column: string | "*", selected: boolean) {
+    setSelectedColumns((current) => {
+      const existing = current[table.name] ?? [];
+      const next = column === "*" ? (selected ? table.columns.map((item) => item.name) : []) : selected ? [...new Set([...existing, column])] : existing.filter((name) => name !== column);
+      return { ...current, [table.name]: next };
+    });
   }
 
   // Canvas: create relationship (from drag-drop)
@@ -1559,6 +1621,8 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", studioMo
                 availableTables={discoveryTables}
                 onAddToCanvas={() => setTab("discovery")}
                 onToggleTable={handleToggleCanvasTable}
+                selectedColumns={selectedColumns}
+                onToggleColumn={handleToggleColumn}
                 onCreateRelationship={handleCreateRelationship}
               />
             )}
@@ -1575,8 +1639,9 @@ export function DatasetDesigner({ onNavigate, initialTab = "discovery", studioMo
 	  <DatasetsPanel
 	  datasets={datasets}
 	  relationships={relationships}
-      availableTables={discoveryTables}
-      mode={studioMode === "published" ? "published" : "semantics"}
+	      availableTables={discoveryTables}
+          selectedColumns={selectedColumns}
+	      mode={studioMode === "published" ? "published" : "semantics"}
 	  loading={loading}
   onPublish={handlePublish}
   onRequestApproval={handleRequestApproval}
