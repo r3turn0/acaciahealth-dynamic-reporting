@@ -46,6 +46,7 @@ const SOURCES: SourceDefinition[] = [
   { file: "Revenue and RPD.sql", kpi: "revenue", resultNames: ["Revenue and RPD — Result 1", "Revenue and RPD — Result 2"] },
   { file: "Patient Days.sql", kpi: "patient_days", resultNames: ["Patient Days"] },
   { file: "Enterprise Census by Patient Days and ADC.sql", kpi: "average_daily_census", resultNames: ["Enterprise Census by Patient Days and ADC"] },
+  { file: "Expired Licenses.sql", kpi: "workforce_compliance", resultNames: ["Expired Licenses"] },
   { file: "Client Episode Visit Notes with Service Lines.sql", kpi: "visit_notes", resultNames: ["Client Episode Visit Notes with Service Lines"] },
 ];
 
