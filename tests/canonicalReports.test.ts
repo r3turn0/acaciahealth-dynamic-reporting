@@ -8,6 +8,7 @@ const IMPORTED_REPORT_NAMES = [
   "Operational (episode based) Census and ADC",
   "Operational (episode based) Current Census and ADC Month to Date",
   "Operational Ending Census and ADC",
+  "Enterprise Census by Patient Days and ADC",
 ];
 
 describe("canonical Saved Reports audit", () => {
