@@ -230,9 +230,13 @@ export function updateSemanticDataset(id: string, patch: Partial<SemanticDataset
   return clone(dataset);
 }
 
+export function canRequestDatasetApproval(dataset: Pick<SemanticDataset, "status" | "health">) {
+  return dataset.status === "Draft" && (dataset.health ?? 0) >= 70;
+}
+
 export function requestApproval(id: string, actor = "analyst") {
   const dataset = state.datasets.get(id);
-  if (!dataset || dataset.status === "Deprecated") return null;
+  if (!dataset || !canRequestDatasetApproval(dataset)) return null;
   dataset.history = [...dataset.history, snapshot(dataset, "Submitted for approval", actor)].slice(-25);
   dataset.status = "Pending Approval";
   dataset.updatedDate = isoNow();

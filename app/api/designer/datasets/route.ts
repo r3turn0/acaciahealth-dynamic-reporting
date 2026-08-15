@@ -160,9 +160,11 @@ export async function POST(request: NextRequest) {
 
   if (action === "request_approval") {
     const datasetId = String(body.datasetId ?? "");
-    const validation = getDatasetValidation(datasetId);
-    if (!canPublishDataset(datasetId)) {
-      return NextResponse.json({ error: "A fresh validation score of 70 or higher with no failing checks is required before approval", validation: validation?.validation ?? null }, { status: 422 });
+    const current = getSemanticDataset(datasetId);
+    if (!current) return NextResponse.json({ error: `Dataset '${datasetId}' not found` }, { status: 404 });
+    if (current.status !== "Draft") return NextResponse.json({ error: "Only draft datasets can be submitted for approval" }, { status: 422 });
+    if ((current.health ?? 0) < 70) {
+      return NextResponse.json({ error: `Dataset health must be at least 70% before approval (current: ${current.health ?? 0}%)` }, { status: 422 });
     }
     const dataset = requestApproval(datasetId, String(body.actor ?? "analyst"));
     return dataset ? NextResponse.json({ success: true, dataset }) : NextResponse.json({ error: `Dataset '${datasetId}' cannot be submitted` }, { status: 422 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildDatasetExport, compareDatasetDefinitions, computeHealth, normalizeSelectedTables } from "@/lib/datasets/datasetGovernance";
+import { canRequestDatasetApproval } from "@/lib/datasets/virtualDatasetRegistry";
 
 const dataset = {
   datasetId: "DS-GOV-1",
@@ -30,6 +31,12 @@ describe("dataset governance", () => {
     expect(result.score).toBeGreaterThanOrEqual(80);
     expect(result.breakdown.relationships).toBe(100);
     expect(Object.keys(result.breakdown)).toEqual(["relationships", "joins", "metadata", "measures", "documentation"]);
+  });
+
+  it("allows only healthy drafts to request approval", () => {
+    expect(canRequestDatasetApproval({ status: "Draft", health: 70 })).toBe(true);
+    expect(canRequestDatasetApproval({ status: "Draft", health: 69 })).toBe(false);
+    expect(canRequestDatasetApproval({ status: "Pending Approval", health: 95 })).toBe(false);
   });
 
   it("returns stable added, removed and modified version differences", () => {
