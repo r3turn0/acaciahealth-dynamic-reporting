@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canPublishDataset,
   getDatasetValidationCacheDiagnostics,
   getDatasetValidationSnapshot,
   saveDatasetValidation,
@@ -38,5 +39,17 @@ describe("dataset validation snapshots", () => {
     expect(diagnostics.entries).toBeLessThanOrEqual(diagnostics.maxEntries);
     expect(diagnostics.hits).toBeGreaterThanOrEqual(1);
     expect(diagnostics.misses).toBeGreaterThanOrEqual(2);
+  });
+
+  it("uses governed dataset health when validation is absent or expired", () => {
+    expect(canPublishDataset("dataset-without-validation", 82)).toBe(true);
+    expect(canPublishDataset("dataset-without-validation", 69)).toBe(false);
+    expect(canPublishDataset("dataset-expired", 93)).toBe(true);
+  });
+
+  it("honors a fresh failing validation over the displayed health score", () => {
+    const failed = { ...validation("dataset-failed"), score: 60, grade: "F" as const, status: "Failed" as const };
+    saveDatasetValidation({ validation: failed, tableCount: 1, relationshipCount: 0, updatedAt: new Date().toISOString() });
+    expect(canPublishDataset("dataset-failed", 93)).toBe(false);
   });
 });

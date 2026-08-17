@@ -172,9 +172,14 @@ export async function POST(request: NextRequest) {
 
   if (action === "publish_dataset") {
     const datasetId = String(body.datasetId ?? "");
+    const current = getSemanticDataset(datasetId);
+    if (!current) return NextResponse.json({ error: `Dataset '${datasetId}' not found` }, { status: 404 });
+    if (current.status !== "Pending Approval") {
+      return NextResponse.json({ error: "Only datasets pending approval can be certified and published" }, { status: 422 });
+    }
     const validation = getDatasetValidation(datasetId);
-    if (!canPublishDataset(datasetId)) {
-      return NextResponse.json({ error: "Dataset must have a fresh validation score of 70 or higher with no failing checks before publishing", validation: validation?.validation ?? null }, { status: 422 });
+    if (!canPublishDataset(datasetId, current.health ?? 0)) {
+      return NextResponse.json({ error: "Dataset health or a fresh validation score must be at least 70% with no failing checks before publishing", validation: validation?.validation ?? null }, { status: 422 });
     }
     const requestedTargets = Array.isArray(body.targets) ? body.targets.map(String) : getPublicationTargets();
     const allowedTargets = getPublicationTargets();

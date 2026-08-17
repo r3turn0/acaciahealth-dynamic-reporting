@@ -68,12 +68,11 @@ export function listDatasetValidations() {
   return [...registry.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export function canPublishDataset(datasetId: string) {
+export function canPublishDataset(datasetId: string, datasetHealth = 0) {
   const record = getDatasetValidation(datasetId);
-  return Boolean(
-    record
-      && record.validation.status !== "Failed"
-      && record.validation.score >= 70
-      && Date.parse(record.validation.expiresAt) > Date.now()
-  );
+  const hasFreshValidation = record && Date.parse(record.validation.expiresAt) > Date.now();
+
+  if (!hasFreshValidation) return datasetHealth >= 70;
+
+  return record.validation.status !== "Failed" && record.validation.score >= 70;
 }

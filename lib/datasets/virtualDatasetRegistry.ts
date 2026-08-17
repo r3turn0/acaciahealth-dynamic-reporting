@@ -245,7 +245,7 @@ export function requestApproval(id: string, actor = "analyst") {
 
 export function publishSemanticDataset(id: string, targets: PublicationTarget[], actor = "approver") {
   const dataset = state.datasets.get(id);
-  if (!dataset || dataset.status === "Deprecated") return null;
+  if (!dataset || dataset.status !== "Pending Approval" || (dataset.health ?? 0) < 70) return null;
   dataset.history = [...dataset.history, snapshot(dataset, "Certified virtual publication", actor)].slice(-25);
   dataset.status = "Published";
   dataset.version = bumpVersion(dataset.version, "minor");
