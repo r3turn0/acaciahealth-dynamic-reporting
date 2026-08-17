@@ -10,6 +10,9 @@ const IMPORTED_REPORT_NAMES = [
   "Operational Ending Census and ADC",
   "Enterprise Census by Patient Days and ADC",
   "Expired Licenses",
+  "Active Census (Billable Visit Filter)",
+  "WAAR Census Daily Variance",
+  "WAAR Daily Census",
 ];
 
 describe("canonical Saved Reports audit", () => {

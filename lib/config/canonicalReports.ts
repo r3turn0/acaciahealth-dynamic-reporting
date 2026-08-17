@@ -47,6 +47,9 @@ const SOURCES: SourceDefinition[] = [
   { file: "Patient Days.sql", kpi: "patient_days", resultNames: ["Patient Days"] },
   { file: "Enterprise Census by Patient Days and ADC.sql", kpi: "average_daily_census", resultNames: ["Enterprise Census by Patient Days and ADC"] },
   { file: "Expired Licenses.sql", kpi: "workforce_compliance", resultNames: ["Expired Licenses"] },
+  { file: "Active Census (Billable Visit Filter).sql", kpi: "average_daily_census", resultNames: ["Active Census (Billable Visit Filter)"] },
+  { file: "WAAR Census Daily Variance.sql", kpi: "average_daily_census", resultNames: ["WAAR Census Daily Variance"] },
+  { file: "WAAR Daily Census.sql", kpi: "daily_census_trend", resultNames: ["WAAR Daily Census"] },
   { file: "Client Episode Visit Notes with Service Lines.sql", kpi: "visit_notes", resultNames: ["Client Episode Visit Notes with Service Lines"] },
 ];
 
