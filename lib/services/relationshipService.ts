@@ -43,7 +43,13 @@ export type JoinType = "LEFT" | "INNER" | "RIGHT" | "FULL";
 
 export interface InferenceResult {
   joinType:        JoinType;
+  /** Backward-compatible normalized score (0–1). */
   confidenceScore: number;
+  /** Standardized intelligence score (0–100). */
+  confidencePercent: number;
+  confidenceBand: "verified" | "strong" | "possible" | "rejected";
+  authoritative: boolean;
+  validationSource: "explicit_constraint" | "inferred";
   warnings:        string[];
   explanation:     string;
   signals:         SignalLog[];
@@ -212,5 +218,30 @@ export function inferRelationship(
     `Confidence ${confidence.toFixed(2)} via: ${signalSummary || "no matching signals"}. ` +
     `Join type: ${joinType}.`;
 
-  return { joinType, confidenceScore: confidence, warnings, explanation, signals };
+  const explicitConstraint = Boolean(exactFk || reverseFk);
+  const confidencePercent = explicitConstraint
+    ? Math.max(95, Math.round(confidence * 100))
+    : Math.round(confidence * 100);
+  const confidenceBand = confidencePercent >= 95
+    ? "verified"
+    : confidencePercent >= 80
+      ? "strong"
+      : confidencePercent >= 60
+        ? "possible"
+        : "rejected";
+  if (confidenceBand === "rejected") {
+    warnings.push("Relationship rejected for automatic use because confidence is below 60%.");
+  }
+
+  return {
+    joinType,
+    confidenceScore: confidence,
+    confidencePercent,
+    confidenceBand,
+    authoritative: explicitConstraint,
+    validationSource: explicitConstraint ? "explicit_constraint" : "inferred",
+    warnings,
+    explanation,
+    signals,
+  };
 }

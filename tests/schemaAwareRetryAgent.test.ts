@@ -60,15 +60,9 @@ describe("SchemaAwareRetryAgent", () => {
     expect(new Set(strategies).size).toBe(3);
   });
 
-  it("continues after a duplicate, feeds back runtime errors, and returns only verified SQL", async () => {
-    generateTextMock
-      .mockResolvedValueOnce(aiResponse(originalSql, "unchanged"))
-      .mockResolvedValueOnce(aiResponse(alternateSql, "alternate source"))
-      .mockResolvedValueOnce(aiResponse(successfulSql, "simplified source"));
-
-    const verifier = vi.fn()
-      .mockResolvedValueOnce({ ok: false, error: "Invalid column name branch_code" })
-      .mockResolvedValueOnce({ ok: true, execution: { rows: [{ branch: "A" }] } });
+  it("performs one validation-driven correction and returns only verified SQL", async () => {
+    generateTextMock.mockResolvedValueOnce(aiResponse(successfulSql, "simplified source"));
+    const verifier = vi.fn().mockResolvedValueOnce({ ok: true, execution: { rows: [{ branch: "A" }] } });
 
     const result = await retryWithSchemaIntelligence(
       {
@@ -84,14 +78,9 @@ describe("SchemaAwareRetryAgent", () => {
     expect(result.succeeded).toBe(true);
     expect(result.correctedSql).toBe(successfulSql);
     expect(result.verifiedExecution).toEqual({ rows: [{ branch: "A" }] });
-    expect(result.attempts).toHaveLength(3);
-    expect(result.attempts[0].duplicateRejected).toBe(true);
-    expect(result.attempts[1].runtimeError).toContain("Invalid column");
-    expect(verifier).toHaveBeenCalledTimes(2);
-
-    const thirdPrompt = generateTextMock.mock.calls[2][0].prompt as string;
-    expect(thirdPrompt).toContain(alternateSql);
-    expect(thirdPrompt).toContain("Invalid column name branch_code");
+    expect(result.attempts).toHaveLength(1);
+    expect(verifier).toHaveBeenCalledTimes(1);
+    expect(generateTextMock).toHaveBeenCalledTimes(1);
   });
 
   it("never runtime-verifies unsafe generated SQL", async () => {
@@ -110,7 +99,7 @@ describe("SchemaAwareRetryAgent", () => {
     );
 
     expect(result.succeeded).toBe(false);
-    expect(result.attempts).toHaveLength(3);
+    expect(result.attempts).toHaveLength(1);
     expect(result.attempts.every((attempt) => attempt.validationErrors.length > 0)).toBe(true);
     expect(verifier).not.toHaveBeenCalled();
   });

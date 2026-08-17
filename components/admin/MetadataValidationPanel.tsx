@@ -305,6 +305,13 @@ export function MetadataValidationPanel() {
         </div>
       </div>
 
+      {/* ── Intelligence scores ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2" aria-label="Metadata intelligence scores">
+        <Counter label="Consistency" value={report.intelligence.metadataConsistencyScore} variant={report.intelligence.metadataConsistencyScore >= 80 ? "good" : "warn"} />
+        <Counter label="Schema confidence" value={report.intelligence.schemaConfidenceScore} variant={report.intelligence.schemaConfidenceScore >= 80 ? "good" : "warn"} />
+        <Counter label="Freshness" value={report.intelligence.freshnessScore} variant={report.intelligence.freshnessScore >= 80 ? "good" : "warn"} />
+      </div>
+
       {/* ── Scorecard ── */}
       <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
         <Counter label="Discovered"    value={report.tablesDiscovered}   variant="neutral" />
@@ -416,6 +423,25 @@ export function MetadataValidationPanel() {
           title="Stale Metadata"
           items={report.staleTableIds}
           empty="No stale schema definitions detected"
+        />
+      </div>
+
+      {/* ── Advisory intelligence ── */}
+      <div className="border border-border rounded-xl px-4 py-4 flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-semibold text-foreground">Advisory intelligence</p>
+          <span className="text-[10px] text-muted-foreground">Virtual · not persisted</span>
+        </div>
+        <DetailList
+          title="PHI / PII classifications"
+          items={report.intelligence.classifications.map((item) => `${item.table}.${item.column} · ${item.classification} · ${item.confidence}%`)}
+          empty="No governed PHI or PII naming signals detected"
+        />
+        <div className="h-px bg-border/50" />
+        <DetailList
+          title="Recommended metadata updates"
+          items={report.intelligence.recommendedMetadataUpdates.map((item) => item.message)}
+          empty="No advisory metadata updates"
         />
       </div>
 

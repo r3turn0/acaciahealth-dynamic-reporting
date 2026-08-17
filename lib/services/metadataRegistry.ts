@@ -15,6 +15,7 @@
  */
 
 import schemaConfigRaw from "@/lib/config/schemaConfig.json";
+import { buildMetadataIntelligence, type MetadataIntelligenceSummary } from "@/lib/services/metadataIntelligence";
 import allTablesRaw    from "@/lib/config/allTables.json";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -87,6 +88,7 @@ export interface MetadataHealthReport {
   staleTableIds:      string[];
   missingFromBuilder: string[];
   missingFromDiscover:string[];
+  intelligence: MetadataIntelligenceSummary;
 }
 
 // ── Static catalogs ───────────────────────────────────────────────────────────
@@ -595,5 +597,6 @@ export function runValidation(opts: RunValidationOptions = {}): MetadataHealthRe
     staleTableIds:       stale.map(nameOnly),
     missingFromBuilder:  missingFromBuilder.map(nameOnly),
     missingFromDiscover: missingFromDiscover.map(nameOnly),
+    intelligence: buildMetadataIntelligence(catalog, checks, liveDbIds.size > 0),
   };
 }

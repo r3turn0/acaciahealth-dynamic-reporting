@@ -10,6 +10,14 @@ import { fetchWithTimeout } from "@/lib/client/fetchWithTimeout";
 interface ValidationResult {
   valid: boolean;
   errors: string[];
+  warnings?: string[];
+  intelligence?: {
+    executionReadinessScore: number;
+    queryComplexityScore: number;
+    joinConfidenceScore: number;
+    tablesUsed: string[];
+    optimizationRecommendations: Array<{ id: string; message: string }>;
+  };
 }
 
 interface SQLEditorProps {
@@ -236,6 +244,23 @@ export function SQLEditor({
               {err}
             </div>
           ))}
+        </div>
+      )}
+
+      {validation?.intelligence && (
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2" aria-label="SQL intelligence">
+          <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+            <span>Readiness <strong className="text-foreground">{validation.intelligence.executionReadinessScore}%</strong></span>
+            <span>Complexity <strong className="text-foreground">{validation.intelligence.queryComplexityScore}%</strong></span>
+            <span>Join confidence <strong className="text-foreground">{validation.intelligence.joinConfidenceScore}%</strong></span>
+            <span>{validation.intelligence.tablesUsed.length} verified table reference{validation.intelligence.tablesUsed.length === 1 ? "" : "s"}</span>
+          </div>
+          {validation.warnings && validation.warnings.length > 0 && (
+            <p className="text-[11px] text-muted-foreground">{validation.warnings[0]}</p>
+          )}
+          {validation.intelligence.optimizationRecommendations[0] && (
+            <p className="text-[11px] text-muted-foreground">Advisory: {validation.intelligence.optimizationRecommendations[0].message}</p>
+          )}
         </div>
       )}
 

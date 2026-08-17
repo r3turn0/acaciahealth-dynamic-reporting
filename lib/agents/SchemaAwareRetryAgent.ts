@@ -18,7 +18,7 @@
  *   - Abort if retry strategy is unchanged
  *   - Abort if same failure repeats without remediation
  *
- * Maximum retries: configurable, default MAX_RETRIES = 3
+ * Maximum correction attempts: exactly one
  */
 
 import { generateText } from "ai";
@@ -50,7 +50,7 @@ import type { KnowledgeGraphContext } from "@/lib/ai/insightAgentPrompt";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-export const MAX_RETRIES = 3;
+export const MAX_RETRIES = 1;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
