@@ -19,11 +19,15 @@ interface SourceDefinition {
   file: string;
   kpi: string;
   resultNames: string[];
+  description?: string;
 }
 
 const SOURCES: SourceDefinition[] = [
-  { file: "Avg Admittance Referals.sql", kpi: "avg_days_referral_to_admission", resultNames: ["Avg Admittance Referals"] },
-  { file: "Admissions.sql", kpi: "admissions", resultNames: ["Admissions — Result 1", "Admissions — Result 2"] },
+  { file: "All Admissions by Branch.sql", kpi: "admissions", resultNames: ["All Admissions by Branch"], description: "Count all admissions occurring during the reporting window. Includes New Admissions and Readmissions, excludes Non-Admits, and ignores current status." },
+  { file: "Avg Admissions By Referrals.sql", kpi: "avg_days_referral_to_admission", resultNames: ["Avg Admissions By Referrals"], description: "Use all valid admissions with a referral date to measure referral-to-SOC performance. Do not use this population to calculate admission volume." },
+  { file: "All Admissions by Service Line.sql", kpi: "admissions", resultNames: ["All Admissions by Service Line"], description: "Count all admissions occurring during the reporting window. Includes New Admissions and Readmissions, excludes Non-Admits, and ignores current status." },
+  { file: "Home Health Admissions By Care Type.sql", kpi: "admissions", resultNames: ["Home Health Admissions By Care Type"], description: "Count Home Health admissions occurring during the reporting window. Includes New Admissions and Readmissions, excludes Non-Admits, and groups by authoritative service line, branch, and primary care type." },
+  { file: "Current Admissions.sql", kpi: "admissions", resultNames: ["Current Admissions"], description: "Admissions occurring in the reporting period that are still active/current. Excludes Non-Admits." },
   { file: "Discharges and Live Discharges.sql", kpi: "discharges", resultNames: ["Discharges and Live Discharges — Result 1", "Discharges and Live Discharges — Result 2", "Discharges and Live Discharges — Result 3"] },
   { file: "Hospice Census Equivalent.sql", kpi: "hospice_census_equivalent", resultNames: ["Hospice Census Equivalent — Result 1", "Hospice Census Equivalent — Result 2", "Hospice Census Equivalent — Result 3"] },
   { file: "Billing Holds.sql", kpi: "billing_holds", resultNames: ["Billing Holds"] },
@@ -96,7 +100,7 @@ function assertCanonicalSql(sql: string, file: string, resultSet: number): void 
   if (/\bSELECT[ \t]+(?:[A-Za-z_][A-Za-z0-9_]*\.)?\*/i.test(sql)) {
     throw new Error(`${auditTarget}: wildcard SELECT projections are not allowed`);
   }
-  if (/^\s*(?:USE|GO)\b/im.test(sql)) {
+  if (/^\s*(?:USE\s+[\[\]A-Za-z0-9_.]+\s*;?|GO\s*;?)\s*$/im.test(sql)) {
     throw new Error(`${auditTarget}: database context and batch directives are not allowed`);
   }
   if (/\bDECLARE\s+@(StartDate|EndDate|EndOfDate|AsOfDate)\b/i.test(sql)) {
@@ -152,9 +156,13 @@ function loadSource(definition: SourceDefinition): CanonicalReport[] {
     sourceFile: definition.file,
     resultSet: index + 1,
     resultSetCount: statements.length,
-    description: statements.length === 1
-      ? `Canonical report imported from ${definition.file}.`
-      : `Canonical result set ${index + 1} of ${statements.length} imported from ${definition.file}.`,
+    description: definition.description
+      ? statements.length === 1
+        ? definition.description
+        : `${definition.description} Result set ${index + 1} of ${statements.length}.`
+      : statements.length === 1
+        ? `Canonical report imported from ${definition.file}.`
+        : `Canonical result set ${index + 1} of ${statements.length} imported from ${definition.file}.`,
     prompt: `Run ${baseName}${statements.length > 1 ? ` result set ${index + 1}` : ""}`,
     sql,
     kpi: definition.kpi,

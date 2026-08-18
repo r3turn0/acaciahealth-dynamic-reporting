@@ -16,6 +16,53 @@ const IMPORTED_REPORT_NAMES = [
 ];
 
 describe("canonical Saved Reports audit", () => {
+  it("replaces legacy admissions reports with the filename-named sources", () => {
+    const expectedAdmissions = [
+      "All Admissions by Branch",
+      "Avg Admissions By Referrals",
+      "All Admissions by Service Line",
+      "Home Health Admissions By Care Type",
+      "Current Admissions",
+    ];
+
+    for (const name of expectedAdmissions) {
+      const matches = CANONICAL_REPORTS.filter((report) => report.name === name);
+      expect(matches, name).toHaveLength(1);
+      expect(matches[0].sourceFile).toBe(`${name}.sql`);
+      expect(matches[0].resultSetCount).toBe(1);
+      expect(matches[0].description).not.toMatch(/^Canonical report imported/);
+      expect(matches[0].sql).toMatch(/\bdbo\.SERVICE_LINES\b/i);
+    }
+
+    const names = CANONICAL_REPORTS.map((report) => report.name);
+    expect(names).not.toContain("Avg Admittance Referals");
+    expect(names).not.toContain("Admissions — Result 1");
+    expect(names).not.toContain("Admissions — Result 2");
+  });
+
+  it("uses authoritative service-line and branch dimensions for admissions", () => {
+    const replacementNames = new Set([
+      "All Admissions by Branch",
+      "Avg Admissions By Referrals",
+      "All Admissions by Service Line",
+      "Home Health Admissions By Care Type",
+      "Current Admissions",
+    ]);
+    const admissions = CANONICAL_REPORTS.filter((report) => replacementNames.has(report.name));
+
+    for (const report of admissions) {
+      expect(report.sql, report.name).not.toMatch(/\b(?:dim_branch|bucket_map)\b/i);
+      expect(report.sql, report.name).not.toMatch(/\bVALUES\s*\(/i);
+      expect(report.sql, report.name).toMatch(/\bdbo\.SERVICE_LINES\b/i);
+    }
+
+    for (const report of admissions.filter((item) => item.name !== "All Admissions by Service Line")) {
+      expect(report.sql, report.name).toMatch(/\bdbo\.BRANCHES\b/i);
+      expect(report.sql, report.name).toMatch(/\bbranch_code\b/i);
+      expect(report.sql, report.name).toMatch(/\bbranch_name\b/i);
+    }
+  });
+
   it("imports each requested census result set as an independent report", () => {
     for (const name of IMPORTED_REPORT_NAMES) {
       const matches = CANONICAL_REPORTS.filter((report) => report.name === name);
@@ -27,7 +74,7 @@ describe("canonical Saved Reports audit", () => {
   it("omits date declarations and SQL Server batch directives", () => {
     for (const report of CANONICAL_REPORTS) {
       expect(report.sql, report.name).not.toMatch(/\bDECLARE\s+@(StartDate|EndDate|EndOfDate|AsOfDate)\b/i);
-      expect(report.sql, report.name).not.toMatch(/^\s*(?:USE|GO)\b/im);
+      expect(report.sql, report.name).not.toMatch(/^\s*(?:USE\s+[\[\]A-Za-z0-9_.]+\s*;?|GO\s*;?)\s*$/im);
     }
   });
 
