@@ -44,6 +44,10 @@ export interface KpiReportEvidence {
   dateRange: { startDate: string; endDate: string };
   window: EvidenceWindow;
   resultSets: CompactResultSet[];
+  executedAt?: string;
+  dataAgeMs?: number | null;
+  validationStatus?: "virtual-certified" | "validated";
+  fallbackReason?: string | null;
   failureCategory?: EvidenceFailureCategory;
   error?: string;
 }
@@ -108,6 +112,7 @@ export function rankSupportingReports(graph: ResolvedKpiGraph, reports: SavedRep
       let score = 0;
       if (node.reportKpis.includes(report.kpi)) { score += 100; reasons.push(`exact governed KPI: ${report.kpi}`); }
       if (report.kpi === node.key) { score += 80; reasons.push("exact dependency KPI"); }
+      if (report.created_by === "system" || report.tags.includes("canonical")) { score += 40; reasons.push("virtually KPI-certified published report"); }
       if (report.created_by === "system") { score += 20; reasons.push("system-owned canonical report"); }
       if (report.tags.includes("canonical")) { score += 15; reasons.push("canonical tag"); }
       const searchable = `${report.name} ${report.description} ${report.prompt} ${report.tags.join(" ")}`;
@@ -179,27 +184,35 @@ function classifyFailure(error: unknown): EvidenceFailureCategory {
 
 async function executeSelection(selection: EvidenceReportSelection, startDate: string, endDate: string, window: EvidenceWindow, deps: EvidenceDependencies): Promise<KpiReportEvidence> {
   const started = deps.now();
-  const base = { reportId: selection.report.id, reportName: selection.report.name, reportVersion: selection.report.version, nodeKey: selection.nodeKey, matchReasons: selection.reasons, dateRange: { startDate, endDate }, window };
+  const executedAt = new Date(started).toISOString();
+  const validationStatus = selection.report.status === "published" && (selection.report.created_by === "system" || selection.report.tags.includes("canonical"))
+    ? "virtual-certified" as const
+    : "validated" as const;
+  const base = { reportId: selection.report.id, reportName: selection.report.name, reportVersion: selection.report.version, nodeKey: selection.nodeKey, matchReasons: selection.reasons, dateRange: { startDate, endDate }, window, executedAt, validationStatus };
   try {
     const guarded = validateReadOnlySql(selection.report.sql);
     if (!guarded.valid) throw new Error(`Unsafe SQL: ${guarded.errors.join("; ")}`);
-    const snapshot = await deps.getLatestSnapshot(selection.report.id);
-    if (snapshotMatches(snapshot, selection.report, startDate, endDate)) {
-      const set = { columns: snapshot!.columns, rows: snapshot!.rows, rowCount: snapshot!.row_count };
-      if (set.rowCount === 0) throw new Error("Empty result set");
-      return { ...base, source: "cache", status: "success", executionMs: deps.now() - started, resultSets: [compactResultSet(set, `${window}:${selection.report.id}:1`)] };
-    }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(new Error("Report evidence query timed out")), deps.timeoutMs);
     try {
       const result = await deps.queryMultiple(selection.report.sql, { StartDate: startDate, EndDate: endDate }, controller.signal);
       const populated = result.resultSets.filter((set) => set.rowCount > 0);
       if (populated.length === 0) throw new Error("Empty result set");
-      return { ...base, source: "live", status: "success", executionMs: deps.now() - started, resultSets: populated.map((set, index) => compactResultSet(set, `${window}:${selection.report.id}:${index + 1}`)) };
+      return { ...base, source: "live", status: "success", executionMs: deps.now() - started, dataAgeMs: 0, fallbackReason: null, resultSets: populated.map((set, index) => compactResultSet(set, `${window}:${selection.report.id}:${index + 1}`)) };
     } finally { clearTimeout(timeout); }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { ...base, source: "live", status: "failed", executionMs: deps.now() - started, resultSets: [], failureCategory: /empty result/i.test(message) ? "empty-result" : classifyFailure(error), error: message.slice(0, 240) };
+  } catch (liveError) {
+    const liveMessage = liveError instanceof Error ? liveError.message : String(liveError);
+    const snapshot = await deps.getLatestSnapshot(selection.report.id).catch(() => null);
+    if (snapshotMatches(snapshot, selection.report, startDate, endDate) && snapshot!.row_count > 0) {
+      const set = { columns: snapshot!.columns, rows: snapshot!.rows, rowCount: snapshot!.row_count };
+      return {
+        ...base, source: "cache", status: "success", executionMs: deps.now() - started,
+        executedAt: snapshot!.created_at, dataAgeMs: Math.max(0, deps.now() - Date.parse(snapshot!.created_at)),
+        fallbackReason: `Live execution failed: ${liveMessage.slice(0, 160)}`,
+        resultSets: [compactResultSet(set, `${window}:${selection.report.id}:1`)],
+      };
+    }
+    return { ...base, source: "live", status: "failed", executionMs: deps.now() - started, dataAgeMs: null, fallbackReason: null, resultSets: [], failureCategory: /empty result/i.test(liveMessage) ? "empty-result" : classifyFailure(liveError), error: liveMessage.slice(0, 240) };
   }
 }
 

@@ -32,6 +32,7 @@ import {
 import { format } from "date-fns";
 import type { BusinessInsights } from "@/app/api/kpi/interpret/route";
 import type { SavedReport } from "@/components/studio/SavedReports";
+import { FileUploadButton, type UploadedFile } from "@/components/ui/FileUpload";
 import { orchestratedJson } from "@/lib/orchestration/requestRegistry";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -210,6 +211,7 @@ function FollowUpThread({
   endDate,
   onStartDateChange,
   onEndDateChange,
+  sourceFiles,
 }: {
   insights: BusinessInsights;
   reportName: string;
@@ -218,6 +220,7 @@ function FollowUpThread({
   endDate: string;
   onStartDateChange: (d: string) => void;
   onEndDateChange: (d: string) => void;
+  sourceFiles: UploadedFile[];
 }) {
   const [messages, setMessages] = useState<FollowUpMessage[]>([]);
   const [input, setInput] = useState("");
@@ -259,6 +262,8 @@ function FollowUpThread({
           kpi,
           start_date: startDate,
           end_date: endDate,
+          sources: sourceFiles.map((item) => item.source).filter(Boolean),
+          conversation: [...messages.filter((item) => !item.streaming), userMsg].slice(-10).map(({ role, content }) => ({ role, content })),
         }),
       });
 
@@ -453,6 +458,7 @@ export function KpiInterpreter({ preselectedKpi, preselectedReportName }: KpiInt
   const [reports, setReports] = useState<SavedReport[] | null>(null);
   const [loadingReports, setLoadingReports] = useState(false);
   const [selectedReport, setSelectedReport] = useState<SavedReport | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [search, setSearch] = useState("");
   const [filterKpi, setFilterKpi] = useState("all");
   const [dateRange, setDateRange] = useState(() => {
@@ -587,79 +593,9 @@ export function KpiInterpreter({ preselectedKpi, preselectedReportName }: KpiInt
     setInsights(null);
     setMeta(null);
     setError(null);
-    setInterpretStage("Running report query...");
+    setInterpretStage("Executing validated supporting reports and normalizing sources...");
 
     try {
-      const runRes = await fetch("/api/report/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          report_name: selectedReport.name,
-          prompt: selectedReport.prompt,
-          filters: {
-            date_range: { start_date: dateRange.start, end_date: dateRange.end },
-          },
-        }),
-      });
-      const runJson = await runRes.json();
-      let rows: Record<string, unknown>[] = runJson.data ?? [];
-
-      // ── Zero-row retry: rewrite SQL and re-execute ────────────────────────
-      if (rows.length === 0 && selectedReport.sql) {
-        setInterpretStage("No data returned — rewriting SQL query...");
-
-        try {
-          const fixRes = await fetch("/api/fix-query", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userQuery: selectedReport.prompt || selectedReport.name,
-              generatedSQL: selectedReport.sql,
-              apiError: "Query returned 0 rows",
-              dbErrorLogs: "Zero rows returned — date range or filter conditions may be too restrictive",
-              start_date: dateRange.start,
-              end_date: dateRange.end,
-            }),
-          });
-
-          if (fixRes.ok) {
-            const fixJson = await fixRes.json();
-            const rewrittenSql: string = fixJson.fixedSQL ?? "";
-
-            if (rewrittenSql && rewrittenSql !== selectedReport.sql) {
-              setInterpretStage("Retrying with rewritten SQL...");
-
-              const retryRes = await fetch("/api/run-sql", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  sql: rewrittenSql,
-                  start_date: dateRange.start,
-                  end_date: dateRange.end,
-                  report_name: selectedReport.name,
-                  original_prompt: selectedReport.prompt,
-                }),
-              });
-
-              if (retryRes.ok) {
-                const retryJson = await retryRes.json();
-                const retryRows: Record<string, unknown>[] = retryJson.rows ?? [];
-                if (retryRows.length > 0) {
-                  rows = retryRows;
-                }
-              }
-            }
-          }
-        } catch {
-          // Rewrite failed — fall through with 0 rows (demo fallback in interpret API)
-        }
-      }
-      // ─────────────────────────────────────────────────────────────────────
-
-      const columns: string[] = rows.length > 0 ? Object.keys(rows[0]) : [];
-
-      setInterpretStage(`Analysing ${rows.length} row${rows.length !== 1 ? "s" : ""} with AI...`);
-
       const intRes = await fetch("/api/kpi/interpret", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -668,15 +604,16 @@ export function KpiInterpreter({ preselectedKpi, preselectedReportName }: KpiInt
           kpi: selectedReport.kpi,
           start_date: dateRange.start,
           end_date: dateRange.end,
-          data: rows,
-          columns,
+          sources: uploadedFiles.map((item) => item.source).filter(Boolean),
         }),
       });
       const intJson = await intRes.json();
+      if (!intRes.ok) throw new Error(intJson.error ?? "No evidence-grounded interpretation was returned.");
+      if (!intJson.insights) throw new Error("No supported findings were returned.");
       setInsights(intJson.insights);
       setMeta(intJson.meta);
-    } catch {
-      setError("Interpretation failed. Please try again.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Interpretation failed. Please try again.");
     } finally {
       setInterpreting(false);
       setInterpretStage("");
@@ -720,6 +657,19 @@ export function KpiInterpreter({ preselectedKpi, preselectedReportName }: KpiInt
             <RefreshCw className="w-3 h-3" />
             Refresh
           </button>
+        </div>
+
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/20 p-2.5">
+          <FileUploadButton
+            file={uploadedFiles[0] ?? null}
+            onFile={(next) => { if (!next) setUploadedFiles([]); }}
+            onFiles={setUploadedFiles}
+            multiple
+          />
+          <p className="text-xs text-muted-foreground">
+            Optional: combine up to 8 CSV, JSON, text, Excel, Word, or PDF sources with governed report evidence.
+          </p>
+          {uploadedFiles.length > 1 && <span className="text-xs font-medium text-primary">{uploadedFiles.length} files normalized</span>}
         </div>
 
         {/* Search + KPI filter */}
@@ -966,7 +916,10 @@ export function KpiInterpreter({ preselectedKpi, preselectedReportName }: KpiInt
                   <span className="shrink-0 w-5 h-5 rounded-full bg-primary/15 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
                     {i + 1}
                   </span>
-                  <p className="text-sm text-foreground/85 leading-relaxed">{o}</p>
+                  <div className="flex flex-col gap-1">
+                <p className="text-sm text-foreground/85 leading-relaxed">{o.statement}</p>
+                <p className="font-mono text-[10px] text-muted-foreground">{o.citation_ids.join(", ")}</p>
+              </div>
                 </li>
               ))}
             </ol>
@@ -997,8 +950,9 @@ export function KpiInterpreter({ preselectedKpi, preselectedReportName }: KpiInt
             startDate={dateRange.start}
             endDate={dateRange.end}
             onStartDateChange={(d) => setDateRange((r) => ({ ...r, start: d }))}
-            onEndDateChange={(d) => setDateRange((r) => ({ ...r, end: d }))}
-          />
+        onEndDateChange={(d) => setDateRange((r) => ({ ...r, end: d }))}
+        sourceFiles={uploadedFiles}
+      />
         </div>
       )}
     </div>
