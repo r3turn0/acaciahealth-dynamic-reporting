@@ -46,7 +46,8 @@ import {
   Clock3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { buildDatasetPreviewRequest, formatRequestError, type RequestValidationDetails } from "@/lib/dataset/previewRequest";
+  import { buildDatasetPreviewRequest, formatRequestError, type RequestValidationDetails } from "@/lib/dataset/previewRequest";
+  import { sqlErrorMessage, type SqlExecutionErrorPayload } from "@/lib/sql/executionError";
 import { DatasetLineagePanel, DatasetValidationHub } from "./DatasetValidationHub";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -963,14 +964,13 @@ function DatasetsPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
       });
-      const payload = await response.json() as {
+      const payload = await response.json() as Partial<SqlExecutionErrorPayload> & {
         rows?: Record<string, unknown>[];
         columns?: Array<string | { name?: string }>;
-        error?: string;
         details?: RequestValidationDetails;
       };
       if (!response.ok) {
-        throw new Error(formatRequestError(payload.error ?? `HTTP ${response.status}`, payload.details));
+        throw new Error(sqlErrorMessage(payload, formatRequestError(`Preview failed (${response.status})`, payload.details)));
       }
       const rows = payload.rows ?? [];
       setPreviewRows(rows);

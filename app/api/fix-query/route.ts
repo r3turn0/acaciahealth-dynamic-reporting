@@ -41,6 +41,20 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { runSelfHealingPipeline } from "@/lib/sql/pipeline";
 import { retryWithSchemaIntelligence } from "@/lib/agents/SchemaAwareRetryAgent";
+import { validateReadOnlySql } from "@/lib/services/queryGuard";
+
+function validateRepair(sql: string) {
+  const validation = validateReadOnlySql(sql);
+  if (validation.valid) return null;
+  return withDeprecationHeaders(NextResponse.json({
+    error: "The generated repair was blocked by read-only validation.",
+    code: "SECURITY_VALIDATION_FAILED",
+    category: "validation",
+    retryable: false,
+    recovery: ["edit_sql", "fix_query"],
+    details: validation.errors,
+  }, { status: 422 }));
+}
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
@@ -151,6 +165,8 @@ export async function POST(req: NextRequest) {
       });
 
       if (retryResult.succeeded && retryResult.correctedSql) {
+        const blockedRepair = validateRepair(retryResult.correctedSql);
+        if (blockedRepair) return blockedRepair;
         return NextResponse.json({
           fixedSQL:    retryResult.correctedSql,
           explanation: retryResult.explanation,
@@ -204,8 +220,11 @@ export async function POST(req: NextRequest) {
       changes: { type: string; from: string; to: string; reason?: string }[];
     }>(SYSTEM_PROMPT, userPrompt);
 
+    const fixedSQL = fix.fixedSQL ?? generatedSQL;
+    const blockedRepair = validateRepair(fixedSQL);
+    if (blockedRepair) return blockedRepair;
     return withDeprecationHeaders(NextResponse.json({
-      fixedSQL: fix.fixedSQL ?? generatedSQL,
+      fixedSQL,
       explanation: fix.explanation ?? "",
       confidence: fix.confidence ?? 0.5,
       changes: fix.changes ?? [],
@@ -217,6 +236,8 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("[fix-query] AI call failed:", err);
     const heuristic = heuristicFix(generatedSQL, dbErrorLogs, metadata);
+    const blockedRepair = validateRepair(heuristic.fixedSQL);
+    if (blockedRepair) return blockedRepair;
     return withDeprecationHeaders(NextResponse.json({
       ...heuristic,
       autoRetry: heuristic.confidence >= 0.9,

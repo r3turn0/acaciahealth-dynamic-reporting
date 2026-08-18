@@ -23,6 +23,11 @@ import { analyzeSqlGovernance } from "@/lib/services/kpiClassification";
 import { BackendUnreachableError } from "@/lib/services/db";
 import { RunSqlBodySchema } from "@/lib/validation/apiSchemas";
 import { acquireQuerySlot, QueryCapacityError } from "@/lib/server/queryConcurrency";
+import type { SqlExecutionErrorPayload } from "@/lib/sql/executionError";
+
+function sqlFailure(status: number, payload: SqlExecutionErrorPayload, headers?: HeadersInit) {
+  return NextResponse.json(payload, { status, headers });
+}
 
 export async function POST(req: NextRequest) {
   const start = Date.now();
@@ -33,10 +38,14 @@ export async function POST(req: NextRequest) {
     const raw = await req.json();
     const parsed = RunSqlBodySchema.safeParse(raw);
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Invalid request body", details: parsed.error.flatten().fieldErrors },
-        { status: 400 }
-      );
+      return sqlFailure(400, {
+        error: "Invalid SQL execution request.",
+        code: "INVALID_REQUEST",
+        category: "request",
+        retryable: false,
+        recovery: ["edit_sql"],
+        details: parsed.error.flatten().fieldErrors,
+      });
     }
     const { sql, start_date, end_date, report_name, report_id, original_prompt } = parsed.data;
     const queueStartedAt = Date.now();
@@ -57,22 +66,27 @@ export async function POST(req: NextRequest) {
     });
 
     if (!result.validation.valid) {
-      return NextResponse.json(
-        { error: "Query failed security validation", details: result.validation.errors },
-        { status: 422 }
-      );
+      return sqlFailure(422, {
+        error: "Query failed read-only security validation.",
+        code: "SECURITY_VALIDATION_FAILED",
+        category: "validation",
+        retryable: false,
+        recovery: ["edit_sql", "fix_query"],
+        details: result.validation.errors,
+        diagnostics: { requestId: result.requestId, validationErrors: result.validation.errors, pipeline: result.pipeline },
+      });
     }
 
     const execution = result.execution;
     if (!execution) {
-      return NextResponse.json(
-        {
-          error: "The query could not be executed. Review the SQL and try again.",
-          code: "EXECUTION_FAILED",
-          gateway: { requestId: result.requestId, pipeline: result.pipeline },
-        },
-        { status: 422 }
-      );
+      return sqlFailure(422, {
+        error: "The query could not be executed. Review or repair the SQL before retrying.",
+        code: "EXECUTION_FAILED",
+        category: "execution",
+        retryable: false,
+        recovery: ["fix_query", "edit_sql"],
+        diagnostics: { requestId: result.requestId, pipeline: result.pipeline },
+      });
     }
     const rows = execution.rows;
     const sqlGovernance = analyzeSqlGovernance(result.sql ?? normalizedSql);
@@ -126,35 +140,41 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
+    if (err instanceof SyntaxError) {
+      return sqlFailure(400, {
+        error: "Invalid JSON request body.", code: "INVALID_REQUEST",
+        category: "request", retryable: false, recovery: ["edit_sql"],
+      });
+    }
     if (err instanceof QueryCapacityError) {
-      return NextResponse.json(
-        { error: "Reporting capacity is busy. Wait briefly and retry.", code: "QUERY_CAPACITY_FULL", retry_after_ms: 1500 },
-        { status: 429, headers: { "Retry-After": "2" } }
-      );
+      return sqlFailure(429, {
+        error: "Reporting capacity is busy. Wait briefly and retry.", code: "QUERY_CAPACITY_FULL",
+        category: "capacity", retryable: true, recovery: ["retry"],
+      }, { "Retry-After": "2" });
     }
     console.error("[Gateway→run-sql] error:", err);
     if (err instanceof QueryGatewayTimeoutError) {
-      return NextResponse.json(
-        { error: "Query execution timed out. Narrow the date range or simplify the query.", code: err.code },
-        { status: 504 }
-      );
+      return sqlFailure(504, {
+        error: "Query execution timed out. Narrow the date range or simplify the query.", code: "QUERY_TIMEOUT",
+        category: "timeout", retryable: true, recovery: ["narrow_date_range", "retry"],
+      });
     }
     if (isAbortError(err)) {
-      return NextResponse.json(
-        { error: "Query execution was cancelled.", code: "REQUEST_CANCELLED" },
-        { status: 408 }
-      );
+      return sqlFailure(408, {
+        error: "Query execution was cancelled.", code: "REQUEST_CANCELLED",
+        category: "cancelled", retryable: true, recovery: ["retry"],
+      });
     }
     if (err instanceof BackendUnreachableError) {
-      return NextResponse.json(
-        { error: "The reporting database is temporarily unreachable. Try again shortly.", code: err.code },
-        { status: 503 }
-      );
+      return sqlFailure(503, {
+        error: "The reporting database is temporarily unreachable. Try again shortly.", code: "BACKEND_UNREACHABLE",
+        category: "backend", retryable: true, recovery: ["retry"],
+      });
     }
-    return NextResponse.json(
-      { error: "Query execution failed. Please review the SQL and retry.", code: "EXECUTION_FAILED" },
-      { status: 500 }
-    );
+    return sqlFailure(500, {
+      error: "Query execution failed. Please review the SQL and retry.", code: "EXECUTION_FAILED",
+      category: "execution", retryable: false, recovery: ["fix_query", "edit_sql"],
+    });
   } finally {
     releaseSlot?.();
   }

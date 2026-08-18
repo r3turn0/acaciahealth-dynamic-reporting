@@ -15,6 +15,7 @@ import type { QueryPlan } from "./AskAI";
 import type { ReportResult } from "./ResultsTable";
 import { fetchWithTimeout, requestErrorMessage } from "@/lib/client/fetchWithTimeout";
 import { SqlCompatibilityIndicator } from "@/components/shared/SqlCompatibilityIndicator";
+import { isSqlExecutionError, sqlErrorMessage, type SqlExecutionErrorPayload } from "@/lib/sql/executionError";
 
 type StudioTab = "ask" | "semantic" | "builder" | "saved";
 
@@ -197,10 +198,31 @@ export function ReportStudio({ initialReport, initialTab, onNavigate }: ReportSt
         signal: controller.signal,
         timeoutMs: 25_000,
       });
-      const json = await res.json().catch(() => ({}));
+      const json = await res.json().catch(() => ({})) as Partial<SqlExecutionErrorPayload> & {
+        date_params_applied?: boolean;
+        executed_sql?: string;
+        correction_applied?: boolean;
+        correction_attempts?: number;
+        rows?: Record<string, unknown>[];
+        data?: Record<string, unknown>[];
+        columns?: string[];
+        rowCount?: number;
+        resultSets?: ReportResult["result_sets"];
+        cache_hit?: boolean;
+        demo_mode?: boolean;
+        execution_ms?: number;
+      };
       if (executionRequestRef.current?.id !== requestId) return;
       if (!res.ok) {
-        setExecError(json.error ?? "Execution failed");
+        const message = sqlErrorMessage(json, "Execution failed");
+        const action = isSqlExecutionError(json) && json.recovery.includes("fix_query")
+          ? " Use Fix Query to generate a governed read-only revision."
+          : isSqlExecutionError(json) && json.recovery.includes("narrow_date_range")
+            ? " Narrow the date range and retry."
+            : json.retryable
+              ? " Retry shortly."
+              : "";
+        setExecError(`${message}${action}`);
         return;
       }
       // If the server linked hardcoded dates to the pickers, reflect the

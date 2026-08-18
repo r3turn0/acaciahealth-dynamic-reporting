@@ -38,6 +38,7 @@ import {
 } from "@/lib/hooks/useDashboardPins";
 import { downloadDataset, type DownloadFormat } from "@/lib/utils/download";
 import { pushEvent } from "@/lib/services/observabilityStore";
+import { sqlErrorMessage, type SqlExecutionErrorPayload } from "@/lib/sql/executionError";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -650,8 +651,8 @@ export function SavedReports({
         }),
       });
 
-      if (!runRes.ok) throw new Error(`run-sql responded ${runRes.status}`);
-      const runJson = await runRes.json();
+      const runJson = await runRes.json().catch(() => ({})) as Partial<SqlExecutionErrorPayload> & { rows?: Record<string, unknown>[] };
+      if (!runRes.ok) throw new Error(sqlErrorMessage(runJson, `SQL execution failed (${runRes.status})`));
       const retryRows: Record<string, unknown>[] = runJson.rows ?? [];
 
       if (retryRows.length === 0) {
