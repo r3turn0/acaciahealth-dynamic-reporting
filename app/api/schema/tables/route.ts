@@ -23,11 +23,14 @@ export async function GET() {
   try {
     const catalog = await getLiveTableCatalog();
 
-    return NextResponse.json({
-      source: "live_db",
-      count: catalog.tables.length,
-      tables: catalog.tables,
-    });
+    return NextResponse.json(
+      {
+        source: "live_db",
+        count: catalog.tables.length,
+        tables: catalog.tables,
+      },
+      { headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=300" } },
+    );
   } catch (err) {
     const msg = (err as Error).message;
     console.error("[v0] /api/schema/tables error:", msg);

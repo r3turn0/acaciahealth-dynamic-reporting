@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import useSWR from "swr";
 import { cn } from "@/lib/utils";
 import {
@@ -64,6 +64,13 @@ interface CatalogTable {
 interface CatalogResponse {
   tables: CatalogTable[];
   scope: { tables: number; relationships: number; kpis: number; lastRefresh: string };
+}
+
+interface TableListResponse {
+  source: string;
+  count: number;
+  tables: { table_schema: string; table_name: string; qualified_name: string }[];
+  error?: string;
 }
 
 const catalogFetcher = async (url: string): Promise<CatalogResponse> => {
@@ -165,16 +172,22 @@ export function DataExplorer({
   onCatalogNavigate,
 }: DataExplorerProps) {
   const staged = useDatasetDraft();
-  const { data: catalog, error: catalogError } = useSWR("/api/schema/intelligence", catalogFetcher, {
+  const { data: catalog, error: catalogError } = useSWR("/api/schema/intelligence?mode=explorer", catalogFetcher, {
     revalidateOnFocus: false,
-    dedupingInterval: 60_000,
+    dedupingInterval: 300_000,
+    keepPreviousData: true,
   });
+  const { data: liveTableResponse, mutate: reloadTableList, isValidating: tableListLoading } = useSWR<TableListResponse>(
+    "/api/schema/tables",
+    async (url: string) => {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Table metadata is unavailable");
+      return response.json() as Promise<TableListResponse>;
+    },
+    { revalidateOnFocus: false, dedupingInterval: 300_000, keepPreviousData: true },
+  );
   const [selectedTable, setSelectedTable] = useState<string>(TABLES[0]);
-  // Full list of tables in the database — populated from /api/schema (live or
-  // static). Falls back to the statically-known schemaConfig tables.
-  const [tableList, setTableList] = useState<string[]>(TABLES as string[]);
-  const [tableSource, setTableSource] = useState<"live_db" | "static_config">("static_config");
-  const [tableListLoading, setTableListLoading] = useState(false);
+  const [cachedTableList, setCachedTableList] = useState<string[]>(TABLES as string[]);
 
   function handleAddToDataset() {
     addTableToDraft(selectedTable);
@@ -244,6 +257,7 @@ export function DataExplorer({
   // One request pipeline handles paging, sorting, table changes, and filters.
   // Filter edits are debounced; all other changes load immediately.
   useEffect(() => {
+    if (catalogView !== "analyze") return;
     const filtersChanged = previousFilterKeyRef.current !== filterKey;
     previousFilterKeyRef.current = filterKey;
 
@@ -254,83 +268,76 @@ export function DataExplorer({
     return () => clearTimeout(timer);
   // `filterKey` is the stable serialized representation of `filters`.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTable, page, pageSize, sort, sortDir, filterKey, fetchData]);
-
-  // Load the complete table list via /api/schema/tables — a dedicated endpoint
-  // that bypasses the security validator (schema introspection is always allowed).
-  const loadTableList = useCallback(async () => {
-    setTableListLoading(true);
-    try {
-      const res = await fetch("/api/schema/tables");
-      const json = await res.json() as {
-        source: string;
-        count: number;
-        tables: { table_schema: string; table_name: string; qualified_name: string }[];
-        error?: string;
-      };
-      if (!res.ok || !json.tables) return;
-      // Only swap to the live list when there are meaningfully more tables than
-      // the static fallback (avoids showing an empty list on DB-unreachable).
-      if (json.source === "live_db" && json.tables.length > 6) {
-        const names = json.tables.map((t) => t.qualified_name).sort();
-        setTableList(names);
-        setTableSource("live_db");
-        try { localStorage.setItem("hchb_table_list", JSON.stringify(names)); } catch { /* noop */ }
-      }
-    } catch {
-      // Keep the static fallback list.
-    } finally {
-      setTableListLoading(false);
-    }
-  }, []);
+  }, [catalogView, selectedTable, page, pageSize, sort, sortDir, filterKey, fetchData]);
 
   useEffect(() => {
-    // Seed immediately from localStorage (previous session) so dropdown is
-    // populated before the async fetch returns.
     try {
       const cached = localStorage.getItem("hchb_table_list");
       if (cached) {
         const names: string[] = JSON.parse(cached);
-        if (names.length > 6) {
-          setTableList(names);
-          setTableSource("live_db");
-        }
+        if (names.length > 6) setCachedTableList(names);
       }
-    } catch { /* noop */ }
-    // Always re-fetch fresh from the server
-    loadTableList();
-  }, [loadTableList]);
+    } catch { /* Keep the static fallback list. */ }
+  }, []);
+
+  const liveTableList = useMemo(() => {
+    if (liveTableResponse?.source !== "live_db" || liveTableResponse.tables.length <= 6) return null;
+    return liveTableResponse.tables.map((table) => table.qualified_name).sort();
+  }, [liveTableResponse]);
+  const tableList = liveTableList ?? cachedTableList;
+  const tableSource: "live_db" | "static_config" = liveTableList || cachedTableList.length > TABLES.length
+    ? "live_db"
+    : "static_config";
+
+  useEffect(() => {
+    if (!liveTableList) return;
+    try { localStorage.setItem("hchb_table_list", JSON.stringify(liveTableList)); } catch { /* noop */ }
+  }, [liveTableList]);
 
   function normalizedTableName(table: string) {
     return table.replace(/^\[|\]$/g, "").replace(/\]\./g, ".").toLowerCase();
   }
 
-  function metadataFor(table: string) {
-    const normalized = normalizedTableName(table);
-    const shortName = normalized.split(".").at(-1);
-    return catalog?.tables.find((asset) => {
+  const metadataByTable = useMemo(() => {
+    const byIdentifier = new Map<string, CatalogTable>();
+    const shortNameCounts = new Map<string, number>();
+    for (const asset of catalog?.tables ?? []) {
       const id = normalizedTableName(asset.id);
-      return id === normalized || (id.split(".").at(-1) === shortName && normalized.split(".").length === 1);
-    });
-  }
+      const shortName = id.split(".").at(-1) ?? id;
+      byIdentifier.set(id, asset);
+      shortNameCounts.set(shortName, (shortNameCounts.get(shortName) ?? 0) + 1);
+    }
+    for (const asset of catalog?.tables ?? []) {
+      const id = normalizedTableName(asset.id);
+      const shortName = id.split(".").at(-1) ?? id;
+      if (shortNameCounts.get(shortName) === 1) byIdentifier.set(shortName, asset);
+    }
+    return byIdentifier;
+  }, [catalog]);
 
-  const filteredCatalogTables = tableList.filter((table) => {
+  const metadataFor = useCallback((table: string) => metadataByTable.get(normalizedTableName(table)), [metadataByTable]);
+  const filteredCatalogTables = useMemo(() => {
     const query = catalogQuery.trim().toLowerCase();
-    if (!query) return true;
-    const metadata = metadataFor(table);
-    return [table, metadata?.name, metadata?.domain, metadata?.owner, metadata?.description, ...(metadata?.tags ?? []), ...(metadata?.kpiDependencies ?? [])]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(query));
-  });
-  const featuredTables = [...filteredCatalogTables]
+    if (!query) return tableList;
+    return tableList.filter((table) => {
+      const metadata = metadataFor(table);
+      return [table, metadata?.name, metadata?.domain, metadata?.owner, metadata?.description, ...(metadata?.tags ?? []), ...(metadata?.kpiDependencies ?? [])]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query));
+    });
+  }, [catalogQuery, metadataFor, tableList]);
+  const featuredTables = useMemo(() => [...filteredCatalogTables]
     .sort((a, b) => (metadataFor(b)?.usageCount ?? 0) - (metadataFor(a)?.usageCount ?? 0))
-    .slice(0, 6);
+    .slice(0, 6), [filteredCatalogTables, metadataFor]);
   const selectedMetadata = metadataFor(selectedTable);
   const selectedDomain = selectedMetadata?.domain ?? (selectedTable.includes(".") ? selectedTable.split(".")[0] : "Enterprise");
-  const relatedTables = [...(selectedMetadata?.upstreamTables ?? []), ...(selectedMetadata?.downstreamTables ?? [])]
+  const relatedTables = useMemo(() => [...(selectedMetadata?.upstreamTables ?? []), ...(selectedMetadata?.downstreamTables ?? [])]
     .map((related) => tableList.find((table) => catalogTableMatches(table, related)))
     .filter((table): table is string => Boolean(table))
-    .slice(0, 6);
+    .slice(0, 6), [selectedMetadata, tableList]);
+  const catalogCoverage = useMemo(() => catalog
+    ? `${Math.round((tableList.filter((table) => metadataFor(table)).length / Math.max(tableList.length, 1)) * 100)}%`
+    : "—", [catalog, metadataFor, tableList]);
 
   function tableLabel(table: string) {
     return table.split(".").at(-1)?.replace(/_/g, " ") ?? table;
@@ -467,7 +474,7 @@ export function DataExplorer({
                 { label: "Available tables", value: tableList.length, icon: Table2 },
                 { label: "Governed KPIs", value: catalog?.scope.kpis ?? "—", icon: ShieldCheck },
                 { label: "Relationships", value: catalog?.scope.relationships ?? "—", icon: GitBranch },
-                { label: "Catalog coverage", value: catalog ? `${Math.round((tableList.filter((table) => metadataFor(table)).length / Math.max(tableList.length, 1)) * 100)}%` : "—", icon: Database },
+                { label: "Catalog coverage", value: catalogCoverage, icon: Database },
               ].map((metric) => (
                 <div key={metric.label} className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
                   <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"><metric.icon className="size-4" /></div>
@@ -554,7 +561,7 @@ export function DataExplorer({
             Read-only
           </span>
           <button
-            onClick={() => loadTableList()}
+            onClick={() => void reloadTableList()}
             disabled={tableListLoading}
             title="Reload full table list from database"
             className="flex items-center gap-1 text-[10px] px-2 py-1 rounded border border-border bg-card text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors disabled:opacity-50"

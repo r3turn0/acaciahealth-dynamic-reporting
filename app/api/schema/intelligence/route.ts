@@ -379,6 +379,7 @@ export async function GET(req: NextRequest) {
   const domain = searchParams.get("domain");
   const entity = searchParams.get("entityType");
   const q      = searchParams.get("q")?.toLowerCase();
+  const mode   = searchParams.get("mode");
 
   if (id) {
     const t = UNIFIED_CATALOG.find((c) => c.id === id || c.name === id);
@@ -408,6 +409,24 @@ export async function GET(req: NextRequest) {
     provenance: governanceCatalog.sourceFile,
     correlationId: governanceCatalog.correlationId,
   };
+
+  if (mode === "explorer") {
+    return NextResponse.json(
+      {
+        tables: tables.map(({ id, name, schema, domain, entityType, columnCount, description, tags, rowEstimate, lastSyncAt, owner, usageCount, kpiDependencies, upstreamTables, downstreamTables }) => ({
+          id, name, schema, domain, entityType, columnCount, description, tags, rowEstimate,
+          lastSyncAt, owner, usageCount, kpiDependencies, upstreamTables, downstreamTables,
+        })),
+        scope: {
+          tables: scope.tables,
+          relationships: scope.relationships,
+          kpis: scope.kpis,
+          lastRefresh: scope.lastRefresh,
+        },
+      },
+      { headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=300" } },
+    );
+  }
 
   return NextResponse.json({
     tables,
