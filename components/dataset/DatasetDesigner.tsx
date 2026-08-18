@@ -46,6 +46,7 @@ import {
   Clock3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { buildDatasetPreviewRequest, formatRequestError, type RequestValidationDetails } from "@/lib/dataset/previewRequest";
 import { DatasetLineagePanel, DatasetValidationHub } from "./DatasetValidationHub";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -940,7 +941,13 @@ function DatasetsPanel({
     }
     const projected = (dataset.selectedTables ?? []).flatMap((table) => table.columns.map((column) => `  ${quoteIdentifier(table.name)}.${quoteIdentifier(column.name)} AS ${quoteIdentifier(`${table.name.replaceAll(".", "_")}_${column.name}`)}`));
     if (!projected.length) return "-- Select at least one governed field before previewing this dataset.";
-    return [`SELECT TOP (100)`, projected.join(",\n"), `FROM ${quoteIdentifier(baseTable)}`, ...joins].join("\n");
+    return [
+      `SELECT TOP (100)`,
+      projected.join(",\n"),
+      `FROM ${quoteIdentifier(baseTable)}`,
+      ...joins,
+      "WHERE @StartDate <= @EndDate",
+    ].join("\n");
   }
 
  async function runPreview(dataset: SemanticDataset) {
@@ -950,9 +957,21 @@ function DatasetsPanel({
     setPreviewColumns([]);
     setPreviewError(null);
     try {
-      const response = await fetch("/api/run-sql", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sql: generateReadOnlySql(dataset), report_name: `${dataset.datasetName} preview` }) });
-      const payload = await response.json() as { rows?: Record<string, unknown>[]; columns?: Array<string | { name?: string }>; error?: string };
-      if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
+      const request = buildDatasetPreviewRequest(generateReadOnlySql(dataset), dataset.datasetName);
+      const response = await fetch("/api/run-sql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      const payload = await response.json() as {
+        rows?: Record<string, unknown>[];
+        columns?: Array<string | { name?: string }>;
+        error?: string;
+        details?: RequestValidationDetails;
+      };
+      if (!response.ok) {
+        throw new Error(formatRequestError(payload.error ?? `HTTP ${response.status}`, payload.details));
+      }
       const rows = payload.rows ?? [];
       setPreviewRows(rows);
       setPreviewColumns((payload.columns ?? []).map((column) => typeof column === "string" ? column : column.name ?? "column"));
