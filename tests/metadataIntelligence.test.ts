@@ -23,6 +23,26 @@ describe("metadata intelligence", () => {
     expect(result.persisted).toBe(false);
   });
 
+  it("recognizes the governed hospice view without treating later commas as Cartesian sources", () => {
+    const sql = `;WITH DailyCensus AS (
+      SELECT ServiceDate AS CensusDate, [Client Brnch] AS branch_name, COUNT(DISTINCT epi_paid) AS current_census
+      FROM dbo.V_AL_HOSPICEDAILYCENSUSINFO
+      WHERE ServiceDate BETWEEN @StartDate AND @EndDate
+      GROUP BY ServiceDate, [Client Brnch]
+    )
+    SELECT CensusDate, branch_name, current_census,
+      LAG(current_census) OVER (PARTITION BY branch_name ORDER BY CensusDate) AS prior_census
+    FROM DailyCensus
+    ORDER BY branch_name, CensusDate`;
+    const result = analyzeSql(sql, buildStaticCatalog());
+
+    expect(result.tablesUsed).toContain("dbo.V_AL_HOSPICEDAILYCENSUSINFO");
+    expect(result.errors.join(" ")).not.toContain("Cartesian");
+    expect(result.warnings).toEqual([]);
+    expect(result.validationStatus).toBe("ready");
+    expect(result.executionReadinessScore).toBe(100);
+  });
+
   it("blocks Cartesian-risk SQL and never recommends executable DDL", () => {
     const result = analyzeSql("SELECT a.epi_id FROM dbo.CLIENT_EPISODES_ALL a, dbo.BRANCHES b");
     expect(result.validationStatus).toBe("blocked");

@@ -153,7 +153,40 @@ function confidenceBand(score: number): ConfidenceBand {
   return "rejected";
 }
 
+const FROM_CLAUSE_TERMINATOR = /^(?:where|group\s+by|order\s+by|having|union|intersect|except|join|left\s+join|right\s+join|full\s+join|inner\s+join|outer\s+apply|cross\s+apply)\b/i;
+
+/** Detect only top-level commas in FROM source lists, not projection, CTE, function, or grouping commas. */
+function hasCommaSeparatedFromSources(sql: string): boolean {
+  const sanitized = sql
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/--[^\r\n]*/g, " ")
+    .replace(/N?'(?:''|[^'])*'/gi, "''");
+
+  for (const fromMatch of sanitized.matchAll(/\bfrom\b/gi)) {
+    let depth = 0;
+    const start = (fromMatch.index ?? 0) + fromMatch[0].length;
+    for (let index = start; index < sanitized.length; index += 1) {
+      const character = sanitized[index];
+      if (character === "(") depth += 1;
+      else if (character === ")") {
+        if (depth === 0) break;
+        depth -= 1;
+      } else if (depth === 0 && character === ",") {
+        return true;
+      }
+
+      if (depth === 0 && FROM_CLAUSE_TERMINATOR.test(sanitized.slice(index))) break;
+      if (depth === 0 && character === ";") break;
+    }
+  }
+  return false;
+}
+
 export function analyzeSql(sql: string, catalog = new Map<string, MetaTable>()): SqlIntelligenceResult {
+  const cteNames = new Set(
+    [...sql.matchAll(/(?:\bwith|,)\s*([A-Za-z_]\w*)\s+as\s*\(/gi)]
+      .map((match) => match[1].toLowerCase()),
+  );
   const tablesUsed = unique([...sql.matchAll(/\b(?:from|join)\s+([\[\]\w.]+)/gi)].map((match) => match[1].replace(/[\[\]]/g, "")));
   const usedColumns = unique([...sql.matchAll(/\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b/g)].map((match) => `${match[1]}.${match[2]}`))
     .map((value) => { const [tableAlias, column] = value.split("."); return { tableAlias, column }; });
@@ -171,9 +204,10 @@ export function analyzeSql(sql: string, catalog = new Map<string, MetaTable>()):
   const errors: string[] = [];
   const warnings: string[] = [];
   if (/\bselect\s+\*/i.test(sql)) warnings.push("SELECT * reduces lineage precision; select explicit columns.");
-  if (joinLogic.length === 0 && /\bfrom\b[\s\S]*?\b[\[\]\w.]+(?:\s+(?:as\s+)?\w+)?\s*,\s*[\[\]\w.]+/i.test(sql)) errors.push("Potential Cartesian join detected.");
+  if (joinLogic.length === 0 && hasCommaSeparatedFromSources(sql)) errors.push("Potential Cartesian join detected.");
   if (/\bjoin\b/i.test(sql) && joinLogic.length === 0) warnings.push("A join was detected without a simple validated equality path.");
   for (const table of tablesUsed) {
+    if (cteNames.has(table.toLowerCase())) continue;
     if (catalog.size > 0 && ![...catalog.keys()].some((id) => id.toLowerCase() === table.toLowerCase() || id.endsWith(`.${table.toLowerCase()}`))) {
       warnings.push(`Table '${table}' is not present in the verified metadata catalog.`);
     }

@@ -69,6 +69,20 @@ describe("validateQuery", () => {
     expect(r.valid).toBe(false);
     expect(r.errors.join(" ")).toMatch(/allowed/i);
   });
+
+  it("accepts the governed hospice daily census view used by canonical WAAR reports", () => {
+    const sql = `;WITH DailyCensus AS (
+      SELECT ServiceDate AS CensusDate, [Client Brnch] AS branch_name, COUNT(DISTINCT epi_paid) AS current_census
+      FROM dbo.V_AL_HOSPICEDAILYCENSUSINFO
+      WHERE ServiceDate BETWEEN @StartDate AND @EndDate
+      GROUP BY ServiceDate, [Client Brnch]
+    )
+    SELECT CensusDate, branch_name, current_census
+    FROM DailyCensus
+    ORDER BY branch_name, CensusDate`;
+
+    expect(validateQuery(sql)).toEqual({ valid: true, errors: [] });
+  });
 });
 
 describe("validateReadOnlySql", () => {
