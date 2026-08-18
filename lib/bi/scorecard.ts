@@ -35,6 +35,9 @@ export interface ScorecardValue {
 /** One source row = one possible KPI report (KPI × Service Line). */
 export interface ScorecardReport {
   worksheet: string;
+  sourceName: string;
+  validationStatus: "parsed";
+  parsedAt: string;
   kpi: string;
   definition: string;
   benchmark: number | null;
@@ -148,7 +151,9 @@ function detectHeader(rows: unknown[][]): { headerRow: number; meta: MetaCols } 
 
 function parseSheet(
   name: string,
-  rows: unknown[][]
+  rows: unknown[][],
+  sourceName: string,
+  parsedAt: string,
 ): { worksheet: ScorecardWorksheet; reports: ScorecardReport[] } | null {
   const detected = detectHeader(rows);
   if (!detected) return null;
@@ -195,6 +200,9 @@ function parseSheet(
 
     reports.push({
       worksheet: name,
+      sourceName,
+      validationStatus: "parsed",
+      parsedAt,
       kpi: currentKpi || "(unlabeled)",
       definition,
       benchmark,
@@ -224,6 +232,7 @@ export function parseScorecard(buf: ArrayBuffer, datasetName: string): Scorecard
 
   const worksheets: ScorecardWorksheet[] = [];
   const reports: ScorecardReport[] = [];
+  const parsedAt = new Date().toISOString();
 
   for (const name of wb.SheetNames) {
     const ws = wb.Sheets[name];
@@ -234,7 +243,7 @@ export function parseScorecard(buf: ArrayBuffer, datasetName: string): Scorecard
       raw: true,
       blankrows: false,
     });
-    const parsed = parseSheet(name, rows);
+    const parsed = parseSheet(name, rows, datasetName, parsedAt);
     if (parsed) {
       worksheets.push(parsed.worksheet);
       reports.push(...parsed.reports);

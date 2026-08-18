@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
         evidence: analysis.dependencyObservations.map((item) => ({ statement: item.statement, citation_ids: item.citationIds })),
         trends: analysis.deterministicDrivers.map((item) => ({ label: item.label, direction: item.direction, magnitude: `${item.magnitude.toFixed(1)}%`, insight: item.statement, citation_ids: item.citationIds })),
         top_segments: [],
-        alerts: analysis.risks.map((item) => ({ severity: "medium" as const, title: item.metric, detail: item.statement, recommended_action: "Review the cited report evidence before operational action.", citation_ids: item.citationIds })),
+        alerts: analysis.risks.map((item) => ({ severity: "medium" as const, title: item.label, detail: item.statement, recommended_action: "Review the cited report evidence before operational action.", citation_ids: item.citationIds })),
         risks: analysis.risks.map((item) => ({ statement: item.statement, citation_ids: item.citationIds })),
         opportunities: analysis.opportunities.map((item) => ({ statement: item.statement, citation_ids: item.citationIds })),
         recommended_actions: analysis.recommendations.map((item) => ({ horizon: "immediate" as const, action: item.action, rationale: item.rationale, citation_ids: item.citationIds })),

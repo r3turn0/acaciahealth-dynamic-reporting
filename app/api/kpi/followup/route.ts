@@ -20,6 +20,7 @@ import { getModel } from "@/lib/ai/gateway";
 import type { BusinessInsights } from "@/app/api/kpi/interpret/route";
 import { buildCompactConversationalPrompt } from "@/lib/ai/insightAgentPrompt";
 import { edgeCheckRateLimit } from "@/lib/middleware/edgeRateLimiter";
+import type { AnalysisSource } from "@/lib/services/kpiAnalysisTypes";
 
 export const runtime = "edge";
 
@@ -38,6 +39,14 @@ export async function POST(req: NextRequest) {
       start_date?: string;
       end_date?: string;
     };
+    const sources = Array.isArray(body.sources) ? (body.sources as AnalysisSource[]).slice(0, 12) : [];
+    const conversation = Array.isArray(body.conversation)
+      ? body.conversation.slice(-10).filter((item: unknown): item is { role: "user" | "assistant"; content: string } => {
+          if (!item || typeof item !== "object") return false;
+          const message = item as Record<string, unknown>;
+          return (message.role === "user" || message.role === "assistant") && typeof message.content === "string" && message.content.length <= 4_000;
+        })
+      : [];
     question = typeof body.question === "string" ? body.question.trim() : "";
 
     if (!question) {
@@ -54,16 +63,31 @@ export async function POST(req: NextRequest) {
         ? `\nDate range in focus: ${start_date} to ${end_date}. Scope your answer to this period; if the insights above cover a different period, note that explicitly.`
         : "";
 
+    const citationIds = new Set([
+      ...insights.evidence.flatMap((item) => item.citation_ids),
+      ...insights.trends.flatMap((item) => item.citation_ids),
+      ...sources.flatMap((source) => source.resultSets.map((set) => set.citationId)),
+    ]);
+    const evidenceContext = sources.flatMap((source) => source.resultSets.map((set) => ({
+      source: source.name, citation_id: set.citationId, columns: set.columns, row_count: set.rowCount, sample_rows: set.sampleRows.slice(0, 50),
+    })));
     const userMessage = `Report: "${report_name}" (KPI: ${kpi})${dateContext}
 
-Previously generated insights:
-${JSON.stringify(insights, null, 2)}
+Previously generated cited insights:
+${JSON.stringify(insights).slice(0, 40_000)}
 
+Additional normalized evidence:
+${JSON.stringify(evidenceContext).slice(0, 60_000)}
+
+Conversation history:
+${JSON.stringify(conversation).slice(0, 20_000)}
+
+Allowed citation IDs: ${[...citationIds].join(", ")}
 Follow-up question: ${question}`;
 
     const result = streamText({
       model: getModel("default"),
-      system: systemPrompt,
+      system: `${systemPrompt}\nAnswer only from the supplied cited insights and normalized evidence. Preserve the conversation context. Put findings before recommendations. Cite supporting IDs in square brackets. If evidence does not support the answer, state that clearly and do not infer or fabricate.`,
       prompt: userMessage,
       temperature: 0.3,
       maxOutputTokens: 512,

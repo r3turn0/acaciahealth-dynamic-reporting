@@ -34,6 +34,11 @@ describe.skipIf(!wbPath)("parseScorecard (real workbook)", () => {
     );
     expect(result.worksheets.length).toBeGreaterThan(0);
     expect(result.reports.length).toBeGreaterThan(0);
+    expect(result.reports[0]).toMatchObject({
+      sourceName: "KPI Scorecard",
+      validationStatus: "parsed",
+    });
+    expect(Date.parse(result.reports[0].parsedAt)).not.toBeNaN();
   });
 
   it("flags total rows and captures benchmarks", () => {
