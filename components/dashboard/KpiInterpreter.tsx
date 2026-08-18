@@ -820,8 +820,8 @@ export function KpiInterpreter({ preselectedKpi, preselectedReportName }: KpiInt
               <p className="text-xs text-muted-foreground">{insights.period_label}</p>
               {meta && (
                 <p className="text-[10px] text-muted-foreground/60 mt-0.5">
-                  {meta.fallback ? "Demo mode — " : `Model: ${meta.model} — `}
-                  {meta.row_count} rows — {format(new Date(meta.generated_at), "MMM d, yyyy h:mm a")}
+                  {meta.fallback ? "Deterministic evidence mode — " : `Model: ${meta.model} — `}
+                  {meta.row_count ?? 0} rows — {format(new Date(meta.generated_at), "MMM d, yyyy h:mm a")}
                 </p>
               )}
             </div>

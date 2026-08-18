@@ -13,7 +13,7 @@ const MAX_FILES = 8;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 30 * 1024 * 1024;
 const MAX_ROWS = 5_000;
-const ALLOWED = new Set(["csv", "json", "txt", "md", "xlsx", "xls", "docx", "pdf"]);
+const ALLOWED = new Set(["csv", "json", "txt", "md", "xlsx", "docx", "pdf"]);
 
 function extension(name: string): string {
   return name.split(".").pop()?.toLowerCase() ?? "";
@@ -38,7 +38,7 @@ async function parseFile(file: File): Promise<FileIngestionResult> {
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
     const sets: Array<{ name: string; result: QueryResultSet }> = [];
-    if (ext === "xlsx" || ext === "xls" || ext === "csv") {
+    if (ext === "xlsx" || ext === "csv") {
       const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true, dense: true });
       for (const sheetName of workbook.SheetNames.slice(0, 20)) {
         const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], { defval: null }).slice(0, MAX_ROWS);
@@ -69,7 +69,7 @@ async function parseFile(file: File): Promise<FileIngestionResult> {
     if (!resultSets.length) throw new Error("No tabular rows or extractable text were found.");
     const executedAt = new Date().toISOString();
     const source: AnalysisSource = {
-      id: fileId, name: file.name, type: ext === "xlsx" || ext === "xls" ? "scorecard" : "uploaded-file",
+      id: fileId, name: file.name, type: ext === "xlsx" ? "scorecard" : "uploaded-file",
       executionMode: "upload", validationStatus: "validated", executedAt, dataAgeMs: 0, dateRange: null,
       resultSetCount: resultSets.length, resultSets, fallbackReason: null, diagnostics,
     };

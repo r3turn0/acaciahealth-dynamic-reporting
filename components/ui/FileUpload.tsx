@@ -23,12 +23,12 @@ interface FileUploadButtonProps {
   compact?: boolean;
 }
 
-const ACCEPTED = ".csv,.json,.txt,.md,.xlsx,.xls,.docx,.pdf";
+const ACCEPTED = ".csv,.json,.txt,.md,.xlsx,.docx,.pdf";
 
 function fileIcon(name: string) {
   const ext = name.split(".").pop()?.toLowerCase();
   if (ext === "json") return <FileJson className="size-3.5 shrink-0" />;
-  if (["csv", "xlsx", "xls"].includes(ext ?? "")) return <Table2 className="size-3.5 shrink-0" />;
+  if (["csv", "xlsx"].includes(ext ?? "")) return <Table2 className="size-3.5 shrink-0" />;
   return <FileText className="size-3.5 shrink-0" />;
 }
 

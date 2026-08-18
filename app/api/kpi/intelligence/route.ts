@@ -107,8 +107,8 @@ function buildDomainSummaries(): DomainSummary[] {
     domain,
     kpiCount: keys.length,
     kpiKeys:  keys,
-    status:   "healthy" as const,
-    coverage: 100,
+    status:   "warning" as const,
+    coverage: 0,
   }));
 }
 
@@ -517,11 +517,9 @@ function buildPowerBiSchema(cards: KpiCard[]): PowerBiSchema {
       domain:   k.domain,
       formula:  definitions.find((d) => d.kpiName === k.kpiName)?.formula ?? "N/A",
     })),
-    dimDate: [
-      { date: today,          month: "July",  quarter: "Q3", year: 2026 },
-      { date: "2026-06-01",   month: "June",  quarter: "Q2", year: 2026 },
-      { date: "2026-05-01",   month: "May",   quarter: "Q2", year: 2026 },
-    ],
+    dimDate: cards.length
+      ? [{ date: today, month: new Intl.DateTimeFormat("en-US", { month: "long", timeZone: "UTC" }).format(new Date(`${today}T00:00:00Z`)), quarter: `Q${Math.floor(new Date(`${today}T00:00:00Z`).getUTCMonth() / 3) + 1}`, year: new Date(`${today}T00:00:00Z`).getUTCFullYear() }]
+      : [],
     dimBranch: BRANCH_DIRECTORY.map((b) => ({
       branch:  b.branchName,
       region:  b.serviceLine === "HOME HEALTH" ? "Home Health" : "Hospice",
@@ -533,9 +531,11 @@ function buildPowerBiSchema(cards: KpiCard[]): PowerBiSchema {
 // ── Builder ───────────────────────────────────────────────────────────────────
 
 function buildIntelligence(): KpiIntelligenceResponse {
-  const kpiCards        = buildKpiCards();
-  const recommendations = buildRecommendations();
-  const kpiDefinitions  = buildKpiDefinitions();
+  // GET exposes governed metadata only. Current values are available exclusively
+  // through POST after bounded, read-only report execution and evidence analysis.
+  const kpiCards: KpiCard[] = [];
+  const recommendations: Recommendation[] = [];
+  const kpiDefinitions = buildKpiDefinitions();
 
   const schemaIntelligence: SchemaIntelligence = {
     definitions:   kpiDefinitions,
@@ -546,17 +546,14 @@ function buildIntelligence(): KpiIntelligenceResponse {
   const totalKpis = Object.keys(kpiConfig.kpis).length;
 
   const askContext =
-    `AcaciaHealth Dynamic Reporting — Schema v${kpiConfig._meta.schemaVersion} — Invoice Period ${INVOICE_PERIOD}. ` +
-    `${totalKpis} KPIs across ${Object.keys(kpiConfig.categories).length} domains. ` +
-    `Key signals: LUPA Rate 8.4% (+1.2pp), Billing Holds 147 (+12.3%), AR>90 $213K (+8.7%), ` +
-    `Census 1842 (flat), Admissions 348 (+5.4%), Revenue $2.84M (+2.1%), BP1 82.3% (+2.8pp), ` +
-    `Live DC Rate 18.2% (+2.1pp), ALOS 84 days, Worker Productivity 94.7%. ` +
-    `Priority actions: LUPA exposure intervention, billing hold audit, AR recovery, ` +
-    `voluntary discharge investigation, intake speed improvement.`;
+    `AcaciaHealth Dynamic Reporting — governed metadata schema v${kpiConfig._meta.schemaVersion}. ` +
+    `${totalKpis} KPI definitions across ${Object.keys(kpiConfig.categories).length} domains. ` +
+    "No current KPI values or recommendations are included in this metadata response. " +
+    "Use evidence execution with an explicit KPI and date range to obtain cited operational findings.";
 
   return {
     generatedAt:        new Date().toISOString(),
-    invoicePeriod:      INVOICE_PERIOD,
+    invoicePeriod:      "Evidence date range required",
     schemaVersion:      kpiConfig._meta.schemaVersion,
     totalKpis,
     domainSummaries:    buildDomainSummaries(),
