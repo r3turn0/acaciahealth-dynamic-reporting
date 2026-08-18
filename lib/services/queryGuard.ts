@@ -49,6 +49,45 @@ function executableSql(sql: string): string {
     .replace(/"(?:""|[^"])*"/g, '""');
 }
 
+const SQL_IDENTIFIER_PART = String.raw`(?:\[(?:[^\]]|\]\])*\]|"(?:""|[^"])*"|[A-Za-z_][\w$#@]*)`;
+const SQL_TABLE_REFERENCE = new RegExp(
+  String.raw`\b(?:FROM|JOIN)\s+(${SQL_IDENTIFIER_PART}(?:\s*\.\s*${SQL_IDENTIFIER_PART}){0,2})`,
+  "gi",
+);
+
+function normalizeIdentifierPart(part: string): string {
+  const trimmed = part.trim();
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    return trimmed.slice(1, -1).replaceAll("]]", "]");
+  }
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed.slice(1, -1).replaceAll('""', '"');
+  }
+  return trimmed;
+}
+
+/** Extracts physical FROM/JOIN identifiers while ignoring comments and string literals. */
+function governedTableReferences(sql: string): string[] {
+  const referenceSql = sql
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/--[^\r\n]*/g, " ")
+    .replace(/N?'(?:''|[^'])*'/gi, "''");
+
+  return [...referenceSql.matchAll(SQL_TABLE_REFERENCE)].map((match) =>
+    match[1]
+      .split(".")
+      .map(normalizeIdentifierPart)
+      .join(".")
+      .toUpperCase(),
+  );
+}
+
+function isAllowedTableReference(reference: string): boolean {
+  const parts = reference.split(".");
+  const tableName = parts.at(-1) ?? reference;
+  return ALLOWED_TABLES.has(reference) || ALLOWED_TABLES.has(tableName);
+}
+
 /** Security-only validation shared by every analytics execution path. */
 export function validateReadOnlySql(sql: string): ValidationResult {
   const errors: string[] = [];
@@ -91,9 +130,7 @@ export function validateQuery(sql: string): ValidationResult {
   if (!sql.includes("@StartDate")) errors.push("Query must reference @StartDate parameter");
   if (!sql.includes("@EndDate")) errors.push("Query must reference @EndDate parameter");
 
-  const referencesAllowedTable = Array.from(ALLOWED_TABLES).some((table) =>
-    upper.includes(table)
-  );
+  const referencesAllowedTable = governedTableReferences(sql).some(isAllowedTableReference);
   if (!referencesAllowedTable) {
     errors.push("Query must reference at least one allowed table (e.g. CLIENT_EPISODES_ALL, BRANCHES)");
   }

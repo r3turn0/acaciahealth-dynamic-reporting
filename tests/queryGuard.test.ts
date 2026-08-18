@@ -70,6 +70,30 @@ describe("validateQuery", () => {
     expect(r.errors.join(" ")).toMatch(/allowed/i);
   });
 
+  it.each([
+    "[CLIENT_EPISODES_ALL]",
+    "[dbo].[CLIENT_EPISODES_ALL]",
+    "dbo.CLIENT_EPISODES_ALL",
+    "[DbO].[client_episodes_all]",
+  ])("accepts Dataset Studio Publish preview table notation: %s", (tableReference) => {
+    const sql = `SELECT TOP (100)
+      ${tableReference}.[epi_id] AS [CLIENT_EPISODES_ALL_epi_id]
+      FROM ${tableReference}
+      WHERE @StartDate <= @EndDate`;
+
+    expect(validateQuery(sql)).toEqual({ valid: true, errors: [] });
+  });
+
+  it.each([
+    "SELECT SOME_RANDOM_TABLE.foo AS CLIENT_EPISODES_ALL FROM SOME_RANDOM_TABLE WHERE foo BETWEEN @StartDate AND @EndDate",
+    "SELECT foo FROM SOME_RANDOM_TABLE WHERE 'CLIENT_EPISODES_ALL' = 'CLIENT_EPISODES_ALL' AND foo BETWEEN @StartDate AND @EndDate",
+    "SELECT foo FROM SOME_RANDOM_TABLE -- FROM CLIENT_EPISODES_ALL\nWHERE foo BETWEEN @StartDate AND @EndDate",
+  ])("rejects allowed table names outside physical FROM/JOIN references", (sql) => {
+    const result = validateQuery(sql);
+    expect(result.valid).toBe(false);
+    expect(result.errors.join(" ")).toMatch(/allowed table/i);
+  });
+
   it("accepts the governed hospice daily census view used by canonical WAAR reports", () => {
     const sql = `;WITH DailyCensus AS (
       SELECT ServiceDate AS CensusDate, [Client Brnch] AS branch_name, COUNT(DISTINCT epi_paid) AS current_census
